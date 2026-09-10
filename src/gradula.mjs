@@ -1132,7 +1132,21 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (Array.isArray(files) && files.length) {
         const before = item.files ?? [];
         const all = [...new Set([...before, ...files.map((f) => String(f).replace(/^\/+/, '').slice(0, 200))])].slice(0, 60);
-        if (all.length !== before.length) await store.items.patch(item.key, { files: all });
+        if (all.length !== before.length) {
+          /*
+           * THE FILES LABEL THE CARD. A card born from a commit carries a
+           * subject and no path — the board's rules found no module in "The
+           * board moves by itself", and four of five cards stood unlabelled
+           * on the map. The commit's files are the clearest hint there is,
+           * and the vocabulary maps every path to a module: read them now,
+           * add what they say (never remove what a hand set).
+           */
+          const vocabulary = await store.vocab.get(item.project);
+          const found = labelsFor({ title: item.title, text: item.text, files: all, vocabulary });
+          const module = mergeLabels(item.module ?? [], found.module);
+          const stack = mergeLabels(item.stack ?? [], found.stack);
+          await store.items.patch(item.key, { files: all, ...(module.length !== (item.module ?? []).length ? { module } : {}), ...(stack.length !== (item.stack ?? []).length ? { stack } : {}) });
+        }
       }
 
       await note(item, actor, 'evidenced', {

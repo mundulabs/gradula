@@ -308,3 +308,15 @@ test('the publishing rule: with "done" a card that reaches done becomes public b
   assert.equal((await gradula.getItem(crash.key)).visibility, 'internal', 'a crash is never news for the outside');
   await assert.rejects(gradula.patchProject('PRB', { publish: 'always' }, 'david'), (e) => e.code === 'publish');
 });
+
+test('the commit\'s files label the card: evidence with paths adds the modules the vocabulary maps them to', async () => {
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  await gradula.putVocabulary('PRB', [{ id: 'docs', paths: ['docs'], area: 'docs' }, { id: 'tools', paths: ['tools'] }, { id: 'core', paths: ['packages/core'], area: 'kit' }]);
+  const card = await gradula.addItem('PRB', { title: 'The board moves by itself', kind: 'task' }, 'david');
+  assert.deepEqual(card.module, [], 'a subject without a path names no module');
+  await gradula.addEvidence(card.key, { kind: 'commit', ref: 'abc1234', files: ['docs/release-pipeline.md', 'tools/release/ci.mjs'] }, 'hook');
+  const after = await gradula.getItem(card.key);
+  assert.deepEqual(after.module, ['docs', 'tools'], 'the files said where the work was');
+});
