@@ -12,10 +12,12 @@
 export type Language = 'de' | 'en';
 
 // @ts-expect-error — the service is plain JavaScript; these two exports are data.
-import { WORDS as words, LANGUAGES as languages, KINDS as kinds, GATE_KINDS as gateKinds } from '../../src/spec.mjs';
+import { WORDS as words, LANGUAGES as languages, KINDS as kinds, GATE_KINDS as gateKinds, AGENT_KEY_KIND as agentKeyKind } from '../../src/spec.mjs';
 
 export const WORDS = words as Record<Language, Record<string, string>>;
 export const LANGUAGES = languages as Language[];
 
 export const KINDS = kinds as string[];
 export const GATE_KINDS = gateKinds as string[];
+/** The kind of key an AI session takes — marked in "Your keys", never a right. */
+export const AGENT_KEY_KIND = agentKeyKind as string;

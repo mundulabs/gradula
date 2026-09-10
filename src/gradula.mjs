@@ -33,7 +33,7 @@ import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
 import { dueHeralds, CADENCES } from './schedule.mjs';
-import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES } from './spec.mjs';
+import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName } from './spec.mjs';
 import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
 import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
@@ -1748,13 +1748,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return { id: row.id, code: row.code, project: project.key, machine: row.machine, expiresInMs: DEVICE_TTL };
     },
 
-    /** The CLI, waiting: pending, approved (with the key, once), denied or expired. */
+    /** The CLI, waiting: pending, approved (with both keys, once), denied or expired. */
     async pollDevice(id) {
       const row = await store.devices.get(id);
       if (!row) throw missing('There is no such request.');
       if (row.status !== 'approved') return { status: row.status };
-      const token = await store.devices.claim(id);
-      return { status: 'approved', token: token ?? null };
+      const claimed = await store.devices.claim(id);
+      return { status: 'approved', token: claimed?.token ?? null, agentToken: claimed?.agentToken ?? null };
     },
 
     /** What the board shows a signed-in person: machines asking to join this project. */
@@ -1770,13 +1770,17 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const row = await store.devices.get(id);
       if (!row || row.project !== project.key) throw missing('There is no such request.');
       if (row.status !== 'pending') throw new Refusal(409, 'resolved', `That request is already ${row.status}.`);
-      // The key IS the approver, named after the machine that asked.
-      const { token } = await store.tokens.mint({
-        project: project.key, name: row.machine, createdBy: human.name, kind: 'human',
-        owner: String(human.sub), ownerName: String(human.name),
-      });
-      await store.devices.resolve(id, { status: 'approved', token, owner: String(human.sub), ownerName: String(human.name) });
-      return { approved: true, machine: row.machine };
+      // TWO keys, one person. The first IS the approver, named after the
+      // machine that asked; the second is for the AI sessions on that machine
+      // (`GRADULA_AGENT_TOKEN`, src/hand.mjs), same owner, its own name — so the
+      // chronicle can tell `david (Davids-MacBook-Pro)` from `david (Claude
+      // Code · Davids-MacBook-Pro)`. It used to be minted by hand, which meant
+      // a new developer's sessions had no key at all and came in as the person.
+      const owner = { owner: String(human.sub), ownerName: String(human.name) };
+      const { token } = await store.tokens.mint({ project: project.key, name: row.machine, createdBy: human.name, kind: 'human', ...owner });
+      const { token: agentToken } = await store.tokens.mint({ project: project.key, name: agentKeyName(row.machine), createdBy: human.name, kind: AGENT_KEY_KIND, ...owner });
+      await store.devices.resolve(id, { status: 'approved', token, agentToken, ...owner });
+      return { approved: true, machine: row.machine, agent: agentKeyName(row.machine) };
     },
 
     async denyDevice(projectKey, id, human) {

@@ -361,6 +361,7 @@ create table if not exists device_request (
   code text not null,
   status text not null default 'pending',
   token text,
+  agent_token text,
   owner text,
   owner_name text,
   created timestamptz not null default now(),
@@ -382,6 +383,9 @@ alter table token_key add column if not exists kind text not null default 'human
 -- so such a key never needs — and never obeys — an actor header.
 alter table token_key add column if not exists owner text;
 alter table token_key add column if not exists owner_name text;
+-- The second key a device request carries: the one for the person's AI
+-- sessions, minted beside their own on approval (src/gradula.mjs approveDevice).
+alter table device_request add column if not exists agent_token text;
 alter table history   add column if not exists seq bigserial;
 alter table card     add column if not exists source text not null default 'human';
 alter table card     add column if not exists foreign_id text;
@@ -930,30 +934,33 @@ export async function createPgStore(url, { schema = null } = {}) {
           "select * from device_request where project = $1 and status = 'pending' and created > now() - ($2 || ' milliseconds')::interval order by created",
           [projectKey, String(DEVICE_TTL)],
         );
-        return rows.map((r) => { const d = asDevice(r); delete d.token; return d; });
+        return rows.map((r) => { const d = asDevice(r); delete d.token; delete d.agentToken; return d; });
       },
-      async resolve(id, { status, token = null, owner = null, ownerName = null }) {
+      // Two keys ride on one request: the person's and the one for their AI
+      // sessions (src/gradula.mjs approveDevice). Both are handed over together.
+      async resolve(id, { status, token = null, agentToken = null, owner = null, ownerName = null }) {
         const { rows } = await q(
-          "update device_request set status = $2, token = $3, owner = $4, owner_name = $5, resolved_at = now() where id = $1 and status = 'pending' returning *",
-          [String(id), status, token, owner, ownerName],
+          "update device_request set status = $2, token = $3, agent_token = $6, owner = $4, owner_name = $5, resolved_at = now() where id = $1 and status = 'pending' returning *",
+          [String(id), status, token, owner, ownerName, agentToken],
         );
         return rows[0] ? asDevice(rows[0]) : null;
       },
-      // Read and clear in ONE statement: a CTE selects the token, the update
-      // nulls it, and the select returns what was there — two CLIs racing get
-      // the key at most once between them.
+      // Read and clear in ONE statement: a CTE selects the tokens, the update
+      // nulls them, and the select returns what was there — two CLIs racing get
+      // the keys at most once between them.
       async claim(id) {
-        // A CTE locks and reads the token, then the update nulls it: the value
-        // comes from BEFORE the update (picked), so it is handed back exactly
-        // once even if two CLIs poll at the same millisecond.
+        // A CTE locks and reads the tokens, then the update nulls them: the
+        // values come from BEFORE the update (picked), so they are handed back
+        // exactly once even if two CLIs poll at the same millisecond.
         const { rows } = await q(
           `with picked as (
-             select token from device_request where id = $1 and status = 'approved' and token is not null for update
+             select token, agent_token from device_request where id = $1 and status = 'approved' and token is not null for update
            )
-           update device_request set token = null from picked where device_request.id = $1 returning picked.token`,
+           update device_request set token = null, agent_token = null from picked where device_request.id = $1
+           returning picked.token, picked.agent_token`,
           [String(id)],
         );
-        return rows[0]?.token ?? null;
+        return rows[0]?.token ? { token: rows[0].token, agentToken: rows[0].agent_token ?? null } : null;
       },
     },
   };
@@ -967,7 +974,7 @@ export async function createPgStore(url, { schema = null } = {}) {
 function asDevice(row) {
   return {
     id: row.id, project: row.project, machine: row.machine, code: row.code,
-    status: row.status, token: row.token ?? null, owner: row.owner ?? null,
+    status: row.status, token: row.token ?? null, agentToken: row.agent_token ?? null, owner: row.owner ?? null,
     ownerName: row.owner_name ?? null,
     created: iso(row.created), resolvedAt: iso(row.resolved_at),
   };

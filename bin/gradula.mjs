@@ -8,12 +8,14 @@
  *
  * A project brings three lines (`.gradula.env` in the repo, or the environment):
  *   GRADULA_URL=https://gradula.mundula.app
- *   GRADULA_TOKEN=grad_pat_…
- *   GRADULA_ACTOR=david
+ *   GRADULA_TOKEN=grad_pat_…          the person's key — `gradula login` writes it
+ *   GRADULA_AGENT_TOKEN=grad_pat_…    the key AI sessions take — written beside it
  *
- * `GRADULA_ACTOR` is a claim, not a credential — it stands in the chronicle
- * as exactly that ("david (via the key …)"), so one can see who was meant
- * without it looking like a check.
+ * Both keys ARE the person who approved the machine; only the hand in the
+ * chronicle differs: `david (Davids-MacBook-Pro)` and `david (Claude Code ·
+ * Davids-MacBook-Pro)`. An older `GRADULA_ACTOR` line is a claim, not a
+ * credential — it stands in the chronicle as exactly that, and an owned key
+ * ignores it.
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
@@ -21,8 +23,8 @@ import { join, dirname, basename } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { allGates, gateLine } from '../src/gates.mjs';
-import { KINDS, ladderOf } from '../src/spec.mjs';
-import { config, handOf } from '../src/hand.mjs';
+import { KINDS, ladderOf, agentKeyName } from '../src/spec.mjs';
+import { config, handOf, mergeEnv } from '../src/hand.mjs';
 import { cardOfBranch } from '../src/ids.mjs';
 
 const HELP = `gradula — wish, board, standing
@@ -71,13 +73,15 @@ const HELP = `gradula — wish, board, standing
   gradula chats                    which channels the heralds can see
   gradula vocabulary [push]        read this repo's modules (and send them)
   gradula hook [off]               evidence lands on every commit, by itself
-  gradula login [--project MDLA]   register THIS machine — the board mints the key, no copy-paste
+  gradula login [--project MDLA]   register THIS machine — the board mints two keys (yours, and
+                                 one for the AI sessions here), no copy-paste
   gradula project [--alias "david=David Bläsing"] [--language de|en]
                                  which names mean the same person ("none" clears)
                                  and which language the CARDS are written in
 
 Environment: GRADULA_URL, GRADULA_TOKEN, GRADULA_ACTOR (or .gradula.env — gradula login writes it)
-             GRADULA_AGENT_TOKEN  a second key for AI sessions — same actor, its own "via"
+             GRADULA_AGENT_TOKEN  the key AI sessions take — same person, its own hand in the
+                                  chronicle ("Claude Code · <machine>"); gradula login writes it too
              GRADULA_HAND=agent|person  say which hand this is, if the environment does not`;
 
 const env = config();
@@ -1184,27 +1188,32 @@ switch (command) {
     process.stdout.write('Waiting for approval');
 
     const until = Date.now() + 10 * 60_000;
-    let token = null;
+    let keys = null;
     while (Date.now() < until) {
       await new Promise((r) => setTimeout(r, 2000));
       const poll = await raw(`/api/v1/device/${started.id}`);
-      if (poll.status === 'approved') { token = poll.token; break; }
+      if (poll.status === 'approved') { keys = poll; break; }
       if (poll.status === 'denied') { console.log('\nDenied on the board.'); break; }
       if (poll.status === 'expired') { console.log('\nThe request expired. Run it again.'); break; }
       process.stdout.write('.');
     }
-    if (!token) { if (Date.now() >= until) console.log('\nTimed out. Run it again.'); break; }
+    if (!keys?.token) { if (Date.now() >= until) console.log('\nTimed out. Run it again.'); break; }
     process.stdout.write('\n');
 
     // Write the machine's own file — the nearest .gradula.env, or one here.
+    // Two keys: the person's, and the one the AI sessions on this machine
+    // take (src/hand.mjs) — so the chronicle names the hand, not only the
+    // errand. Other lines in the file (an actor, a comment) stay.
     let dir = process.cwd();
     let file = null;
     for (;;) { const candidate = join(dir, '.gradula.env'); if (existsSync(candidate)) { file = candidate; break; } const up = dirname(dir); if (up === dir) break; dir = up; }
     file ??= join(process.cwd(), '.gradula.env');
-    const had = existsSync(file) ? readFileSync(file, 'utf8').split('\n') : [];
-    const kept = had.filter((l) => l.trim() && !/^\s*GRADULA_(URL|TOKEN)\s*=/.test(l));
-    writeFileSync(file, [`GRADULA_URL=${base}`, `GRADULA_TOKEN=${token}`, ...kept].join('\n') + '\n');
-    console.log(`Done. ${file} speaks as you now — no actor line needed.`);
+    const had = existsSync(file) ? readFileSync(file, 'utf8') : '';
+    writeFileSync(file, mergeEnv(had, {
+      GRADULA_URL: base, GRADULA_TOKEN: keys.token, ...(keys.agentToken ? { GRADULA_AGENT_TOKEN: keys.agentToken } : {}),
+    }));
+    const agent = keys.agentToken ? ` — and your sessions as ${agentKeyName(machine)}` : '';
+    console.log(`Done. ${file} speaks as you${agent}. No actor line needed.`);
     break;
   }
 

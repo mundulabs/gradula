@@ -449,7 +449,7 @@ export function createMemoryStore() {
      */
     devices: {
       async open({ project, machine }) {
-        const row = { id: mintId(), project, machine, code: deviceCode(), status: 'pending', token: null, owner: null, ownerName: null, created: now() };
+        const row = { id: mintId(), project, machine, code: deviceCode(), status: 'pending', token: null, agentToken: null, owner: null, ownerName: null, created: now() };
         devices.set(row.id, row);
         return clone(row);
       },
@@ -463,22 +463,25 @@ export function createMemoryStore() {
         const fresh = Date.now() - DEVICE_TTL;
         return clone([...devices.values()]
           .filter((r) => r.project === projectKey && r.status === 'pending' && new Date(r.created).getTime() > fresh)
-          .map(({ token, ...rest }) => rest));
+          .map(({ token, agentToken, ...rest }) => rest));
       },
-      async resolve(id, { status, token = null, owner = null, ownerName = null }) {
+      // Two keys ride on one request: the person's and the one for their AI
+      // sessions (src/gradula.mjs approveDevice). Both are handed over together.
+      async resolve(id, { status, token = null, agentToken = null, owner = null, ownerName = null }) {
         const row = devices.get(String(id));
         if (!row || row.status !== 'pending') return null;
-        Object.assign(row, { status, token, owner, ownerName, resolvedAt: now() });
+        Object.assign(row, { status, token, agentToken, owner, ownerName, resolvedAt: now() });
         return clone(row);
       },
-      // The token is handed over EXACTLY ONCE: the CLI reads it, and it is gone
-      // from the record — a device request is not a place a key lives.
+      // The tokens are handed over EXACTLY ONCE: the CLI reads them, and they
+      // are gone from the record — a device request is not a place a key lives.
       async claim(id) {
         const row = devices.get(String(id));
         if (!row || row.status !== 'approved' || !row.token) return null;
-        const token = row.token;
+        const out = { token: row.token, agentToken: row.agentToken ?? null };
         row.token = null;
-        return token;
+        row.agentToken = null;
+        return out;
       },
     },
   };

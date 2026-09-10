@@ -7,10 +7,13 @@
  * "Davids Rechner")` for all of them — true about the errand, silent about the
  * hand. Asked "did I move this, or did a session?", the board had no answer.
  *
- * So a second, optional key: `GRADULA_AGENT_TOKEN`. An AI session takes it,
- * a person keeps the first — and the WHO stays the person in whose errand the
- * machine acts (`GRADULA_ACTOR`). Only the hand in brackets changes:
- * `david (AI sessions in ~/sound)`. A right is never derived from it; a mirror is.
+ * So a second key: `GRADULA_AGENT_TOKEN`. An AI session takes it, a person
+ * keeps the first — and the WHO stays the person both keys belong to. Only
+ * the hand in brackets changes: `david (Claude Code · Davids-MacBook-Pro)`
+ * beside `david (Davids-MacBook-Pro)`. A right is never derived from it; a
+ * mirror is. `gradula login` mints both (src/gradula.mjs approveDevice); the
+ * name is the program and the machine, never a path — a key named after a
+ * directory read `Claude in ~/sound` for months after the repository moved.
  *
  * A session is recognised by the environment its tool runner sets
  * (`CLAUDECODE`, `CODEX_*`), or declares itself with `GRADULA_HAND=agent`;
@@ -40,6 +43,20 @@ export function config(from = process.cwd(), processEnv = process.env) {
     dir = up;
   }
   return out;
+}
+
+/**
+ * The file `gradula login` writes, as text. The lines it brings REPLACE the
+ * lines of the same name and every other line stays where it was — a
+ * `GRADULA_ACTOR` or a comment somebody put there is not the CLI's to lose.
+ * Its own lines come first, in the order given. Pure: text in, text out, so
+ * a test can read it without a disk.
+ */
+export function mergeEnv(text, values) {
+  const names = Object.keys(values);
+  const kept = String(text ?? '').split('\n')
+    .filter((line) => line.trim() && !names.some((name) => new RegExp(`^\\s*${name}\\s*=`).test(line)));
+  return [...names.map((name) => `${name}=${values[name]}`), ...kept].join('\n') + '\n';
 }
 
 /** Is this process a machine's hand? Pure: the environment in, a yes or no out. */

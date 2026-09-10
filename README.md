@@ -57,27 +57,44 @@ the MCP server look for the file from the current directory upwards):
 
 ```
 GRADULA_URL=https://grad.mundula.app
-GRADULA_TOKEN=grad_pat_…
-GRADULA_ACTOR=david
+GRADULA_TOKEN=grad_pat_…          your key
+GRADULA_AGENT_TOKEN=grad_pat_…    the key your AI sessions take
 ```
 
-`GRADULA_ACTOR` is a claim, not an identity. It appears in the chronicle as
-`david (via key …)`; no right is derived from it.
-
-You do not have to copy a key by hand:
+You do not copy a key by hand:
 
 ```bash
 node bin/gradula.mjs login --project KEY
 ```
 
 opens a device request on the board, shows a short code, and waits. A signed-in
-person approves the machine under *Settings → Your keys*; the CLI then receives
-a key minted by the board and writes `GRADULA_URL` and `GRADULA_TOKEN` into
-`.gradula.env`.
+person approves the machine under *Settings → Your keys*; the board then mints
+**two keys for that person** and the CLI writes all three lines into
+`.gradula.env`, replacing older lines of the same names and keeping every other.
 
-Optional: `GRADULA_AGENT_TOKEN` is a second key for AI sessions (same actor,
-its own "via" in the chronicle); `GRADULA_HAND=agent|person` says which hand
-this is when the environment does not.
+### Two keys, one person
+
+Both keys ARE the person who approved the machine — same owner, same rights,
+no actor header read. They differ in one thing: the hand the chronicle names.
+
+| key | kind | name | the chronicle writes |
+| --- | --- | --- | --- |
+| `GRADULA_TOKEN` | `human` | the machine (`Davids-MacBook-Pro`) | `david (Davids-MacBook-Pro)` |
+| `GRADULA_AGENT_TOKEN` | `agent` | `Claude Code · Davids-MacBook-Pro` | `david (Claude Code · Davids-MacBook-Pro)` |
+
+A session is recognised by the environment its tool runner sets (`CLAUDECODE`,
+`CODEX_*`) and takes the agent key; the MCP server is a machine's door by
+definition and always takes it. `GRADULA_HAND=agent|person` says which hand
+this is when the environment does not. Without an agent key a session still
+comes in — as the person, with the person's key.
+
+*Your keys* on the board lists both, the agent one marked as the sessions'
+key; revoking one leaves the other. A key can also be minted there by hand
+(one key, named as you like) and shown once.
+
+`GRADULA_ACTOR` is only read for a key that belongs to nobody (minted through
+the admin door). It is a claim, not an identity: it appears in the chronicle as
+`david (key name)`, and no right is derived from it.
 
 The project itself is created through the admin door:
 
@@ -250,13 +267,15 @@ read anew on every ask, so a card that moved a second ago is in the next picture
 `GET /api/v1/live` (SSE, project key) announces `event: system` with
 `{ at, changed: [...] }` whenever the gathered picture changed — no content, the
 door above has it. The poll behind it runs only while at least one client is on
-the line and stops with the last one.
+the line and stops with the last one. The same line carries `event: moved` with
+`{ verb, card, actor, at }` for every chronicle verb — and `verb: 'wipe'` when
+an admin empties the project, on which the board empties its columns at once.
 
 ## The MCP server
 
 `mcp/server.mjs` exposes the same doors as tools over stdio (JSON-RPC) for
 Codex, Claude Code and Claude Desktop. It reads the same `.gradula.env` and
-takes `GRADULA_AGENT_TOKEN` when one is set. Tools: `plan_list`, `plan_card`,
+takes `GRADULA_AGENT_TOKEN` when one is set (see "Two keys, one person"). Tools: `plan_list`, `plan_card`,
 `plan_new`, `plan_move`, `plan_start`, `plan_approve`, `plan_reject`,
 `plan_link`, `plan_suggest_labels`, `plan_project`, `plan_vocabulary`,
 `plan_pulse`, `plan_wave`.

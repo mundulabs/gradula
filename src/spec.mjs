@@ -97,6 +97,20 @@ export const STACKS = [
  */
 export const ROLES = ['admin', 'dev', 'watch'];
 
+/**
+ * What a key is. `human` acts on behalf of a person; `system` is a rule with
+ * nobody behind it and may not decide; `agent` is a person's SECOND hand —
+ * the AI sessions on their machine (`GRADULA_AGENT_TOKEN`, src/hand.mjs).
+ * An agent key has the same owner and the same rights as the person's own,
+ * and differs in one thing only: its name in the chronicle. That is why it
+ * is a kind and not a flag — the board marks it, and `gradula login` mints
+ * it beside the person's key, named after the program and the machine.
+ */
+export const KEY_KINDS = ['human', 'agent', 'system'];
+export const AGENT_KEY_KIND = 'agent';
+/** The hand as the chronicle names it: `Claude Code · Davids-MacBook-Pro`. */
+export const agentKeyName = (machine) => `Claude Code · ${machine}`;
+
 export const MAY = {
   admin: ['see', 'write', 'start', 'manage'],
   dev: ['see', 'write', 'start'],
@@ -176,6 +190,14 @@ export const VERBS = ['created', 'changed', 'moved', 'linked', 'started', 'evide
   // The incident happened again in an environment the board does not watch
   // (`{ environment, count }`) — the chronicle shows it, the card does not move.
   'seen'];
+
+/**
+ * What the live line may announce (src/live.mjs): every chronicle verb, and
+ * ONE that never stands in a chronicle because it deletes it — `wipe`, from
+ * the admin door that empties a project. The board hears it and empties its
+ * columns at once; a chronicle verb only makes it read again.
+ */
+export const LIVE_VERBS = [...VERBS, 'wipe'];
 
 /**
  * A gate as it is stored. `call` is what gets called (a test name, a command, a

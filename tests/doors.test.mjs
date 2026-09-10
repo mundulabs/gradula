@@ -1107,10 +1107,10 @@ test('gradula login: a machine asks, a person approves the code, the key is hand
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   t.after(() => new Promise((done) => server.close(done)));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const call = async (path, { token, cookie, ...init } = {}) => {
+  const call = async (path, { token, cookie, headers = {}, ...init } = {}) => {
     const res = await fetch(`${base}${path}`, {
       ...init,
-      headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { cookie: `who=${cookie}` } : {}) },
+      headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(cookie ? { cookie: `who=${cookie}` } : {}), ...headers },
       body: init.body ? JSON.stringify(init.body) : undefined,
     });
     return { status: res.status, body: await res.json().catch(() => null) };
@@ -1132,21 +1132,47 @@ test('gradula login: a machine asks, a person approves the code, the key is hand
   const seen = await call('/api/v1/devices?project=PRB', { cookie: 'felix' });
   assert.deepEqual(seen.body.map((d) => d.machine), ["Felix' MacBook"]);
 
-  // Felix approves; a key is minted, named after the machine, owned by Felix.
+  // Felix approves; TWO keys are minted, both owned by Felix: his own, named
+  // after the machine, and one for the AI sessions on it, named after the
+  // program and the machine (2026-09-10 — until then the second key was
+  // minted by hand, and a new developer's sessions had none at all).
   const ok = await call(`/api/v1/device/${started.body.id}/approve?project=PRB`, { method: 'POST', cookie: 'felix' });
   assert.equal(ok.status, 200);
+  assert.deepEqual(ok.body, { approved: true, machine: "Felix' MacBook", agent: "Claude Code · Felix' MacBook" });
+  const minted = (await store.tokens.list('PRB')).filter((k) => k.owner === 'z-felix');
+  assert.deepEqual(
+    minted.map((k) => [k.name, k.kind, k.ownerName]).sort(),
+    [["Claude Code · Felix' MacBook", 'agent', 'Felix'], ["Felix' MacBook", 'human', 'Felix']],
+    'two keys, one owner, two hands',
+  );
 
-  // The CLI collects the key — exactly once.
+  // The CLI collects both keys — exactly once.
   const got = await call(`/api/v1/device/${started.body.id}`);
   assert.equal(got.body.status, 'approved');
   assert.match(got.body.token, /^grad_pat_/);
+  assert.match(got.body.agentToken, /^grad_pat_/);
+  assert.notEqual(got.body.token, got.body.agentToken);
   const again = await call(`/api/v1/device/${started.body.id}`);
   assert.equal(again.body.token, null, 'the key is handed over once, then gone from the request');
+  assert.equal(again.body.agentToken, null, 'and the sessions\' key with it');
 
-  // And it speaks as Felix.
+  // The person's key speaks as Felix at his machine; the sessions' key as
+  // Felix too — with the program as the hand. Same who, another via.
   const made = await call('/api/v1/cards', { method: 'POST', token: got.body.token, body: { kind: 'task', title: 'from the registered machine' } });
   const read = await call(`/api/v1/cards/${made.body.key}`, { token: got.body.token });
   assert.equal(read.body.history[0].actor, "Felix (Felix' MacBook)");
+  const bySession = await call('/api/v1/cards', { method: 'POST', token: got.body.agentToken, headers: { 'X-Gradula-Actor': 'somebody else' }, body: { kind: 'task', title: 'from a session on it' } });
+  const readSession = await call(`/api/v1/cards/${bySession.body.key}`, { token: got.body.agentToken });
+  assert.equal(readSession.body.history[0].actor, "Felix (Claude Code · Felix' MacBook)", 'the hand is the program and the machine; a claimed actor is ignored');
+
+  // The board lists both under "Your keys"; revoking one leaves the other.
+  const mine = await call('/api/v1/keys?project=PRB', { cookie: 'felix' });
+  assert.deepEqual(mine.body.map((k) => [k.name, k.kind]).sort(), [["Claude Code · Felix' MacBook", 'agent'], ["Felix' MacBook", 'human']]);
+  const agentKey = mine.body.find((k) => k.kind === 'agent');
+  assert.equal((await call(`/api/v1/keys/${agentKey.id}?project=PRB`, { method: 'DELETE', cookie: 'felix' })).status, 200);
+  assert.deepEqual((await call('/api/v1/keys?project=PRB', { cookie: 'felix' })).body.map((k) => k.kind), ['human']);
+  assert.equal((await call('/api/v1/cards', { token: got.body.agentToken })).status, 401, 'the revoked hand is out');
+  assert.equal((await call('/api/v1/cards', { token: got.body.token })).status, 200, 'the other still speaks');
 
   // A second machine, denied, yields no key.
   const two = await call('/api/v1/device?project=PRB', { method: 'POST', body: { machine: 'a stranger' } });

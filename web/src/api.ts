@@ -169,7 +169,9 @@ export const start = (project: string, key: string, anyway?: string) =>
 export const heralds = (project: string) => call<Herald[]>(`/api/v1/heralds?project=${project}`);
 
 // --- A person's own keys: minted here, shown once, revoked here ------------
-export type OwnKey = { id: string; name: string; created: string; usedAt: string | null };
+// `kind` says which hand: `human` is the person's own, `agent` the one their
+// AI sessions take (both minted by `gradula login`, src/spec.mjs KEY_KINDS).
+export type OwnKey = { id: string; name: string; kind: 'human' | 'agent' | 'system'; created: string; usedAt: string | null };
 export const myKeys = (project: string) => call<OwnKey[]>(`/api/v1/keys?project=${project}`);
 export const mintKey = (project: string, name: string) =>
   call<{ token: string; entry: OwnKey }>(`/api/v1/keys?project=${project}`, { method: 'POST', body: JSON.stringify({ name }) });
@@ -180,7 +182,7 @@ export const revokeKey = (project: string, id: string) =>
 export type Device = { id: string; machine: string; code: string; created: string };
 export const pendingDevices = (project: string) => call<Device[]>(`/api/v1/devices?project=${project}`);
 export const approveDevice = (project: string, id: string) =>
-  call<{ approved: boolean; machine: string }>(`/api/v1/device/${id}/approve?project=${project}`, { method: 'POST' });
+  call<{ approved: boolean; machine: string; agent: string }>(`/api/v1/device/${id}/approve?project=${project}`, { method: 'POST' });
 export const denyDevice = (project: string, id: string) =>
   call<{ denied: boolean }>(`/api/v1/device/${id}/deny?project=${project}`, { method: 'POST' });
 export const templates = (project: string) => call<Record<string, Template>>(`/api/v1/heralds/templates?project=${project}`);

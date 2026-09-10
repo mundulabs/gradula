@@ -241,6 +241,30 @@ test('a session speaks with the agent key, a person with their own, and the acto
   assert.equal(isAgent({}), false);
 });
 
+/**
+ * THE FILE `gradula login` WRITES. Three lines of its own — the URL, the
+ * person's key, the sessions' key — replacing lines of the same name; what
+ * else stands in the file (an actor line from before, a comment) stays.
+ * Pure, so it is tested without a disk; the CLI only writes what comes out.
+ */
+test('gradula login writes three lines and keeps every other', async () => {
+  const { mergeEnv } = await import('../src/hand.mjs');
+  const before = 'GRADULA_URL=http://old\n# mine\nGRADULA_ACTOR=david\n  GRADULA_TOKEN = stale \nGRADULA_AGENT_TOKEN=stale-too\n';
+  const after = mergeEnv(before, { GRADULA_URL: 'https://grad.mundula.app', GRADULA_TOKEN: 'grad_pat_p', GRADULA_AGENT_TOKEN: 'grad_pat_a' });
+  assert.equal(after, 'GRADULA_URL=https://grad.mundula.app\nGRADULA_TOKEN=grad_pat_p\nGRADULA_AGENT_TOKEN=grad_pat_a\n# mine\nGRADULA_ACTOR=david\n');
+  assert.equal(mergeEnv('', { GRADULA_URL: 'u', GRADULA_TOKEN: 't' }), 'GRADULA_URL=u\nGRADULA_TOKEN=t\n', 'a file that was not there');
+  assert.equal(mergeEnv('GRADULA_TOKEN_OLD=x\n', { GRADULA_TOKEN: 't' }), 'GRADULA_TOKEN=t\nGRADULA_TOKEN_OLD=x\n', 'a name is matched whole, not as a prefix');
+  // And the reader gets back what the writer wrote.
+  const { config } = await import('../src/hand.mjs');
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const dir = mkdtempSync(join(tmpdir(), 'gradula-env-'));
+  writeFileSync(join(dir, '.gradula.env'), after);
+  const read = config(dir, {});
+  assert.deepEqual([read.GRADULA_URL, read.GRADULA_TOKEN, read.GRADULA_AGENT_TOKEN, read.GRADULA_ACTOR], ['https://grad.mundula.app', 'grad_pat_p', 'grad_pat_a', 'david']);
+});
+
 test('the ladder: five marks say where a card stands', async () => {
   const { ladderOf } = await import('../src/spec.mjs');
   assert.equal(ladderOf('ready'), '■▩□□□');

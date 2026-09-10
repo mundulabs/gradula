@@ -41,6 +41,25 @@ test('the via is kept apart, for showing and never for counting', () => {
   assert.equal(viaOf('David Bläsing'), null);
 });
 
+/**
+ * THE SESSIONS' HAND SURVIVES WHOLE. `gradula login` names the agent key
+ * `Claude Code · <machine>`, and the chronicle writes `david (Claude Code ·
+ * Davids-MacBook-Pro)`. The via reader strips quotes and the words that only
+ * said "here comes a key" — it must not touch the dot, the space or the
+ * program's name, or the pulse would show a hand nobody minted.
+ */
+test('an agent key names the program and the machine, and both stay as written', () => {
+  const session = 'david (Claude Code · Davids-MacBook-Pro)';
+  assert.equal(whoOf(session), 'david');
+  assert.equal(viaOf(session), 'Claude Code · Davids-MacBook-Pro');
+  assert.equal(viaOf('david (Davids-MacBook-Pro)'), 'Davids-MacBook-Pro', 'the person at the same machine is another hand');
+  assert.deepEqual(
+    fold([{ actor: session }, { actor: 'david (Davids-MacBook-Pro)' }, { actor: session }]).map((row) => [row.person, row.moves, row.via]),
+    [['david', 3, ['Claude Code · Davids-MacBook-Pro', 'Davids-MacBook-Pro']]],
+    'one person, two hands, counted once',
+  );
+});
+
 test('aliases are declared, and only case and spacing are folded on their own', () => {
   const aliases = { david: 'David Bläsing' };
   assert.equal(nameOf('david (via key "x")', aliases), 'David Bläsing');

@@ -16,7 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-import { STATES, KINDS, VERBS, TARGETS, LINK_KINDS, GATE_KINDS, SOURCES, VISIBILITIES, WORDS } from '../src/spec.mjs';
+import { STATES, KINDS, VERBS, LIVE_VERBS, TARGETS, LINK_KINDS, GATE_KINDS, SOURCES, VISIBILITIES, WORDS, AGENT_KEY_KIND } from '../src/spec.mjs';
 import { CADENCES } from '../src/schedule.mjs';
 
 const here = new URL('../web/src/', import.meta.url);
@@ -43,7 +43,7 @@ const markup = readdirSync(here)
  * is how a checker reports things that are perfectly fine, and a checker that
  * cries wolf gets switched off.
  */
-const vocabulary = new Set([...STATES, ...KINDS, ...VERBS, ...TARGETS, ...LINK_KINDS,
+const vocabulary = new Set([...STATES, ...KINDS, ...LIVE_VERBS, ...TARGETS, ...LINK_KINDS,
   ...GATE_KINDS, ...SOURCES, ...VISIBILITIES]);
 /**
  * Class names also live in lookups — a `Record<string, string>` is often
@@ -136,14 +136,49 @@ test('no doc comment swallows the line below it', () => {
  * what had been said. Nothing was red — a comparison that finds nothing is a
  * comparison that works.
  *
- * So every verb the surface compares against has to be one the service knows.
+ * So every verb the surface compares against has to be one the service knows
+ * — a chronicle verb, or the one the live line adds (`wipe`, LIVE_VERBS).
  */
 test('every verb the board compares against is a verb the service writes', () => {
   const app = readFileSync(new URL('../web/src/App.tsx', import.meta.url), 'utf8');
   const compared = [...app.matchAll(/verb\s*===\s*'([a-zäöüß-]+)'/g)].map((m) => m[1]);
   assert.ok(compared.length >= 3, 'the board compares against verbs at all');
-  const strays = [...new Set(compared)].filter((verb) => !VERBS.includes(verb));
+  const strays = [...new Set(compared)].filter((verb) => !LIVE_VERBS.includes(verb));
   assert.deepEqual(strays, [], 'these verbs do not exist — the comparison silently finds nothing');
+  assert.ok(VERBS.every((verb) => LIVE_VERBS.includes(verb)), 'the live line knows every chronicle verb');
+});
+
+/**
+ * A WIPE EMPTIES THE TAB (2026-09-10). The admin door emptied a project and
+ * the live line said so, but the board treated `wipe` like any move: it
+ * read the cards again after 400 ms — and a tab that had lost its line in
+ * between, or held bonds and a picture from before, kept showing a board
+ * that no longer existed until somebody pressed reload. Now the wipe verb
+ * has a branch of its own: the columns, the bonds and the picture go at
+ * once, and the reading follows without waiting.
+ */
+test('the board hears a wipe and empties its columns at once', () => {
+  const app = readFileSync(new URL('../web/src/App.tsx', import.meta.url), 'utf8');
+  const start = app.indexOf("event.verb === 'wipe'");
+  assert.ok(start > 0, 'the live handler tells a wipe apart from a move');
+  const branch = app.slice(start, app.indexOf('return;', start));
+  for (const line of ['setCards([])', 'setBonds([])', 'setPicture(new Map())', 'previous.current = []', 'load()']) {
+    assert.ok(branch.includes(line), `on a wipe the board runs ${line}`);
+  }
+  assert.ok(!branch.includes('setTimeout'), 'a wipe is not bundled behind the 400 ms clock');
+});
+
+/**
+ * THE SESSIONS' KEY IS MARKED. `gradula login` mints two keys, and a list that
+ * showed two names and no difference would have a person revoke the wrong
+ * one. The mark compares against the kind the service declares, never a copy.
+ */
+test('"Your keys" marks the agent key by the kind the service declares', () => {
+  const app = readFileSync(new URL('../web/src/App.tsx', import.meta.url), 'utf8');
+  const vocabulary = readFileSync(new URL('../web/src/vocabulary.ts', import.meta.url), 'utf8');
+  assert.ok(vocabulary.includes('AGENT_KEY_KIND as agentKeyKind'), 'the kind comes from src/spec.mjs');
+  assert.ok(app.includes("k.kind === AGENT_KEY_KIND ? <span className=\"small\">{t('keys.agent')}</span>"), 'the list marks it');
+  assert.ok(!app.includes(`'${AGENT_KEY_KIND}'`), 'the word is not spelled out a second time in the board');
 });
 
 /**

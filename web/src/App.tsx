@@ -17,7 +17,7 @@ import { signalOf, beamFor, changedBetween, isRunning, IMPULSE_MS, BEAM_STATIC, 
 import { Liquid } from 'liquid-gooey';
 import { group, parentsFrom, type Group } from './bonds';
 import { chosenLanguage, keepLanguage, words, LANGUAGES, type Language } from './words';
-import { KINDS, GATE_KINDS } from './vocabulary';
+import { KINDS, GATE_KINDS, AGENT_KEY_KIND } from './vocabulary';
 import AreaMap from './Map';
 import PulseView from './Pulse';
 import Legend from './Legend';
@@ -646,6 +646,8 @@ function KeySection({ project }: { project: string }) {
       {keys.map((k) => (
         <div className="row" key={k.id}>
           <b>{k.name}</b>
+          {/* The sessions' key: `gradula login` mints it beside yours; revoking one leaves the other. */}
+          {k.kind === AGENT_KEY_KIND ? <span className="small">{t('keys.agent')}</span> : null}
           <span className="small">{t('keys.used')} {k.usedAt ? k.usedAt.slice(0, 16).replace('T', ' ') : t('keys.never')}</span>
           <button onClick={() => revoke(k.id)}>{t('keys.revoke')}</button>
         </div>
@@ -1155,10 +1157,27 @@ export default function App() {
   // through the door that knows the rights. Bundled, so that ten moves in one
   // second do not become ten queries. A changed picture reloads the cards
   // too: the notes that fill a chip are written while it is gathered.
+  //
+  // A WIPE is the one move that is not a move (src/live.mjs, from
+  // wipeProject): every card, link and chronicle line of the project is gone.
+  // The columns empty at once and everything the board holds beside the
+  // cards — bonds, the picture, the memory of what changed — goes with them;
+  // a tab that kept showing wiped cards until somebody pressed reload was
+  // showing a board that no longer existed.
   useEffect(() => {
     if (!project) return;
     let clock: ReturnType<typeof setTimeout> | null = null;
-    const stop = liveLine(project, () => {
+    const stop = liveLine(project, (event) => {
+      if (event.verb === 'wipe') {
+        if (clock) { clearTimeout(clock); clock = null; }
+        previous.current = [];
+        setCards([]);
+        setJustChanged(new Set());
+        setBonds([]);
+        setPicture(new Map());
+        load();
+        return;
+      }
       if (clock) return;
       clock = setTimeout(() => { clock = null; load(); }, 400);
     }, () => {
