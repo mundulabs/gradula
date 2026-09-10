@@ -682,6 +682,9 @@ function KeySection({ project }: { project: string }) {
 function Settings({ project, close }: { project: string; close: () => void }) {
   const [heralds, setHeralds] = useState<Herald[]>([]);
   const [templates, setTemplates] = useState<Record<string, Template>>({});
+  /* the template a herald's filter IS — so the form shows "Outside", not "keep the filter", when nothing was changed by hand */
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const templateOf = (filter: Herald['filter']) => Object.entries(templates).find(([, t2]) => same({ ...t2.filter }, { ...filter }))?.[0];
   const [draft, setDraft] = useState<(Partial<Herald> & { template?: string; token?: string }) | null>(null);
   const [chats, setChats] = useState<Record<string, { id: string; kind: string; name: string }[]>>({});
   const [draftChats, setDraftChats] = useState<{ id: string; kind: string; name: string }[]>([]);
@@ -772,7 +775,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
               {h.filter.labels?.length ? ` · @${h.filter.labels.join(',')}` : ''}
             </p>
             <div className="row">
-              <button onClick={() => setDraft({ ...h, token: '' })}>{t('card.edit')}</button>
+              <button onClick={() => setDraft({ ...h, token: h.house ? HOUSE_KEY : '', template: templateOf(h.filter) })}>{t('card.edit')}</button>
               <button onClick={() => probe(h.id)}>{t('herald.probe')}</button>
               <button onClick={() => findChats(h.id)}>{t('herald.chats')}</button>
               <button onClick={() => dropHerald(project, h.id).then(reload)}>{t('herald.remove')}</button>

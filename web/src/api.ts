@@ -77,6 +77,8 @@ export type Herald = {
   name: string;
   chat: string | null;
   token: string | null;
+  /** speaks with the house key (the server's) — the key itself is never here */
+  house?: boolean;
   active: boolean;
   filter: {
     verbs?: string[]; kinds?: string[]; states?: string[]; targets?: string[];
