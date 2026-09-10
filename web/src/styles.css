@@ -457,6 +457,20 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .orb { display: inline-flex; width: 20px; height: 20px; flex: 0 0 20px; }
 @media (prefers-reduced-motion: reduce) { .orb { display: none; } }
 
+/* Where a CARD has arrived: two small chips, dev and prod (deployed.ts). Filled
+   when the lane runs the card's commits, outlined when it does not yet, absent
+   when nobody could tell. The done colour, because arriving is a state — and
+   the chips stay quiet next to the beam: they answer, they do not call. */
+.lanes { display: inline-flex; gap: 3px; }
+.lane {
+  font: 9px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; line-height: 13px;
+  padding: 0 4px; border-radius: 3px; border: 1px solid var(--line-light); color: var(--faint);
+}
+.lane-on { background: var(--done-color); border-color: var(--done-color); color: var(--ground); }
+/* A commit, as a link into the repository — in the deployed line and in the chronicle. */
+.sha { font: inherit; color: var(--faint); text-decoration: none; border-bottom: 1px dotted var(--line-light); }
+a.sha:hover { color: var(--ink); border-bottom-color: var(--ink); }
+
 /* The standing: where things have arrived. One word, in the header, because it
    is the answer to a question you ask once a day — not a dashboard. */
 .standing {

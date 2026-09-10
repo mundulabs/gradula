@@ -25,14 +25,15 @@ import { ageOf, shortAge } from './age';
 import Prose from './Prose';
 import {
   signInPath, me as readMe, projects as readProjects, cards as readCards,
-  card as readCard, move, start, create, change, confirm, say, decide,
+  card as readCard, system as readSystem, move, start, create, change, confirm, say, decide,
   vocabulary as readVocabulary, links as readLinks, live as liveLine,
   standing as readStanding, NotSignedIn,
   heralds as heraldsRead, myKeys, mintKey, revokeKey, type OwnKey, pendingDevices, approveDevice, denyDevice, type Device, templates as templatesRead, saveHerald, dropHerald,
   probeHerald, heraldChats, chatsForKey, report as reportRead, sendReport,
   type Me, type Card, type Project, type State, type Herald, type Template, type Report, type Link,
-  type Standing,
+  type Standing, type SystemCard,
 } from './api';
+import { laneChips, commitHref, LANES, type Lane, type Chip } from './deployed';
 
 /** Written out, one by one — see the note where it is used. */
 const STAND_CLASS: Record<string, string> = {
@@ -91,7 +92,35 @@ function Labels({ card }: { card: Card }) {
   );
 }
 
-function CardButton({ card, open, signal }: { card: Card; open: () => void; signal: Signal | null }) {
+/**
+ * WHERE THE CARD HAS ARRIVED. Two small chips, dev and prod: filled when the
+ * lane runs the card's commits, outlined when it was measured and does not
+ * yet, absent when nobody could tell — and absent altogether while no commit
+ * stands behind the card (deployed.ts has the law). The card's own notes and
+ * the live picture are read together; the `system` event on the live line
+ * is what makes a chip fill the minute a deployment lands.
+ */
+const LANE_WORD: Record<Lane, string> = { development: t('lane.dev'), production: t('lane.prod') };
+const LANE_ON: Record<Lane, string> = { development: t('card.onDev'), production: t('card.onProd') };
+const LANE_OFF: Record<Lane, string> = { development: t('card.notOnDev'), production: t('card.notOnProd') };
+// Written out, not composed — the surface test reads `_CLASS` lookups.
+const LANE_CLASS: Record<Chip, string> = { filled: 'lane lane-on', outlined: 'lane' };
+function LaneChips({ card, picture }: { card: Card; picture?: SystemCard | null }) {
+  const chips = laneChips(card, picture);
+  const shown = LANES.flatMap((lane) => { const chip = chips[lane]; return chip ? [{ lane, chip }] : []; });
+  if (!shown.length) return null;
+  return (
+    <span className="lanes">
+      {shown.map(({ lane, chip }) => (
+        <span key={lane} className={LANE_CLASS[chip]} title={chip === 'filled' ? LANE_ON[lane] : LANE_OFF[lane]}>
+          {LANE_WORD[lane]}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function CardButton({ card, open, signal, picture }: { card: Card; open: () => void; signal: Signal | null; picture?: SystemCard | null }) {
   const beam = beamFor(signal);
   const age = ageOf(card);
   /*
@@ -147,6 +176,7 @@ function CardButton({ card, open, signal }: { card: Card; open: () => void; sign
         {card.person ? <span>{card.person}</span> : null}
         {card.count ? <span>{card.count}×</span> : null}
         {card.gate ? <span className="done">{t('card.gate')}</span> : null}
+        <LaneChips card={card} picture={picture} />
         {card.blockedBy.length ? <span className="waiting">{t('card.waits')} {card.blockedBy.join(' ')}</span> : null}
         {/*
           HOW LONG THIS HAS BEEN LYING HERE — and only past the threshold. A
@@ -252,9 +282,9 @@ function GateField({ gate, setGate, known = [] }: { gate: Card['gate']; setGate:
   );
 }
 
-function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [] }: {
+function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [], repo = null, picture = null }: {
   project: string; cardKey: string; close: () => void; changed: () => void;
-  people?: string[]; knownPaths?: string[];
+  people?: string[]; knownPaths?: string[]; repo?: string | null; picture?: SystemCard | null;
 }) {
   const [card, setCard] = useState<Card | null>(null);
   const [editing, setEditing] = useState(false);
@@ -263,7 +293,10 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [] 
   const [word, setWord] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { readCard(project, cardKey).then(setCard).catch((e) => setError(String(e.message ?? e))); }, [project, cardKey]);
+  // Read again when the picture changed: the deployed line is written into
+  // the chronicle while the picture is gathered, and the sheet should show it
+  // the minute the chip fills.
+  useEffect(() => { readCard(project, cardKey).then(setCard).catch((e) => setError(String(e.message ?? e))); }, [project, cardKey, picture]);
 
   const run = async (fn: () => Promise<Card>) => {
     try { setCard(await fn()); changed(); } catch (e) { setError(String((e as Error).message ?? e)); }
@@ -304,7 +337,32 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [] 
               {card.source !== 'human' ? <><span>·</span><span>{card.source}</span></> : null}
               {card.level ? <><span>·</span><span className={LEVEL_CLASS[card.level] ?? 'level'}>{t(`level.${card.level}`, card.level)}</span></> : null}
               {card.count && card.count > 1 ? <><span>·</span><span>{card.count}×</span></> : null}
+              <LaneChips card={card} picture={picture} />
             </div>
+            {/*
+              WHERE IT HAS ARRIVED, WITH WHEN AND WHAT. Per lane the time the
+              picture first saw the card there and the head that carried it —
+              the sha as a link into the repository, the same address the
+              card's GitHub door gives its evidence. Only lanes that hold the
+              card: "not yet" is already said by the chip above.
+            */}
+            {LANES.some((lane) => card.deployed?.[lane]) ? (
+              <div className="line">
+                <span className="done">{t('card.deployed')}</span>
+                {LANES.filter((lane) => card.deployed?.[lane]).map((lane) => {
+                  const note = [...(card.history ?? [])].reverse().find((e) => e.verb === 'deployed' && e.data?.environment === lane);
+                  const sha = note?.data?.sha ? String(note.data.sha) : null;
+                  const href = commitHref(repo, sha);
+                  const when = card.deployed?.at[lane];
+                  return (
+                    <span key={lane}>
+                      {LANE_WORD[lane]}{when ? ` ${when.slice(0, 16).replace('T', ' ')}` : ''}
+                      {sha ? <> · {href ? <a className="sha" href={href} target="_blank" rel="noreferrer">{sha.slice(0, 12)}</a> : <span className="sha">{sha.slice(0, 12)}</span>}</> : null}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
             <Labels card={card} />
             {(card.suggestions?.module?.length || card.suggestions?.stack?.length) ? (
               <div className="line">
@@ -425,9 +483,18 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [] 
                   // nothing: the chronicle showed a verb and an actor and never
                   // once what had actually been said. Nothing was red, because a
                   // comparison that finds nothing is a comparison that works.
-                  const inside = e.verb === 'said' ? d.line
+                  //
+                  // A commit — evidence, or the head that carried the card to a
+                  // lane — is a link into the repository where there is one.
+                  const commit = (sha: string, short = false) => {
+                    const href = commitHref(repo, sha);
+                    const text = short ? sha.slice(0, 12) : sha;
+                    return href ? <a className="sha" href={href} target="_blank" rel="noreferrer">{text}</a> : text;
+                  };
+                  const inside: React.ReactNode = e.verb === 'said' ? d.line
                     : e.verb === 'decided' ? `${d.result} — ${d.reason}`
-                    : e.verb === 'evidenced' ? `${d.ref}${d.comment ? ` · ${d.comment}` : ''}`
+                    : e.verb === 'evidenced' ? <>{d.kind === 'commit' && d.ref ? commit(d.ref) : d.ref}{d.comment ? ` · ${d.comment}` : ''}</>
+                    : e.verb === 'deployed' ? <>{d.environment}{d.sha ? <> · {commit(String(d.sha), true)}</> : null}</>
                     : '';
                   return (
                     <span key={i} className={e.verb === 'decided' ? 'decision' : undefined}>
@@ -897,15 +964,16 @@ function Door() {
 /** How many cards a melt can hold before it is a wall rather than a bond. */
 const MELT_AT_MOST = 4;
 
-function Bond({ group, open, justChanged }: {
+function Bond({ group, open, justChanged, picture }: {
   group: Group;
   open: (key: string) => void;
   justChanged: Set<string>;
+  picture: Map<string, SystemCard>;
 }) {
   const [folded, setFolded] = useState(false);
   const cards = group.cards.map((k) => (
     <CardButton key={k.key} card={k} open={() => open(k.key)}
-      signal={signalOf(k, justChanged.has(k.key))} />
+      signal={signalOf(k, justChanged.has(k.key))} picture={picture.get(k.key) ?? null} />
   ));
   if (!group.bond) return <>{cards}</>;
   const why = `${t(group.bond.reason === 'file' ? 'bond.file' : 'bond.venture')} ${group.bond.detail}`;
@@ -969,6 +1037,13 @@ export default function App() {
   const previous = useRef<Card[]>([]);
   const [bonds, setBonds] = useState<Link[]>([]);
   const [standing, setStanding] = useState<Standing | null>(null);
+  /*
+   * THE PICTURE, by card key: where each card in hand has arrived, measured
+   * against what the lanes run (deployed.ts). Read once per project and
+   * again whenever the live line says the picture changed — a board that
+   * asked /api/v1/system on every move would gather for nothing.
+   */
+  const [picture, setPicture] = useState<Map<string, SystemCard>>(new Map());
   // Three views of the same facts: the board answers "what is to be done",
   // the map "where has the work gone", the pulse "how are we doing". Same
   // cards, three questions — which is why it is a switch and not three tools.
@@ -1068,18 +1143,30 @@ export default function App() {
     return () => clearTimeout(clock);
   }, [load, search]);
 
+  const loadPicture = useCallback(() => {
+    if (!project) return;
+    readSystem(project)
+      .then((doc) => setPicture(new Map((doc.cards ?? []).map((card) => [card.key, card]))))
+      .catch(() => setPicture(new Map()));
+  }, [project]);
+
   // The long line. It says only THAT something moved; the reading happens
   // through the door that knows the rights. Bundled, so that ten moves in one
-  // second do not become ten queries.
+  // second do not become ten queries. A changed picture reloads the cards
+  // too: the notes that fill a chip are written while it is gathered.
   useEffect(() => {
     if (!project) return;
     let clock: ReturnType<typeof setTimeout> | null = null;
     const stop = liveLine(project, () => {
       if (clock) return;
       clock = setTimeout(() => { clock = null; load(); }, 400);
+    }, () => {
+      loadPicture();
+      if (clock) return;
+      clock = setTimeout(() => { clock = null; load(); }, 400);
     });
     return () => { if (clock) clearTimeout(clock); stop(); };
-  }, [project, load]);
+  }, [project, load, loadPicture]);
 
   useEffect(() => {
     if (!project) return;
@@ -1094,7 +1181,8 @@ export default function App() {
     readStanding(project).then(setStanding).catch(() => setStanding(null));
     setModuleFilter('');
     setCraftFilter('');
-  }, [project]);
+    loadPicture();
+  }, [project, loadPicture]);
 
   /*
    * The crafts on offer are the crafts in use — the spec knows fifteen and
@@ -1214,7 +1302,7 @@ export default function App() {
               <header><h2>{column.name}</h2><span className="number">{inside.length}</span></header>
               <div className="column-inside">
                 {groups.map((g) => (
-                  <Bond key={g.cards[0].key} group={g} open={open} justChanged={justChanged} />
+                  <Bond key={g.cards[0].key} group={g} open={open} justChanged={justChanged} picture={picture} />
                 ))}
               </div>
             </section>
@@ -1223,7 +1311,10 @@ export default function App() {
       </div>
       )}
 
-      {openKey ? <Sheet project={project} cardKey={openKey} close={() => open(null)} changed={load} people={people} knownPaths={knownPaths} /> : null}
+      {openKey ? (
+        <Sheet project={project} cardKey={openKey} close={() => open(null)} changed={load} people={people} knownPaths={knownPaths}
+          repo={projects.find((p) => p.key === project)?.repo ?? null} picture={picture.get(openKey) ?? null} />
+      ) : null}
       {legend ? <Legend close={() => setLegend(false)} /> : null}
       {settings ? <Settings project={project} close={() => setSettings(false)} /> : null}
       {creating ? <NewCard project={project} done={() => { setCreating(false); load(); }} cancel={() => setCreating(false)} /> : null}

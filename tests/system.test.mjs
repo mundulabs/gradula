@@ -14,12 +14,18 @@ import { createLive } from '../src/live.mjs';
 import { createApi } from '../src/api.mjs';
 
 /** One fake for every door: answered by what the URL (or the GraphQL query) contains. */
-const world = ({ deployments = {}, builds = [], updates = [], runs = [], releases = [], issues = [] } = {}) => async (url, init = {}) => {
+const world = ({ deployments = {}, builds = [], updates = [], runs = [], releases = [], issues = [], commits = {}, compares = {} } = {}) => async (url, init = {}) => {
   const at = String(url);
   const json = (body, status = 200) => ({ status, ok: status < 400, json: async () => body, text: async () => JSON.stringify(body) });
   if (at.includes('deployment.allByCompose')) {
     const compose = new URL(at).searchParams.get('composeId');
     return json(deployments[compose] ?? []);
+  }
+  // The branch listing answers by branch name; a compare by "base...head".
+  if (at.includes('/commits?sha=')) return json(commits[new URL(at).searchParams.get('sha')] ?? [], commits[new URL(at).searchParams.get('sha')] ? 200 : 404);
+  if (at.includes('/compare/')) {
+    const pair = decodeURIComponent(at.split('/compare/')[1]);
+    return compares[pair] ? json({ status: compares[pair] }) : json(null, 404);
   }
   if (at.includes('api.expo.dev')) {
     const asked = JSON.parse(init.body ?? '{}').query ?? '';
@@ -47,9 +53,10 @@ const CONNECTIONS = {
 test('the picture has every part, every source says ok, and each lane carries its own deployments', async () => {
   const fetchImpl = world({
     deployments: {
-      'c-prod': [{ status: 'done', title: 'Ship it\n\nbody', createdAt: '2026-09-10T08:00:00Z', description: 'Hash: abcdef1234567890' }],
-      'c-dev': [{ status: 'running', title: 'On its way', createdAt: '2026-09-10T09:00:00Z' }],
+      'c-prod': [{ status: 'done', title: 'Ship it\n\nbody', createdAt: '2026-09-10T08:00:00Z', finishedAt: '2026-09-10T08:03:00Z', description: 'Ship it\n\nPlan: PRB-1\nHash: abcdef1234567890' }],
+      'c-dev': [{ status: 'running', title: 'On its way', createdAt: '2026-09-10T09:00:00Z', description: 'On its way\n\nPlan: PRB-2' }],
     },
+    commits: { main: [{ sha: 'abcdef1234567890abcdef1234567890abcdef12', commit: { message: 'Ship it\n\nPlan: PRB-1', committer: { date: '2026-09-10T07:50:00Z' } } }] },
     builds: [{ id: 'b1', status: 'FINISHED', platform: 'IOS', appVersion: '1.4.0', appBuildVersion: '31', completedAt: '2026-09-09T10:00:00Z', buildProfile: 'production', channel: 'production', gitCommitMessage: 'A build' }],
     updates: [{ name: 'production', updateBranches: [{ name: 'main', updates: [
       { id: 'u1', group: 'g1', message: 'Fix the knob', runtimeVersion: '1.4.0', platform: 'ios', createdAt: '2026-09-09T11:00:00Z' },
@@ -76,7 +83,9 @@ test('the picture has every part, every source says ok, and each lane carries it
   assert.deepEqual(doc.sources, { dokploy: 'ok', eas: 'ok', github: 'ok', sentry: 'ok', board: 'ok' });
   assert.deepEqual(doc.environments.map((e) => e.id), ENVIRONMENTS);
   const [production, development] = doc.environments;
-  assert.deepEqual(production.deployments, [{ status: 'live', title: 'Ship it', at: '2026-09-10T08:00:00Z', commit: 'abcdef123456' }], 'one line and the hash from the description');
+  assert.deepEqual(production.deployments, [{ status: 'live', title: 'Ship it', at: '2026-09-10T08:00:00Z', finishedAt: '2026-09-10T08:03:00Z', head: 'Ship it', commit: 'abcdef123456', carries: ['PRB-1'] }], 'one line, the hash from the description, and the cards the commit names');
+  assert.deepEqual(development.deployments[0].carries, ['PRB-2'], 'a deployment on its way carries its cards too — that is what is deploying right now');
+  assert.deepEqual(doc.deployed, { production: { sha: 'abcdef1234567890abcdef1234567890abcdef12', at: '2026-09-10T08:03:00Z', cards: ['PRB-1'] } }, 'the head found by its title on main; the lane on its way has no live head yet');
   assert.equal(production.standing.standing, 'live');
   assert.equal(development.standing.standing, 'deploying', 'the lanes do not borrow from each other');
   assert.deepEqual(doc.builds[0], { profile: 'production', channel: 'production', platform: 'ios', status: 'built', at: '2026-09-09T10:00:00Z', url: 'https://expo.dev/accounts/acc/projects/slug/builds/b1', version: '1.4.0 · 31', title: 'A build' });
@@ -88,7 +97,7 @@ test('the picture has every part, every source says ok, and each lane carries it
     { environment: null, count24h: 1, lastAt: '2026-09-10T05:00:00Z', title: 'Nowhere in particular', url: 'https://sentry/10' },
   ], 'the day count from the stats, not the lifetime count — per lane where Sentry names one, null where it does not');
   assert.deepEqual(doc.people, [{ actor: 'david', card: 'PRB-1', verb: 'moved', at: '2026-09-10T09:30:00Z', labels: ['core', 'web'] }]);
-  assert.deepEqual(doc.cards, [{ key: 'PRB-1', title: 'A card', state: 'making', labels: ['core', 'web'], actor: 'david' }]);
+  assert.deepEqual(doc.cards, [{ key: 'PRB-1', title: 'A card', state: 'making', labels: ['core', 'web'], actor: 'david', deployed: { development: null, production: true }, evidence: 0 }], 'named by the head of production; development has no live head, so nobody knows — and no commit stands behind it yet');
 });
 
 test('the errors are asked per lane, under the names Sentry knows the lane by', async () => {
@@ -148,6 +157,15 @@ test('the board half: who moved what in the last day, and what is in hand', () =
   });
   assert.deepEqual(picture.people.map((p) => p.card), ['P-2'], 'two days ago is not the last day');
   assert.deepEqual(picture.cards.map((c) => `${c.key}:${c.actor}`), ['P-1:david', 'P-2:anna'], 'the last hand on each, whenever it moved');
+  assert.deepEqual(picture.cards[0].deployed, { development: null, production: null }, 'this half asks nobody — where a card is stays unknown here');
+
+  // Done within the week stays in the picture: that is what is on its way
+  // to a lane. Done earlier is out.
+  const week = boardPicture({ now, cards: [
+    { key: 'P-4', title: 'fresh', state: 'done', changed: '2026-09-08T10:00:00Z' },
+    { key: 'P-5', title: 'stale', state: 'done', changed: '2026-08-20T10:00:00Z' },
+  ] });
+  assert.deepEqual(week.cards.map((c) => c.key), ['P-4']);
 });
 
 test('changedParts names the parts that differ, never the clock', () => {
@@ -187,7 +205,7 @@ test('GET /api/v1/system answers one picture through the project key, and holds 
 
   const first = await call('/api/v1/system', { token });
   assert.equal(first.status, 200);
-  assert.deepEqual(Object.keys(first.body).sort(), ['at', 'builds', 'cards', 'environments', 'errors', 'people', 'pipeline', 'releases', 'sources', 'updates']);
+  assert.deepEqual(Object.keys(first.body).sort(), ['at', 'builds', 'cards', 'deployed', 'environments', 'errors', 'people', 'pipeline', 'releases', 'sources', 'updates']);
   assert.equal(first.body.sources.dokploy, 'not configured');
 
   // The verb itself, with the clock in hand: a second ask within the
@@ -250,7 +268,7 @@ test('the live line announces a changed picture — and polls only while somebod
   await poll.current.tick('PRB');
   await until(/event: system/);
   const said = JSON.parse(seen.match(/event: system\ndata: (.*)\n/)[1]);
-  assert.deepEqual(said.changed, ['environments'], 'what changed, and nothing of the content');
+  assert.deepEqual(said.changed, ['environments', 'deployed'], 'what changed, and nothing of the content');
   assert.doesNotMatch(seen, /Ship it/, 'the line carries no content — the door does');
   assert.ok(said.at);
 

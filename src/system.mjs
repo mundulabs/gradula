@@ -23,6 +23,7 @@ import * as dokploy from './dokploy.mjs';
 import * as eas from './eas.mjs';
 import * as github from './github.mjs';
 import { fetchIssues, count24hOf } from './sentry.mjs';
+import { gatherDeployed, evidenceOf, unknownDeployed, DONE_WINDOW_MS } from './deployed.mjs';
 
 /** How long a gathered picture is served as-is. */
 export const FRESH_MS = 30_000;
@@ -50,6 +51,8 @@ export function emptySystem(at = new Date().toISOString()) {
   return {
     at,
     environments: ENVIRONMENTS.map((id) => ({ id, deployments: [], standing: { standing: 'unknown', line: 'not watched' } })),
+    // Per lane with a live head: { sha, at, cards } — see deployed.mjs.
+    deployed: {},
     builds: [],
     updates: [],
     pipeline: [],
@@ -62,11 +65,17 @@ export function emptySystem(at = new Date().toISOString()) {
 }
 
 /**
- * The board's half: who moved what in the last day, and what is in hand.
+ * The board's half: who moved what in the last day, and what is in hand —
+ * plus what was done within the week, because THAT is what is on its way
+ * to a lane right now, and the one question those cards still have is
+ * where they have arrived (`deployed`, filled in by gatherSystem; unknown
+ * here — this half asks nobody).
  * Pure — it takes the chronicle and the cards and asks nobody.
  */
-export function boardPicture({ history = [], cards = [], now = Date.now(), hours = 24 } = {}) {
+export function boardPicture({ history = [], cards = [], now = Date.now(), hours = 24, doneWindowMs = DONE_WINDOW_MS } = {}) {
   const since = new Date(now - hours * 3_600_000).toISOString();
+  const doneSince = now - doneWindowMs;
+  const recentlyDone = (card) => card.state === 'done' && card.changed && new Date(card.changed).getTime() >= doneSince;
   const byKey = new Map(cards.map((card) => [card.key, card]));
   const people = history
     .filter((entry) => entry.at && entry.at >= since && entry.card)
@@ -84,9 +93,13 @@ export function boardPicture({ history = [], cards = [], now = Date.now(), hours
     if (entry.card && !lastActor.has(entry.card) && entry.actor) lastActor.set(entry.card, entry.actor);
   }
   const inHand = cards
-    .filter((card) => card.state === 'making' || card.state === 'review')
+    .filter((card) => card.state === 'making' || card.state === 'review' || recentlyDone(card))
     .map((card) => ({
       key: card.key, title: card.title, state: card.state, labels: labelsOf(card), actor: lastActor.get(card.key) ?? null,
+      deployed: unknownDeployed(),
+      // Commits behind the card — counted by gatherSystem, which has the
+      // complete chronicles; this half only has the last 500 entries.
+      evidence: 0,
     }));
   return { people, cards: inHand };
 }
@@ -101,6 +114,8 @@ export async function gatherSystem({
   board = { history: [], cards: [] },
   fetchImpl = fetch,
   now = Date.now,
+  deployedCache,
+  budget,
 } = {}) {
   const at = new Date(now()).toISOString();
   const out = emptySystem(at);
@@ -122,7 +137,12 @@ export async function gatherSystem({
           if (!fetched.ok) { out.sources.dokploy = errorOf(fetched.reason); return; }
           environment.deployments = fetched.deployments.map((d) => ({
             status: d.standing, title: d.title, at: d.at,
+            ...(d.finishedAt ? { finishedAt: d.finishedAt } : {}),
+            ...(d.head ? { head: d.head } : {}),
             ...(d.commit ? { commit: d.commit } : {}),
+            // The cards the built commit names — a deployment on its way
+            // carries them too: that is "what is deploying right now".
+            carries: d.carries ?? [],
           }));
           environment.standing = dokploy.standingOf(fetched.deployments);
         }));
@@ -208,6 +228,38 @@ export async function gatherSystem({
   const picture = boardPicture({ history: board.history ?? [], cards: board.cards ?? [], now: now() });
   out.people = picture.people;
   out.cards = picture.cards;
+
+  /*
+   * Where each card has arrived — the join of Dokploy's head and GitHub's
+   * ancestry (deployed.mjs). It runs after the lanes are known, costs at
+   * most a budget of GitHub calls, and what it cannot say stays null with a
+   * word in `sources.github`. The evidence comes with the board when the
+   * caller has it complete (`board.evidence`); otherwise it is read out of
+   * the chronicle at hand.
+   */
+  const evidence = board.evidence instanceof Map ? board.evidence : evidenceOf(board.history ?? []);
+  // How many commits stand behind each card. The board shows where a card
+  // has arrived only once there is something that could arrive: a card
+  // without a commit is not "not deployed", it is not yet on its way.
+  for (const card of out.cards) card.evidence = (evidence.get(card.key) ?? []).length;
+  const lanes = out.environments.filter((environment) => environment.deployments.length);
+  if (lanes.length) {
+    const joined = await gatherDeployed({
+      github: gh?.repo ? gh : null,
+      environments: lanes,
+      cards: board.cards ?? [],
+      evidence,
+      fetchImpl,
+      now: now(),
+      ...(deployedCache ? { cache: deployedCache } : {}),
+      ...(budget !== undefined ? { budget } : {}),
+    });
+    out.deployed = joined.deployed;
+    for (const card of out.cards) card.deployed = joined.cards.get(card.key) ?? card.deployed;
+    // "not configured" and "error: …" already say why nothing is known;
+    // an "ok" that could not answer everything says what it could not.
+    if (joined.line && out.sources.github === 'ok') out.sources.github = `ok (${joined.line})`;
+  }
   return out;
 }
 

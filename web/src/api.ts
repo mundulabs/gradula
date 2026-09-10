@@ -38,8 +38,32 @@ export type Card = {
   /** How bad an incident is, in Sentry's own words. Not a state. */
   level: string | null;
   blockedBy: string[];
+  /**
+   * Where the card has been seen, from the chronicle's `deployed` notes —
+   * memory, no network: true once a picture saw the card in that lane, and
+   * the time of the head that carried it. See deployed.ts for the chips.
+   */
+  deployed?: { development: boolean; production: boolean; at: { development: string | null; production: string | null } };
   links?: { id: string; kind: string; from: string | null; to: string | null }[];
   history?: { at: string; verb: string; actor: string; data?: Record<string, unknown> | null }[];
+};
+
+/**
+ * A card as the system picture carries it: what is in hand and what was done
+ * this week, with where it has arrived MEASURED against what each lane runs
+ * (null when nobody could tell) and how many commits stand behind it.
+ */
+export type SystemCard = {
+  key: string; title: string; state: State; labels: string[]; actor: string | null;
+  deployed: { development: boolean | null; production: boolean | null };
+  evidence?: number;
+};
+/** The picture — only the parts the board reads; the engine room reads the rest. */
+export type System = {
+  at: string;
+  cards: SystemCard[];
+  deployed: Record<string, { sha: string | null; at: string | null; cards: string[] }>;
+  sources: Record<string, string>;
 };
 
 export type Project = { key: string; name: string; repo: string | null };
@@ -106,6 +130,7 @@ export const cards = (project: string, filter: { q?: string; module?: string; st
   return call<Card[]>(`/api/v1/cards?${query}`);
 };
 export const card = (project: string, key: string) => call<Card>(`/api/v1/cards/${key}?project=${project}`);
+export const system = (project: string) => call<System>(`/api/v1/system?project=${project}`);
 export type Link = { id: string; kind: string; source: string; reason: string | null; from: string | null; to: string | null };
 export const links = (project: string) => call<Link[]>(`/api/v1/links?project=${project}`);
 export const vocabulary = (project: string) => call<{ id: string; area?: string }[]>(`/api/v1/vocabulary?project=${project}`);
@@ -200,13 +225,27 @@ export const sendReport = (project: string, id: string, html: string) =>
  * fallen until someone reloads, and a board that goes quietly stale is worse
  * than one that is empty.
  */
-export function live(project: string, moved: (event: { verb: string; card: string; actor: string }) => void) {
+export function live(
+  project: string,
+  moved: (event: { verb: string; card: string; actor: string }) => void,
+  // The picture changed — a deployment landed, a card was seen in a lane. As
+  // with a move, only THAT it changed travels; the board asks /api/v1/system.
+  pictured?: (event: { at: string; changed: string[] }) => void,
+) {
   const source = new EventSource(`${root}/api/v1/live?project=${project}`, { withCredentials: true });
   const onMoved = (e: MessageEvent) => {
     try { moved(JSON.parse(e.data)); } catch { /* a broken frame is not a reason to stop listening */ }
   };
+  const onSystem = (e: MessageEvent) => {
+    try { pictured?.(JSON.parse(e.data)); } catch { /* same */ }
+  };
   source.addEventListener('moved', onMoved as EventListener);
-  return () => { source.removeEventListener('moved', onMoved as EventListener); source.close(); };
+  source.addEventListener('system', onSystem as EventListener);
+  return () => {
+    source.removeEventListener('moved', onMoved as EventListener);
+    source.removeEventListener('system', onSystem as EventListener);
+    source.close();
+  };
 }
 
 export type Standing = {

@@ -177,9 +177,22 @@ for (const [name, build] of implementations) {
       assert.match(String(entry.at), /^\d{4}-\d{2}-\d{2}T/, 'the moment is an ISO string, not a Date');
     }
 
-    // And the one derived answer built on top of it.
+    // And the derived answers built on top of it.
     const touched = await store.events.lastTouched('PRB');
     assert.match(String(touched.get(card.id)), /^\d{4}-\d{2}-\d{2}T/);
+
+    // Where each card was last seen deployed, per lane — the `deployed`
+    // notes folded, one read for the board (deployed.mjs has the fold for
+    // one card; the two must say the same).
+    await store.events.add({ item: card.id, actor: 'dokploy', verb: 'deployed', data: { environment: 'development', sha: 'a', at: '2026-09-10T10:41:00Z' } });
+    await store.events.add({ item: card.id, actor: 'dokploy', verb: 'deployed', data: { environment: 'development', sha: 'b', at: '2026-09-10T12:00:00Z' } });
+    const one = await store.items.create('PRB', { kind: 'task', title: 'Second' });
+    await store.events.add({ item: one.id, actor: 'dokploy', verb: 'deployed', data: { environment: 'production', sha: 'b' } });
+    const deployed = await store.events.deployed('PRB');
+    assert.deepEqual(deployed.get(card.id), { development: true, production: false, at: { development: '2026-09-10T12:00:00Z', production: null } }, 'the last note per lane');
+    assert.equal(deployed.get(one.id).production, true);
+    assert.match(String(deployed.get(one.id).at.production), /^\d{4}-\d{2}-\d{2}T/, 'a note without its own time carries the chronicle\'s');
+    assert.equal(deployed.get(one.id).development, false);
   });
 
   /**

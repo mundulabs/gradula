@@ -330,6 +330,26 @@ export function createMemoryStore() {
         }
         return out;
       },
+      /**
+       * Where each card was last seen deployed, per lane — the `deployed`
+       * notes folded to one answer per card, in one pass (deployed.mjs,
+       * deployedOf, has the same fold for one card's chronicle).
+       */
+      async deployed(projectKey) {
+        const mine = new Set([...items.values()].filter((i) => i.project === projectKey).map((i) => i.id));
+        const out = new Map();
+        for (const event of events) {
+          if (event.verb !== 'deployed' || !mine.has(event.item)) continue;
+          const environment = event.data?.environment;
+          if (environment !== 'development' && environment !== 'production') continue;
+          const when = event.data?.at ?? event.at;
+          const row = out.get(event.item) ?? { development: false, production: false, at: { development: null, production: null } };
+          if (!row.at[environment] || when > row.at[environment]) row.at[environment] = when;
+          row[environment] = true;
+          out.set(event.item, row);
+        }
+        return new Map([...out].map(([id, row]) => [id, clone(row)]));
+      },
     },
 
     sentry: {

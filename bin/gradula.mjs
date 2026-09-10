@@ -149,8 +149,26 @@ const dot = (item) => {
   const stack = item.stack.filter((x) => !item.module.includes(x)).join(' ');
   const labels = [module, stack].filter(Boolean).join(' ');
   const blockedBy = item.blockedBy?.length ? `  ⟂ ${item.blockedBy.join(' ')}` : '';
-  return `${mark} ${link(item.key, onBoard(item.key)).padEnd(process.stdout.isTTY ? 10 + link('', onBoard(item.key)).length : 10)} ${item.title}${labels ? `  ${labels}` : ''}${blockedBy}`;
+  // A small "prod" behind a card that production has been seen carrying —
+  // from the chronicle's `deployed` notes, no network (deployed.mjs).
+  const prod = item.deployed?.production ? '  prod' : '';
+  return `${mark} ${link(item.key, onBoard(item.key)).padEnd(process.stdout.isTTY ? 10 + link('', onBoard(item.key)).length : 10)} ${item.title}${labels ? `  ${labels}` : ''}${prod}${blockedBy}`;
 };
+
+/**
+ * "deployed: dev 10:41 · production —": the clock of the day when it is
+ * today, the day before the clock when it is not, a dash when a lane has
+ * never been seen carrying the card.
+ */
+const clockOf = (at, today = new Date()) => {
+  if (!at) return '—';
+  const when = new Date(at);
+  if (Number.isNaN(when.getTime())) return '—';
+  const hhmm = `${String(when.getHours()).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`;
+  const sameDay = when.toDateString() === today.toDateString();
+  return sameDay ? hhmm : `${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')} ${hhmm}`;
+};
+const deployedLine = (deployed) => `deployed: dev ${clockOf(deployed?.at?.development)} · production ${clockOf(deployed?.at?.production)}`;
 
 /**
  * The vocabulary from THIS repo — Gradula never reads it itself. The
@@ -323,6 +341,7 @@ switch (command) {
     }
     if (card.gate) console.log(`  Gate: ${card.gate.kind} ${card.gate.call}${card.gate.expect ? ` → ${card.gate.expect}` : ''}`);
     if (card.blockedBy.length) console.log(`  blockedBy from: ${card.blockedBy.join(', ')}`);
+    console.log(`  ${deployedLine(card.deployed)}`);
     if (card.text) console.log(`\n${card.text}\n`);
     for (const entry of card.history) console.log(`  ${String(entry.at ?? '').slice(0, 16).replace('T', ' ')}  ${entry.verb}  ${entry.actor}`);
     /*
@@ -1027,7 +1046,9 @@ switch (command) {
     const when = (at) => String(at ?? '').slice(0, 16).replace('T', ' ');
     for (const env of doc.environments ?? []) {
       console.log(`${env.id.padEnd(12)} ${env.standing?.standing ?? 'unknown'}${env.standing?.line ? ` — ${env.standing.line}` : ''}`);
-      for (const d of (env.deployments ?? []).slice(0, 3)) console.log(`  ${d.status.padEnd(10)} ${when(d.at)}  ${d.title}`);
+      for (const d of (env.deployments ?? []).slice(0, 3)) console.log(`  ${d.status.padEnd(10)} ${when(d.at)}  ${d.title}${d.carries?.length ? `  carries ${d.carries.join(' ')}` : ''}`);
+      const lane = doc.deployed?.[env.id];
+      if (lane) console.log(`  deployed   ${lane.sha ? lane.sha.slice(0, 12) : 'sha unknown'}${lane.cards?.length ? `  ${lane.cards.join(' ')}` : ''}`);
     }
     const rows = [
       ['builds', (doc.builds ?? []).slice(0, 3).map((b) => `${b.platform} ${b.profile ?? ''} ${b.status} ${when(b.at)} ${b.version ?? ''}`)],
@@ -1036,7 +1057,10 @@ switch (command) {
       ['releases', (doc.releases ?? []).slice(0, 3).map((r) => `${r.tag} ${when(r.at)}`)],
       ['errors', (doc.errors ?? []).slice(0, 5).map((e) => `${String(e.count24h).padStart(4)}/24h ${when(e.lastAt)} ${e.title}`)],
       ['people', (doc.people ?? []).slice(0, 8).map((p) => `${when(p.at)} ${p.actor} ${p.verb} ${p.card}`)],
-      ['in hand', (doc.cards ?? []).map((c) => `${c.key} ${c.state} ${c.title}${c.actor ? ` — ${c.actor}` : ''}`)],
+      ['in hand', (doc.cards ?? []).map((c) => {
+        const lanes = ['development', 'production'].filter((lane) => c.deployed?.[lane] === true).map((lane) => (lane === 'development' ? 'dev' : 'prod'));
+        return `${c.key} ${c.state} ${c.title}${c.actor ? ` — ${c.actor}` : ''}${lanes.length ? `  [${lanes.join(' ')}]` : ''}`;
+      })],
     ];
     for (const [name, lines] of rows) {
       if (!lines.length) continue;
@@ -1057,6 +1081,7 @@ switch (command) {
       const detail = z.verb === 'said' ? d.line
         : z.verb === 'decided' ? `${d.result} — ${d.reason}`
         : z.verb === 'evidenced' ? `${d.ref}${d.note ? ` · ${d.note}` : ''}`
+        : z.verb === 'deployed' ? `${d.environment}${d.sha ? ` · ${String(d.sha).slice(0, 12)}` : ''}`
         : z.verb === 'moved' ? `${d.from} → ${d.to}${d.reason ? ` (${d.reason})` : ''}`
         : '';
       console.log(`${String(z.at ?? '').slice(0, 16).replace('T', ' ')}  ${(z.card ?? '—').padEnd(9)} ${z.verb.padEnd(12)} ${z.actor}`);

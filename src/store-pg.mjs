@@ -720,6 +720,27 @@ export async function createPgStore(url, { schema = null } = {}) {
         );
         return new Map(rows.map((row) => [row.card, iso(row.touched)]));
       },
+      /**
+       * Where each card was last seen deployed, per lane — ONE grouped query
+       * over the `deployed` notes for the whole board.
+       */
+      async deployed(projectKey) {
+        const { rows } = await q(
+          `select c.card, c.data->>'environment' as environment, max(coalesce(c.data->>'at', to_char(c.at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))) as at
+             from history c join card k on k.id = c.card
+            where k.project = $1 and c.verb = 'deployed' and c.data->>'environment' in ('development', 'production')
+            group by c.card, c.data->>'environment'`,
+          [projectKey],
+        );
+        const out = new Map();
+        for (const row of rows) {
+          const entry = out.get(row.card) ?? { development: false, production: false, at: { development: null, production: null } };
+          entry[row.environment] = true;
+          entry.at[row.environment] = row.at;
+          out.set(row.card, entry);
+        }
+        return out;
+      },
     },
 
     sentry: {

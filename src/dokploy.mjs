@@ -17,10 +17,13 @@
  * an announcement.
  */
 
+import { carriesOf } from './deployed.mjs';
+
 /** What is left of a deployment when you keep only the one line. */
 const STANDING = {
   done: 'live',
   running: 'deploying',
+  queued: 'deploying',
   error: 'failed',
   idle: 'idle',
 };
@@ -92,6 +95,12 @@ export async function fetchDeployments({ base, token, composeId }, { fetchImpl =
         standing: STANDING[String(d.status ?? 'idle')] ?? 'idle',
         title: line(d.title),
         at: d.createdAt ?? null,
+        ...(d.finishedAt ? { finishedAt: d.finishedAt } : {}),
+        // The description is the FULL message of the commit that was built:
+        // its first line is the commit's title (how deployed.mjs finds the
+        // sha again), and its `Plan: KEY` lines are the cards it carries.
+        ...(line(d.description) ? { head: line(d.description) } : {}),
+        carries: carriesOf(d.description),
         // A webhook deployment carries the hash in its description; a manual
         // one carries none. Only what is there — never an invented one.
         ...(commitOf(d.description) ? { commit: commitOf(d.description) } : {}),

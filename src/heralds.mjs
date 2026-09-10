@@ -44,8 +44,8 @@ import { word } from './spec.mjs';
  * whole board is built not to do.
  */
 const HEADS = {
-  en: { created: 'New', moved: { done: 'Done', now: 'Now' }, started: 'In progress', decided: 'Decided', ingested: 'Crash', resurfaced: 'Back again', evidenced: 'Evidenced' },
-  de: { created: 'Neu', moved: { done: 'Fertig', now: 'Jetzt' }, started: 'In Arbeit', decided: 'Entschieden', ingested: 'Absturz', resurfaced: 'Wieder da', evidenced: 'Belegt' },
+  en: { created: 'New', moved: { done: 'Done', now: 'Now' }, started: 'In progress', decided: 'Decided', ingested: 'Crash', resurfaced: 'Back again', evidenced: 'Evidenced', deployed: 'Deployed' },
+  de: { created: 'Neu', moved: { done: 'Fertig', now: 'Jetzt' }, started: 'In Arbeit', decided: 'Entschieden', ingested: 'Absturz', resurfaced: 'Wieder da', evidenced: 'Belegt', deployed: 'Ausgerollt' },
 };
 
 /** How a message sounds. Two voices, because two sorts of people listen. */

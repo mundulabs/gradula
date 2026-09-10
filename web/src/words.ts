@@ -228,6 +228,14 @@ const SURFACE: Record<Language, Record<string, string>> = {
     'report.saved': 'Saved.',
     'build.head': 'Build',
     'chat.head': 'Chat',
+    // Where a card has arrived — the two chips and the line in the sheet.
+    'lane.dev': 'dev',
+    'lane.prod': 'prod',
+    'card.onDev': 'on development — what dev runs holds this card\'s commits',
+    'card.onProd': 'on production — what main runs holds this card\'s commits',
+    'card.notOnDev': 'not on development yet',
+    'card.notOnProd': 'not on production yet',
+    'card.deployed': 'deployed',
   },
   de: {
     'sign.claim': 'Wo ein Wunsch wahr wird.',
@@ -432,6 +440,13 @@ const SURFACE: Record<Language, Record<string, string>> = {
     'report.saved': 'Gesichert.',
     'build.head': 'Bau',
     'chat.head': 'Reden',
+    'lane.dev': 'dev',
+    'lane.prod': 'prod',
+    'card.onDev': 'auf development — was dev fährt, enthält die Commits dieser Karte',
+    'card.onProd': 'auf production — was main fährt, enthält die Commits dieser Karte',
+    'card.notOnDev': 'noch nicht auf development',
+    'card.notOnProd': 'noch nicht auf production',
+    'card.deployed': 'ausgerollt',
   },
 };
 

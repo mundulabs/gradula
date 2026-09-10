@@ -38,7 +38,7 @@ test('one line is left of a deployment, not a log', async () => {
   );
   assert.equal(out.ok, true);
   assert.deepEqual(out.deployments[0], {
-    status: 'done', standing: 'live', title: 'A title', at: '2026-09-09',
+    status: 'done', standing: 'live', title: 'A title', at: '2026-09-09', carries: [],
   }, 'one line means the FIRST line — otherwise a paragraph stands where a line belongs');
   assert.ok(!('logs' in out.deployments[0]), 'no log');
 });
@@ -47,4 +47,19 @@ test('the key does not leave the service', () => {
   const shown = publicConnection({ base: 'https://x/api', token: 'secret', composeId: 'c' });
   assert.equal(shown.token, 'set');
   assert.equal(shown.base, 'https://x/api');
+});
+
+test('a deployment carries the cards its commit names, and its head line', async () => {
+  const out = await fetchDeployments(
+    { base: 'https://x/api', token: 't', composeId: 'c' },
+    { fetchImpl: answer([
+      { status: 'running', title: 'On its way', createdAt: '2026-09-10', description: 'The server speaks English\n\nPlan: MDLA-3\nPlan: MDLA-7\nPlan: MDLA-3\n' },
+      { status: 'done', title: 'Before', createdAt: '2026-09-09', finishedAt: '2026-09-09T10:00:00Z', description: 'Before\n\nnothing named' },
+    ]) },
+  );
+  assert.deepEqual(out.deployments[0], {
+    status: 'running', standing: 'deploying', title: 'On its way', at: '2026-09-10', head: 'The server speaks English', carries: ['MDLA-3', 'MDLA-7'],
+  }, 'one line, once each, in order — and a deployment on its way carries them too');
+  assert.deepEqual(out.deployments[1].carries, []);
+  assert.equal(out.deployments[1].finishedAt, '2026-09-09T10:00:00Z');
 });

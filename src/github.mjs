@@ -158,6 +158,49 @@ export async function fetchReleases({ repo, token }, { fetchImpl = fetch, limit 
   }
 }
 
+/**
+ * The commits on a branch, newest first — sha, title, when. This is how a
+ * deployment's title finds its sha again (deployed.mjs): Dokploy keeps the
+ * commit message, GitHub keeps the commit, and the first line is the seam.
+ */
+export async function fetchBranchCommits({ repo, token, branch }, { fetchImpl = fetch, limit = 100 } = {}) {
+  if (!repo || !branch) return { ok: false, reason: 'not set up' };
+  try {
+    const { status, body } = await ask(`/repos/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=${limit}`, token, fetchImpl);
+    if (status === 401) return { ok: false, reason: 'the key is not valid' };
+    if (status === 404) return { ok: false, reason: `${branch} is not visible with this key` };
+    if (!Array.isArray(body)) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
+    return {
+      ok: true,
+      commits: body.map((c) => ({
+        sha: String(c.sha ?? ''),
+        title: line(c.commit?.message),
+        at: c.commit?.committer?.date ?? c.commit?.author?.date ?? null,
+      })).filter((c) => c.sha),
+    };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
+/**
+ * How two commits stand to each other: `identical`, `behind` (head is an
+ * ancestor of base), `ahead`, `diverged`. Between two fixed commits that
+ * never changes — whoever asks twice has asked once too often.
+ */
+export async function compareCommits({ repo, token, base, head }, { fetchImpl = fetch } = {}) {
+  if (!repo || !base || !head) return { ok: false, reason: 'not set up' };
+  try {
+    const { status, body } = await ask(`/repos/${repo}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`, token, fetchImpl);
+    if (status === 401) return { ok: false, reason: 'the key is not valid' };
+    if (status === 404) return { ok: false, reason: 'one of the two commits is not visible with this key' };
+    if (!['identical', 'behind', 'ahead', 'diverged'].includes(body?.status)) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
+    return { ok: true, status: body.status };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
 /** A connection never shows its key outward. */
 export const publicConnection = (connection) => (connection
   ? { repo: connection.repo, token: connection.token ? 'set' : null, setAt: connection.setAt ?? null }

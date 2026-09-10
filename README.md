@@ -138,6 +138,20 @@ gradula project [--alias "david=David Bläsing"] [--language de|en]
 A commit whose message contains `Plan: KEY-42` becomes evidence on that card
 through `gradula sync` (or automatically, once `gradula hook` is installed).
 
+### The life of a card, after the code
+
+| Step | Who | What the board writes |
+| --- | --- | --- |
+| evidence | the push hook / `gradula sync` | `evidenced` — one note per commit that names the card (`Plan: KEY`) |
+| deployed, per environment | Dokploy + GitHub, read by the system picture | `deployed` — once per lane, the first time the card is seen inside the deployed head (`{ environment, sha, at }`, hand `dokploy`) |
+| done | a hand — `gradula approve`, or the gate | `moved` to `done`; the gate proves, the deployment only reports |
+| resolved in Sentry | the board, when the card is an incident and the connection allows writing back | `resolved in Sentry` |
+
+`gradula show KEY` prints `deployed: dev 10:41 · production —` from those notes,
+without the network; `gradula cards` marks a card production has carried with
+a small `prod`. `GET /api/v1/cards/:key` answers the same next to the card:
+`deployed: { development: bool, production: bool, at: { development, production } }`.
+
 ## The system picture
 
 `GET /api/v1/system` (project key) answers ONE document gathered from every
@@ -147,16 +161,35 @@ is connected, every field optional:
 ```
 { at,
   environments: [{ id: production|development,
-                   deployments: [{ status, title, commit?, at, url? }], standing }],
+                   deployments: [{ status, title, head?, commit?, at, finishedAt?, carries: [cardKeys] }], standing }],
+  deployed:  { production?: { sha, at, cards: [cardKeys] }, development?: { … } },   per lane with a live head
   builds:    [{ profile, channel, platform, status, at, url, version }],
   updates:   [{ channel, at, message, runtime }],
   pipeline:  [{ name, branch, status, at, url }],
   releases:  [{ tag, at, url }],
   errors:    [{ environment, count24h, lastAt, title, url }],   per lane; null where no lane claims it
   people:    [{ actor, card, verb, at, labels[] }],      the last 24 h of the chronicle
-  cards:     [{ key, title, state, labels[], actor }],   what is in making or review
+  cards:     [{ key, title, state, labels[], actor,      making, review, and done within a week
+                deployed: { development: bool|null, production: bool|null },     null = nobody knows
+                evidence: n }],                                                  commits behind the card
   sources:   { dokploy, eas, github, sentry, board } }   'ok' | 'not configured' | 'error: …'
 ```
+
+**Where a card is.** A Dokploy deployment carries the full message of the
+commit it built, so every deployment lists the cards that commit names in
+`carries` — a deployment still running carries them too, and that is "what is
+deploying right now". For the newest finished deployment of a lane the head's
+sha is found by its title on the lane's branch (`main` for production, `dev`
+for development; the GitHub connection may say otherwise in `branches`), and
+each card in making, review or done within the week is asked whether its
+evidence sits inside that head (`compare` — `identical` or `behind` means yes).
+That is `deployed` per lane and `cards[].deployed` per card. A gathering
+spends at most 40 GitHub calls (branch listings are held a minute, compares
+forever): what does not fit stays `null`, and `sources.github` says
+`ok (deployed: 3 cards past the budget …)` — or `ok (deployed unknown: no
+token)` when the connection has none. The first time a card is seen deployed in
+a lane, one `deployed` note lands on it (see the CLI's lifecycle table); no
+state moves.
 
 A connection that is not set up yields an empty list AND says so in `sources`,
 so a page can say what it is not seeing instead of pretending. Dokploy watches

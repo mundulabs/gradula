@@ -27,6 +27,7 @@ import * as dokploy from './dokploy.mjs';
 import * as github from './github.mjs';
 import * as eas from './eas.mjs';
 import { gatherSystem, boardPicture, FRESH_MS } from './system.mjs';
+import { candidatesOf, evidenceOf, deployedOf, foreignIdOf, unknownDeployed } from './deployed.mjs';
 import { gather, plainReport, humanReport, htmlReport, escapeHtml } from './report.mjs';
 import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
@@ -305,6 +306,8 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
           to: byId.get(link.to)?.key ?? null,
         })),
         history: await store.events.of(item.id),
+        // Where it has been seen, from the last `deployed` notes — no network.
+        deployed: deployedOf(await store.events.of(item.id)),
       };
     },
 
@@ -330,12 +333,14 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const all = await store.items.list(project.key, {});
       const blocked = blockedBy(await store.links.list(project.key), all);
       const byId = new Map(all.map((i) => [i.id, i]));
-      const touched = await store.events.lastTouched(project.key);
+      const [touched, deployed] = await Promise.all([store.events.lastTouched(project.key), store.events.deployed(project.key)]);
       return items.map((item) => ({
         ...item,
         running: isRunning(item.heartbeat),
         blockedBy: (blocked.get(item.id) ?? []).map((id) => byId.get(id)?.key).filter(Boolean),
         touched: touched.get(item.id) ?? item.created ?? null,
+        // Where it has been seen — one grouped read for the whole board.
+        deployed: deployed.get(item.id) ?? deployedOf([]),
       }));
     },
 
@@ -1339,7 +1344,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * `fresh` skips the cache — the live poll uses it, so its beat IS the
      * cache's clock. Single-flight: two askers during a gather share it.
      */
-    async system(projectKey, { fetchImpl, fresh = false, now = Date.now } = {}) {
+    async system(projectKey, { fetchImpl, fresh = false, now = Date.now, deployedCache, budget } = {}) {
       const project = await this.getProject(projectKey);
       const board = async () => {
         const [history, cards] = await Promise.all([this.history(project.key, { limit: 500 }), store.items.list(project.key, {})]);
@@ -1349,7 +1354,11 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (held?.promise) return held.promise;
       if (held && !fresh && now() - held.at < FRESH_MS) {
         const picture = boardPicture({ ...(await board()), now: now() });
-        return { ...held.doc, people: picture.people, cards: picture.cards };
+        // Where a card has arrived was measured with the held picture; a
+        // card that was not in it yet has not been measured — unknown, not
+        // "not deployed".
+        const measured = new Map((held.doc.cards ?? []).map((card) => [card.key, { deployed: card.deployed, evidence: card.evidence ?? 0 }]));
+        return { ...held.doc, people: picture.people, cards: picture.cards.map((card) => ({ ...card, ...(measured.get(card.key) ?? { deployed: unknownDeployed(), evidence: 0 }) })) };
       }
       const promise = (async () => {
         const [dokployConnection, easConnection, githubConnection, sentryConnection, boardNow] = await Promise.all([
@@ -1359,12 +1368,30 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
           store.sentry.get(project.key),
           board(),
         ]);
-        return gatherSystem({
+        /*
+         * The evidence of the cards in question, COMPLETE. The project's
+         * history above is cut at 500 entries — enough for "who moved what
+         * today", not for "every commit of a card done last week" on a
+         * busy board. So the candidates' own chronicles are read, one per
+         * card, and only for the cards the picture will ask about.
+         */
+        const candidates = candidatesOf(boardNow.cards, { now: now() });
+        const chronicles = new Map(await Promise.all(candidates.map(async (card) => [card.key, await store.events.of(card.id)])));
+        const evidence = new Map();
+        for (const [key, history] of chronicles) {
+          const found = evidenceOf(history, () => key).get(key);
+          if (found) evidence.set(key, found);
+        }
+        const doc = await gatherSystem({
           connections: { dokploy: dokployConnection, eas: easConnection, github: githubConnection, sentry: sentryConnection },
-          board: boardNow,
+          board: { ...boardNow, evidence },
           ...(fetchImpl ? { fetchImpl } : {}),
           now,
+          ...(deployedCache ? { deployedCache } : {}),
+          ...(budget !== undefined ? { budget } : {}),
         });
+        await this.noteDeployed(project.key, doc, { cards: boardNow.cards, chronicles });
+        return doc;
       })();
       systemHeld.set(project.key, { ...(held ?? { at: 0, doc: null }), promise });
       try {
@@ -1375,6 +1402,36 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         systemHeld.set(project.key, { ...(held ?? { at: 0, doc: null }), promise: null });
         throw error;
       }
+    },
+
+    /**
+     * The chronicle's memory of a lane: the FIRST time a card is seen
+     * deployed in an environment, one note — verb `deployed`, hand
+     * `dokploy`, with the sha and the time of the head that carried it. A
+     * second look at the same lane writes nothing: the foreign id
+     * (`dokploy:<environment>:<card>:<sha>`) is looked up in the card's own
+     * chronicle first, the way the Sentry door looks its issue up before it
+     * creates a card. No state moves here — a hand moves a card to done,
+     * and the gate proves it.
+     */
+    async noteDeployed(projectKey, doc, { cards = [], chronicles = new Map() } = {}) {
+      const byKey = new Map(cards.map((card) => [card.key, card]));
+      const written = [];
+      for (const [environment, lane] of Object.entries(doc.deployed ?? {})) {
+        if (!lane?.sha) continue;
+        for (const key of lane.cards ?? []) {
+          const item = byKey.get(key);
+          if (!item) continue;
+          const history = chronicles.get(key) ?? await store.events.of(item.id);
+          const foreignId = foreignIdOf(environment, key, lane.sha);
+          const seen = history.some((e) => e.verb === 'deployed'
+            && (e.data?.foreignId === foreignId || e.data?.environment === environment));
+          if (seen) continue;
+          await note(item, 'dokploy', 'deployed', { environment, sha: lane.sha, at: lane.at ?? doc.at, foreignId });
+          written.push({ card: key, environment });
+        }
+      }
+      return written;
     },
 
     // ---- Sentry: the incidents -------------------------------------------

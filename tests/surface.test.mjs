@@ -225,3 +225,38 @@ test('the gate kinds the board offers are the ones the service knows', () => {
   const strays = listed.filter((one) => !known.has(one));
   assert.deepEqual(strays, [], 'the service answers 400 for these — and the board would look merely broken');
 });
+
+/**
+ * A CHIP SAYS ONLY WHAT IS KNOWN.
+ *
+ * The two small chips on a card — dev, prod — read two sources: the card's
+ * own `deployed` notes (memory: once seen, seen) and the live picture, which
+ * measured the card against what the lane runs right now and answers true,
+ * false, or "nobody could tell". The law is a function in web/src/deployed.ts
+ * and Node reads it as it is, so the four answers are pinned here: filled,
+ * outlined, absent — and absent altogether while no commit stands behind the
+ * card, because two hollow chips on every card in making would say nothing.
+ */
+test('the deployed chips fill, outline, or stay away — never guess', async () => {
+  const { laneChips, commitHref } = await import('../web/src/deployed.ts');
+  const notes = (development, production) => ({ deployed: { development, production, at: { development: null, production: null } } });
+  const measured = (development, production, evidence = 1) => ({ deployed: { development, production }, evidence });
+
+  assert.deepEqual(laneChips(notes(false, false), null), { development: null, production: null }, 'no picture, no notes: nothing');
+  assert.deepEqual(laneChips(notes(false, false), measured(false, false, 0)), { development: null, production: null }, 'no commit yet: nothing could have arrived');
+  assert.deepEqual(laneChips(notes(false, false), measured(false, false)), { development: 'outlined', production: 'outlined' }, 'a commit, measured, nowhere yet: two outlined chips');
+  assert.deepEqual(laneChips(notes(false, false), measured(true, null)), { development: 'filled', production: null }, 'on dev; production could not be measured — no chip, not a hollow one');
+  assert.deepEqual(laneChips(notes(true, false), measured(null, false)), { development: 'filled', production: 'outlined' }, 'the note remembers dev where the picture could not tell');
+  assert.deepEqual(laneChips(notes(false, true), null), { development: null, production: 'filled' }, 'a card that left the picture keeps what its notes say');
+  assert.deepEqual(laneChips({ deployed: undefined }, undefined), { development: null, production: null }, 'an older service without the field breaks nothing');
+
+  assert.equal(commitHref('mundulabs/gradula', 'abc123'), 'https://github.com/mundulabs/gradula/commit/abc123', 'the same address the GitHub door gives its evidence');
+  assert.equal(commitHref(null, 'abc123'), null, 'no repository, no link — the sha stays text');
+
+  // The words of the chips exist in both languages (the generic word test
+  // already holds the key sets together; this pins the keys the chips ask for).
+  const dictionary = readFileSync(new URL('../web/src/words.ts', import.meta.url), 'utf8');
+  for (const key of ['lane.dev', 'lane.prod', 'card.onDev', 'card.onProd', 'card.notOnDev', 'card.notOnProd', 'card.deployed']) {
+    assert.equal((dictionary.match(new RegExp(`'${key.replace('.', '\\.')}':`, 'g')) || []).length, 2, `${key} in both languages`);
+  }
+});

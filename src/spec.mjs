@@ -172,7 +172,7 @@ export const isLoud = (value) => value === 'fatal' || value === 'error';
  * invisible to every filter in the house.
  */
 export const VERBS = ['created', 'changed', 'moved', 'linked', 'started', 'evidenced',
-  'suggested', 'confirmed', 'said', 'decided', 'ingested', 'resurfaced'];
+  'suggested', 'confirmed', 'said', 'decided', 'ingested', 'resurfaced', 'deployed'];
 
 /**
  * A gate as it is stored. `call` is what gets called (a test name, a command, a
