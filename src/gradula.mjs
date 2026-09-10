@@ -1415,8 +1415,17 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * second look at the same lane writes nothing: the foreign id
      * (`dokploy:<environment>:<card>:<sha>`) is looked up in the card's own
      * chronicle first, the way the Sentry door looks its issue up before it
-     * creates a card. No state moves here — a hand moves a card to done,
-     * and the gate proves it.
+     * creates a card.
+     *
+     * AND THE CARD MOVES. This is where the board learns that work has
+     * arrived, so this is where a card goes on by itself: seen on
+     * development it goes to REVIEW (it can be looked at on dev now), seen on
+     * production it goes to DONE (it is out). Before this the sentence was
+     * "a hand moves a card to done" — and the hand never came: cards with
+     * two commits on production sat in making for a day, and the board said
+     * nothing was finished. A card with a gate keeps its law: done only
+     * through a green gate — a red or unrun gate leaves it in review with the
+     * refusal as the reason, and `gradula gates` finishes it.
      */
     async noteDeployed(projectKey, doc, { cards = [], chronicles = new Map() } = {}) {
       const byKey = new Map(cards.map((card) => [card.key, card]));
@@ -1432,10 +1441,35 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
             && (e.data?.foreignId === foreignId || e.data?.environment === environment));
           if (seen) continue;
           await note(item, 'dokploy', 'deployed', { environment, sha: lane.sha, at: lane.at ?? doc.at, foreignId });
-          written.push({ card: key, environment });
+          written.push({ card: key, environment, moved: await this.arrived(key, environment, lane.sha) });
         }
       }
       return written;
+    },
+
+    /**
+     * Where a card goes when it is seen in a lane — see noteDeployed. Returns
+     * the state it went to, or null when it stayed.
+     */
+    async arrived(key, environment, sha) {
+      const item = await findItem(key);
+      const reason = `seen on ${environment} (${String(sha).slice(0, 12)})`;
+      if (environment === 'development' && ['ideas', 'ready', 'making'].includes(item.state)) {
+        await this.moveItem(key, 'review', 'dokploy', reason);
+        return 'review';
+      }
+      if (environment === 'production' && ['ideas', 'ready', 'making', 'review'].includes(item.state)) {
+        try {
+          await this.moveItem(key, 'done', 'dokploy', reason);
+          return 'done';
+        } catch (error) {
+          if (!(error instanceof Refusal) || error.code !== 'gate-red') throw error;
+          if (item.state === 'review') return null;
+          await this.moveItem(key, 'review', 'dokploy', `${reason} — ${error.message}`);
+          return 'review';
+        }
+      }
+      return null;
     },
 
     // ---- Sentry: the incidents -------------------------------------------

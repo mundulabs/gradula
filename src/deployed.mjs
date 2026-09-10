@@ -24,8 +24,9 @@
  * stays `null` (unknown) and `sources` says so. Unknown is an answer; a
  * guess is not.
  *
- * No state changes here. A hand moves a card to done; the gate proves it.
- * This only writes down, once, that a card was seen deployed.
+ * No state changes here: this measures. The board moves the card when it
+ * writes the note (gradula.mjs, noteDeployed → arrived): seen on development
+ * → review, seen on production → done, a gate still deciding the last step.
  */
 
 import * as github from './github.mjs';

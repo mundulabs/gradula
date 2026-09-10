@@ -251,12 +251,17 @@ test('the whole picture: the head names a card, the notes are written once, and 
   });
   assert.equal(doc.sources.github, 'ok');
 
-  // ONE note per card and lane, from the system hand, with the sha and the time — and no state change.
+  // ONE note per card and lane, from the system hand, with the sha and the time — and the card goes on.
   const seen = (await gradula.getItem(named.key)).history.filter((e) => e.verb === 'deployed');
   assert.equal(seen.length, 1);
   assert.equal(seen[0].actor, 'dokploy');
   assert.deepEqual(seen[0].data, { environment: 'production', sha: HEAD, at: '2026-09-10T08:03:00Z', foreignId: `dokploy:production:${named.key}:${HEAD}` });
-  assert.equal((await gradula.getItem(named.key)).state, 'making', 'a hand moves to done; the gate proves — this only writes down');
+  assert.equal((await gradula.getItem(named.key)).state, 'done', 'seen on production: out, so done — no hand needed');
+  assert.equal((await gradula.getItem(proven.key)).state, 'done');
+  const moved = (await gradula.getItem(named.key)).history.filter((e) => e.verb === 'moved').pop();
+  assert.equal(moved.actor, 'dokploy');
+  assert.match(moved.data.reason, /^seen on production \(aaaaaaaaaaaa\)/, 'the chronicle says who moved it and why');
+  assert.equal((await gradula.getItem(ahead.key)).state, 'making', 'ahead of the head: not seen, not moved');
   assert.equal((await gradula.getItem(ahead.key)).history.filter((e) => e.verb === 'deployed').length, 0, 'ahead of the head: not seen, not noted');
 
   // The same picture again — nothing written twice.
@@ -291,4 +296,27 @@ test('without a GitHub token the picture says so in sources.github, and deployed
   assert.deepEqual(doc.deployed, { production: { sha: null, at: '2026-09-10T08:00:00Z', cards: ['PRB-1'] } }, 'what the head names is known without a call');
   assert.deepEqual(doc.cards.map((c) => [c.key, c.deployed]), [['PRB-1', { development: null, production: true }], ['PRB-2', { development: null, production: null }]]);
   assert.equal(world.github(), 0, 'no listing, no compare — nothing is asked without a token');
+});
+
+test('seen on development a card goes to review; seen on production a gated card waits in review with the refusal as its reason', async () => {
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  await gradula.setDokploy('PRB', { base: 'https://dok.test/api', token: 't', composes: { production: 'c-prod', development: 'c-dev' } });
+  await gradula.setGithub('PRB', { repo: 'acc/repo', token: 't' });
+  const onDev = await gradula.addItem('PRB', { title: 'On dev', kind: 'task' }, 'david');
+  const gated = await gradula.addItem('PRB', { title: 'Gated', kind: 'task', gate: { kind: 'test', call: 'tests/never.test.mjs' } }, 'david');
+  for (const card of [onDev, gated]) { await gradula.moveItem(card.key, 'ready', 'david'); await gradula.startItem(card.key, 'david'); }
+  const world = hub({
+    deployments: {
+      'c-prod': [{ status: 'done', title: 'Ship it', createdAt: '2026-09-10T08:00:00Z', finishedAt: '2026-09-10T08:03:00Z', description: `Ship it\n\nPlan: ${gated.key}\n` }],
+      'c-dev': [{ status: 'done', title: 'Try it', createdAt: '2026-09-10T09:00:00Z', finishedAt: '2026-09-10T09:02:00Z', description: `Try it\n\nPlan: ${onDev.key}\n` }],
+    },
+    commits: { main: [commit(HEAD, 'Ship it')], dev: [commit(OLD, 'Try it')] },
+  });
+  await gradula.system('PRB', { fetchImpl: world.fetchImpl, now: () => new Date('2026-09-10T10:00:00Z').getTime(), fresh: true, deployedCache: createDeployedCache() });
+  assert.equal((await gradula.getItem(onDev.key)).state, 'review', 'it can be looked at on dev now');
+  const held = await gradula.getItem(gated.key);
+  assert.equal(held.state, 'review', 'out on production, but the gate has not spoken — not done');
+  assert.match(held.history.filter((e) => e.verb === 'moved').pop().data.reason, /^seen on production \(aaaaaaaaaaaa\) — The gate has not run yet/);
 });
