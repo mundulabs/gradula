@@ -791,7 +791,8 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             ) : null}
           </article>
         ))}
-        <button onClick={() => setDraft({ kind: 'telegram', template: 'workshop' })}>+ Herald</button>
+        {/* a new herald takes the house key when the house has one — the channels then list themselves */}
+        <button onClick={() => setDraft({ kind: 'telegram', template: 'workshop', ...(house ? { token: HOUSE_KEY } : {}) })}>+ Herald</button>
       </section>
 
       {draft ? (
