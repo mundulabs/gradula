@@ -89,7 +89,7 @@ test('no rule points at a class nobody uses any more', () => {
   // The other half of the same mistake: a rename leaves a rule behind, it stops
   // applying, and nothing says so. The board looks fine and the rule is a lie
   // for whoever reads it next.
-  const structural = new Set(['sheet', 'door', 'card-door', 'column', 'board', 'head', 'button', 'walking', 'busy']);
+  const structural = new Set(['sheet', 'door', 'card-door', 'column', 'board', 'head', 'button', 'walking']);
   const dead = [...styled].filter((c) => !used.has(c) && !structural.has(c) && !c.startsWith('border-beam')).sort();
   assert.deepEqual(dead, [], `rules for classes the markup never names: ${dead.join(', ')}`);
 });

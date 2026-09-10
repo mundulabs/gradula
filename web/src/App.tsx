@@ -135,7 +135,7 @@ function CardButton({ card, open, signal, picture }: { card: Card; open: () => v
     open();
   };
   const buttonNode = (
-    <a className={`card${card.state === 'making' ? ' busy' : ''}`} href={cardHref(card.key)} onClick={click}
+    <a className="card" href={cardHref(card.key)} onClick={click}
       aria-describedby={signal ? `sig-${card.key}` : undefined}>
       {signal ? (
         // The motion is the message for the eye. This is the same message for a

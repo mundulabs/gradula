@@ -191,7 +191,9 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outl
   cursor: pointer;
 }
 .card:hover { border-color: var(--line-light); }
-.card.busy { border-color: var(--running); box-shadow: inset 2px 0 0 var(--running); }
+/* No rim for a state: a card in making used to wear a static orange border next
+   to its beam — two voices for one fact, and the wrong colour (orange means
+   "you are needed", not "someone is at work"). The beam says it alone now. */
 .card .key { font: 10.5px var(--mono); color: var(--muted); letter-spacing: 0.05em; }
 .card .title { font-size: 13.5px; line-height: 1.35; font-weight: 500; }
 .card .foot { display: flex; align-items: center; gap: 8px; font: 10.5px var(--mono); color: var(--muted); }
