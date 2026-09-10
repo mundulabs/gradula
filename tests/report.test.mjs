@@ -43,7 +43,8 @@ test('the plain shape carries keys, labels and the missing gate', () => {
   const text = plainReport(gather(history, cards), { project: 'PRB', period: 'today' });
   assert.match(text, /PRB-9/);
   assert.match(text, /\[infra backend\]/);
-  assert.match(text, /NO GATE/, 'a card that closed without a gate is worth seeing');
+  assert.doesNotMatch(text, /NO GATE/, 'a gate is a choice, not a lack — production decides what is done');
+  assert.match(text, /^• PRB-9 /m, 'a list, one card per line, the key first');
 });
 
 test('the human shape names no key, no actor, no module', () => {

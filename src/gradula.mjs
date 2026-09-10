@@ -766,7 +766,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!herald) throw missing('No such herald.');
       const kind = heraldKinds[herald.kind];
       if (!kind?.send) return { sent: false, reason: `${herald.kind} cannot send` };
-      return kind.send({ token: keyOf(herald), chat: herald.chat }, clip(String(text)), { html: true });
+      // the report's keys and hashes become links here — the text is already HTML, so linkify only what is not inside a tag
+      const repo = (await store.github.get(project.key))?.repo ?? project.repo ?? null;
+      const linked = String(text).split(/(<[^>]+>)/).map((part) => (part.startsWith('<') ? part : linkify(part, { origin, repo }))).join('');
+      return kind.send({ token: keyOf(herald), chat: herald.chat }, clip(linked), { html: true });
     },
 
     async probeHerald(projectKey, id) {

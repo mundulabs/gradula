@@ -17,6 +17,7 @@
  *
  * Pure: history and cards in, text out. No store, no clock, no network.
  */
+import { LADDER } from './spec.mjs';
 
 const BY_LENGTH = (a, b) => b.length - a.length;
 
@@ -110,26 +111,30 @@ export function gather(entries, cards) {
 const labelsOf = (card) => [...new Set([...(card.module ?? []), ...(card.stack ?? [])])];
 
 /**
- * The plain shape: keys, labels, gates. For the people who will click.
+ * The plain shape: keys, ladders, labels. For the people who will click.
+ *
+ * It was a table — keys padded to a column, in a monospace block — and a
+ * table is a desktop idea: on a phone every line wraps and the padding is
+ * just gaps. So it is a list now: one card per line, the key first (a link
+ * once it is sent), the ladder, the title, the labels. No "NO GATE" beside
+ * every card: since production decides what is done, a gate is a choice,
+ * not a lack.
  */
 export function plainReport(found, { project, period = null } = {}) {
   const lines = [`${project} · report${period ? ` · ${period}` : ''}`];
   const block = (title, rows, render) => {
     if (!rows.length) return;
     lines.push('', `${title} (${rows.length})`);
-    for (const row of rows) lines.push(`  ${render(row)}`);
+    for (const row of rows) lines.push(`• ${render(row)}`);
   };
-
+  const one = (card) => `${card.key} ${LADDER[card.state] ?? ''} ${trim(card.title, TITLE)}`.replace(/\s+/g, ' ');
   block('done', found.done, ({ card }) => {
     const labels = labelsOf(card);
-    const gate = card.gate ? ` · gate ${card.gate.kind}` : ' · NO GATE';
-    return `${card.key.padEnd(9)} ${trim(card.title, TITLE)}${labels.length ? `  [${labels.join(' ')}]` : ''}${gate}`;
+    return `${one(card)}${labels.length ? ` [${labels.join(' ')}]` : ''}${card.gate ? ` · gate ${card.gate.kind}` : ''}`;
   });
-  block('decided', found.decided, ({ card, entry }) =>
-    `${card.key.padEnd(9)} ${trim(card.title, TITLE)}${entry.data?.reason ? ` — ${trim(entry.data.reason, 200)}` : ''}`);
-  block('incidents', found.incidents, ({ card }) =>
-    `${card.key.padEnd(9)} ${trim(card.title, TITLE)}${card.count ? ` ×${card.count}` : ''}`);
-  block('started', found.started, ({ card }) => `${card.key.padEnd(9)} ${trim(card.title, TITLE)}`);
+  block('decided', found.decided, ({ card, entry }) => `${one(card)}${entry.data?.reason ? ` — ${trim(entry.data.reason, 200)}` : ''}`);
+  block('incidents', found.incidents, ({ card }) => `${one(card)}${card.count ? ` ×${card.count}` : ''}`);
+  block('started', found.started, ({ card }) => one(card));
 
   lines.push('', `${found.touched} cards touched · ${found.actors.length} actors`);
   return lines.join('\n');
@@ -181,7 +186,9 @@ export function humanReport(found, { period = null } = {}) {
  */
 export function htmlReport(found, { project, period = null, voice = 'human' } = {}) {
   if (voice === 'plain') {
-    return `<b>${escapeHtml(project)}</b>\n<pre>${escapeHtml(plainReport(found, { project, period }))}</pre>`;
+    // a list, not a block: the block was a table that only lined up on a desktop; the keys become links when it is sent (linkify)
+    const [head, ...rest] = plainReport(found, { project, period }).split('\n');
+    return [`<b>${escapeHtml(head)}</b>`, ...rest.map((line) => (/^[a-z]+ \(\d+\)$/.test(line) ? `<b>${escapeHtml(line)}</b>` : escapeHtml(line)))].join('\n');
   }
   const text = humanReport(found, { period });
   const [head, ...rest] = text.split('\n');
