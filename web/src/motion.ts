@@ -60,14 +60,22 @@ export function signalOf(card: Card, justChanged = false): Signal | null {
   if (justChanged) return 'changed';
   // Being worked on: someone pressed start and it has not come back.
   if (card.state === 'making') return 'working';
-  // Needing a hand: waiting for review, carrying labels nobody confirmed — or
+  // Needing a hand: a review somebody ASKED for, labels nobody confirmed — or
   // an open crash that Sentry called fatal. The last one is why this stayed
   // ONE signal instead of growing a second warm colour: "you are needed" is
   // the same sentence whoever is saying it, and a board with two alarms has
   // none. A settled card is quiet however bad the crash was.
+  //
+  // A card the PIPELINE put in review — seen on dev, on its way to production,
+  // where it goes to done by itself — needs nobody. It may be looked at on dev
+  // and sent back if it is wrong; it must not be approved. Orange on every
+  // deployed card for the hour between dev and main would be the alarm that
+  // means nothing. So: review is warm only when the card is not on dev yet,
+  // which is the one way a person, not a deployment, put it there.
   const unconfirmed = (card.suggestions?.module?.length ?? 0) + (card.suggestions?.stack?.length ?? 0);
   const loud = (card.level === 'fatal' || card.level === 'error') && !['done', 'ice'].includes(card.state);
-  if (card.state === 'review' || unconfirmed > 0 || loud) return 'attention';
+  const asked = card.state === 'review' && !card.deployed?.development;
+  if (asked || unconfirmed > 0 || loud) return 'attention';
   return null;
 }
 
