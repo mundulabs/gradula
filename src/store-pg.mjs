@@ -336,6 +336,16 @@ create table if not exists herald (
   created timestamptz not null default now()
 );
 create index if not exists herald_project on herald (project);
+-- The releases the board has spoken about: one row per lane and head (releases.mjs), so a release is announced once.
+create table if not exists release (
+  project text not null references project(key) on delete cascade,
+  id text not null,
+  lane text not null,
+  at timestamptz,
+  data jsonb not null default '{}'::jsonb,
+  created timestamptz not null default now(),
+  primary key (project, id)
+);
 create table if not exists token_key (
   id text primary key,
   project text not null references project(key) on delete cascade,
@@ -506,6 +516,7 @@ export async function createPgStore(url, { schema = null } = {}) {
       /** A clean start for one project: cards, links and history go (cascade); the project row, people and keys stay. */
       async wipe(key) {
         const { rowCount } = await q('delete from card where project = $1', [key]);
+        await q('delete from release where project = $1', [key]);
         // the counter lives ON the project (see the header): a clean start begins at 1 again, as in memory
         await q('update project set counter = 0 where key = $1', [key]);
         return { project: key, removed: rowCount };
@@ -844,6 +855,17 @@ export async function createPgStore(url, { schema = null } = {}) {
       },
     },
 
+    releases: {
+      async list(projectKey) {
+        const { rows } = await q('select id, lane, at, data from release where project = $1 order by at', [projectKey]);
+        return rows.map((r) => ({ ...(r.data ?? {}), id: r.id, lane: r.lane, at: iso(r.at), project: projectKey }));
+      },
+      async add(projectKey, release) {
+        await q('insert into release (project, id, lane, at, data) values ($1,$2,$3,$4,$5::jsonb) on conflict (project, id) do nothing',
+          [projectKey, release.id, release.lane, release.at ?? null, JSON.stringify(release)]);
+        return { ...release, project: projectKey };
+      },
+    },
     heralds: {
       async list(projectKey, { raw = false } = {}) {
         const { rows } = await q('select * from herald where project = $1 order by id', [projectKey]);

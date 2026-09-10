@@ -22,6 +22,8 @@ import { cycleWith, blockedBy, collisions } from './links.mjs';
 import { suggestions as cartograph } from './cartographer.mjs';
 import { wave, ripe, coverage } from './wave.mjs';
 import { messages, TEMPLATES, VOICES, VISIBILITIES } from './heralds.mjs';
+import { releasesIn, previousOf, cardsBetween, releaseNote, LANES } from './releases.mjs';
+import { carriesOf } from './deployed.mjs';
 import * as telegram from './telegram.mjs';
 import * as dokploy from './dokploy.mjs';
 import * as github from './github.mjs';
@@ -186,6 +188,34 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         sent.push({ herald: herald.id, name: herald.name, ...result });
       }
     } catch { /* a mute herald is not the card's failure */ }
+    return sent;
+  }
+
+  /**
+   * Carry a release outward: every herald that listens to `released` (or to
+   * everything) gets one note, in its visibility and language. A public
+   * channel with nothing public in the release hears nothing.
+   */
+  async function announceRelease(projectKey, release, cards) {
+    const sent = [];
+    try {
+      const heralds = await store.heralds.list(projectKey, { raw: true });
+      if (!heralds.length) return sent;
+      const board = await store.projects.get(projectKey);
+      for (const herald of heralds) {
+        if (herald.active === false) continue;
+        const filter = herald.filter ?? {};
+        if (Array.isArray(filter.verbs) && filter.verbs.length && !filter.verbs.includes('released')) continue;
+        const kind = heraldKinds[herald.kind];
+        if (!kind?.send) continue;
+        const visibility = filter.visibility ?? 'internal';
+        const text = releaseNote(release, cards, { visibility, language: filter.language ?? board?.language ?? 'en', origin });
+        if (!text) continue;
+        const result = await kind.send({ token: keyOf(herald), chat: herald.chat }, escapeHtml(text), { html: true, preview: false });
+        sent.push({ herald: herald.id, name: herald.name, ...result });
+      }
+      live?.announce(projectKey, { verb: 'released', card: null, actor: 'system', data: { lane: release.lane, id: release.id } });
+    } catch { /* a mute herald is not the release's failure */ }
     return sent;
   }
 
@@ -480,6 +510,33 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       }
       if (!Object.keys(next).length) return project;
       return store.projects.patch(project.key, next);
+    },
+
+    /**
+     * THE NEXT RELEASE, BEFORE IT HAPPENS: what an app store's "What's New" or
+     * TestFlight's "What to Test" may say for the build that is about to go —
+     * the cards that reached production since the last release on that lane,
+     * public ones for the outside, all for the inside. The release tooling
+     * asks this instead of a person typing the brief.
+     */
+    async nextRelease(projectKey, { lane = 'ios', visibility = 'public' } = {}) {
+      const project = await this.getProject(projectKey);
+      if (!LANES.includes(lane)) throw bad('lane', `lane: ${LANES.join(', ')}.`);
+      const known = await store.releases.list(project.key);
+      const previous = known.filter((r) => r.lane === lane).sort((a, b) => String(b.at).localeCompare(String(a.at)))[0] ?? null;
+      const cards = await store.items.list(project.key, { limit: 2000 });
+      const since = previous?.at ?? new Date(Date.now() - 30 * 86400e3).toISOString();
+      const carried = cardsBetween(cards, since, null).map((k) => cards.find((c) => c.key === k)).filter((c) => c && (visibility !== 'public' || c.visibility === 'public'));
+      return {
+        lane, since, previous: previous ? { id: previous.id, version: previous.version ?? null, at: previous.at } : null,
+        cards: carried.map((c) => ({ key: c.key, title: c.title, visibility: c.visibility })),
+        text: carried.map((c) => (visibility === 'public' ? `• ${c.title}` : `• ${c.key} ${c.title}`)).join('\n'),
+      };
+    },
+
+    async listReleases(projectKey) {
+      const project = await this.getProject(projectKey);
+      return (await store.releases.list(project.key)).sort((a, b) => String(b.at).localeCompare(String(a.at)));
     },
 
     async listHeralds(projectKey) {
@@ -1451,6 +1508,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
           ...(budget !== undefined ? { budget } : {}),
         });
         await this.noteDeployed(project.key, doc, { cards: boardNow.cards, chronicles });
+        await this.noteReleases(project.key, doc, { github: githubConnection, fetchImpl, now: now() });
         return doc;
       })();
       systemHeld.set(project.key, { ...(held ?? { at: 0, doc: null }), promise });
@@ -1501,6 +1559,52 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         }
       }
       return written;
+    },
+
+    /**
+     * A RELEASE IS SPOKEN ONCE. Every release the picture shows (releases.mjs:
+     * the web head, an app build, an update) that memory does not know is
+     * remembered and announced — one note per lane with the cards it carries.
+     * The web's cards the picture already knows; an app build's are the
+     * `Plan:` lines of the commits between the previous build and this one
+     * (one compare); without commits, what reached production in between.
+     * The first release on a lane carries what stands on production.
+     */
+    async noteReleases(projectKey, doc, { github: connection = null, fetchImpl = defaultFetch, now = Date.now() } = {}) {
+      const found = releasesIn(doc);
+      if (!found.length) return [];
+      const known = await store.releases.list(projectKey);
+      const seen = new Set(known.map((r) => r.id));
+      const fresh = found.filter((r) => !seen.has(r.id));
+      if (!fresh.length) return [];
+      // the first picture after the memory was empty: remember everything, speak only the newest per lane
+      const firstTime = known.length === 0;
+      const newestPerLane = new Map();
+      for (const r of fresh) if (!newestPerLane.has(r.lane) || String(newestPerLane.get(r.lane).at) < String(r.at)) newestPerLane.set(r.lane, r);
+      const cards = await store.items.list(projectKey, { limit: 2000 });
+      const byKey = new Map(cards.map((c) => [c.key, c]));
+      const spoken = [];
+      const remembered = [...known];
+      for (const release of fresh) {
+        const previous = previousOf(release, remembered);
+        let keys = release.cards;
+        if (!keys) {
+          if (previous?.commit && release.commit && connection?.repo && connection?.token) {
+            const between = await github.compareCommits({ repo: connection.repo, token: connection.token, base: previous.commit, head: release.commit }, { fetchImpl }).catch(() => ({ ok: false }));
+            if (between.ok) keys = [...new Set(between.commits.flatMap((c) => carriesOf(c.message)))];
+          }
+          // without a previous build: what reached production in the week before this release — never what came later
+          if (!keys) keys = cardsBetween(cards, previous ? previous.at : new Date(Date.parse(release.at) - 7 * 86400e3).toISOString(), release.at);
+        }
+        const held = { ...release, cards: keys.filter((k) => byKey.has(k)) };
+        await store.releases.add(projectKey, held);
+        remembered.push(held);
+        // memory was empty: everything is remembered, and only what is news — the newest per lane, and younger than a day — is spoken
+        if (firstTime && (newestPerLane.get(release.lane)?.id !== release.id || now - Date.parse(release.at) > 86400e3)) continue;
+        spoken.push(held);
+        await announceRelease(projectKey, held, held.cards.map((k) => byKey.get(k)));
+      }
+      return spoken;
     },
 
     /**

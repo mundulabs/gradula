@@ -36,10 +36,19 @@ test('labels are an OR question across BOTH axes', () => {
   assert.equal(matches({ labels: ['infra'] }, move()), true, 'the module counts too');
 });
 
-test('a public channel gets ONLY what was released', () => {
+test('a public channel gets ONLY what was released — and it hears releases, not card moves', async () => {
   const filter = TEMPLATES.outside.filter;
   assert.equal(matches(filter, move()), false, 'a card is internal by itself');
-  assert.equal(matches(filter, move({ card: { visibility: 'public' } })), true);
+  assert.equal(matches(filter, move({ card: { visibility: 'public' } })), false, 'a public card moving is still not a release');
+  assert.deepEqual(filter.verbs, ['released']);
+  const { releaseNote } = await import('../src/releases.mjs');
+  const release = { id: 'build:x', lane: 'ios', at: '2026-09-10T16:00:00Z', version: '0.0.1 · 3', profile: 'beta', title: 'internal build title', url: 'https://expo.dev/b/x' };
+  const cards = [{ key: 'P-1', title: 'Public thing', visibility: 'public' }, { key: 'P-2', title: 'Secret thing', visibility: 'internal' }];
+  const outward = releaseNote(release, cards, { visibility: 'public' });
+  assert.equal(outward, 'iOS 0.0.1 · 3 · TestFlight — released\n• Public thing', 'titles of public cards only; no key, no build title, no link');
+  const inside = releaseNote(release, cards, { visibility: 'internal' });
+  assert.match(inside, /• P-1 Public thing\n• P-2 Secret thing\nhttps:\/\/expo\.dev\/b\/x$/);
+  assert.equal(releaseNote(release, [cards[1]], { visibility: 'public' }), null, 'nothing public: a public channel hears nothing');
 });
 
 test('the title goes outward — and nothing else', () => {

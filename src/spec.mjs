@@ -197,7 +197,7 @@ export const VERBS = ['created', 'changed', 'moved', 'linked', 'started', 'evide
  * the admin door that empties a project. The board hears it and empties its
  * columns at once; a chronicle verb only makes it read again.
  */
-export const LIVE_VERBS = [...VERBS, 'wipe'];
+export const LIVE_VERBS = [...VERBS, 'wipe', 'released'];
 
 /**
  * A gate as it is stored. `call` is what gets called (a test name, a command, a

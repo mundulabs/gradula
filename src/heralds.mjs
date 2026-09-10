@@ -65,7 +65,7 @@ export const TEMPLATES = {
   workshop: {
     name: 'Workshop',
     line: 'Everything that moves — for the team channel.',
-    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided'], voice: 'plain' },
+    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'released'], voice: 'plain' },
   },
   /*
    * Release meant "target: release" — the ladder of how far a wish may travel,
@@ -76,8 +76,8 @@ export const TEMPLATES = {
    */
   release: {
     name: 'Release',
-    line: 'What reached production — every card that went to done.',
-    filter: { verbs: ['moved'], states: ['done'], voice: 'human' },
+    line: 'One note per release — web, iOS, Android, update — with the cards it carries.',
+    filter: { verbs: ['released'], voice: 'human' },
   },
   fire: {
     name: 'Fire',
@@ -91,8 +91,8 @@ export const TEMPLATES = {
   },
   outside: {
     name: 'Outside',
-    line: 'Only what a person published (gradula publish), titles only — for the community.',
-    filter: { verbs: ['moved'], states: ['done'], visibility: 'public', voice: 'human' },
+    line: 'Release notes for the community: per release, the public cards, titles only.',
+    filter: { verbs: ['released'], visibility: 'public', voice: 'human' },
   },
 };
 

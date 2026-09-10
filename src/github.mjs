@@ -214,7 +214,9 @@ export async function compareCommits({ repo, token, base, head }, { fetchImpl = 
     if (status === 401) return { ok: false, reason: 'the key is not valid' };
     if (status === 404) return { ok: false, reason: 'one of the two commits is not visible with this key' };
     if (!['identical', 'behind', 'ahead', 'diverged'].includes(body?.status)) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
-    return { ok: true, status: body.status };
+    // the commits between base and head, with their messages — how a release knows which cards it carries (releases.mjs)
+    const commits = Array.isArray(body.commits) ? body.commits.map((c) => ({ sha: String(c.sha ?? ''), message: String(c.commit?.message ?? '') })).filter((c) => c.sha) : [];
+    return { ok: true, status: body.status, commits };
   } catch (error) {
     return { ok: false, reason: line(error.message) };
   }

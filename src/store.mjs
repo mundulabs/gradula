@@ -78,6 +78,7 @@ export function createMemoryStore() {
   const tokens = new Map();
   const sentry = new Map();
   const heralds = new Map();
+  const releases = new Map();
   const dokploy = new Map();
   const github = new Map();
   const eas = new Map();
@@ -151,6 +152,7 @@ export function createMemoryStore() {
         for (const item of gone) { items.delete(item.id); byKey.delete(item.key); }
         for (const [id, link] of links) if (link.project === key || ids.has(link.from) || ids.has(link.to)) links.delete(id);
         for (let i = events.length - 1; i >= 0; i--) if (ids.has(events[i].item)) events.splice(i, 1);
+        for (const [rid, r] of releases) if (r.project === key) releases.delete(rid);
         counters.set(key, 0);
         return { project: key, removed: gone.length };
       },
@@ -405,6 +407,16 @@ export function createMemoryStore() {
       async get(projectKey) { return clone(github.get(projectKey) ?? null); },
     },
 
+    /** The releases the board has spoken about — one row per lane and head, so a release is announced once. */
+    releases: {
+      async list(projectKey) { return [...releases.values()].filter((r) => r.project === projectKey).map(clone); },
+      async add(projectKey, release) {
+        project(projectKey);
+        const row = { ...clone(release), project: projectKey, created: now() };
+        releases.set(`${projectKey}:${row.id}`, row);
+        return clone(row);
+      },
+    },
     heralds: {
       async list(projectKey, { raw = false } = {}) {
         const out = [...heralds.values()].filter((b) => b.project === projectKey);

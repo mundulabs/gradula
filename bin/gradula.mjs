@@ -50,6 +50,8 @@ const HELP = `gradula — wish, board, standing
   gradula herald probe|drop <id>
   gradula publish|unpublish <CARD> what may leave the house
   gradula publishing hand|done     the rule: by hand, or everything that reaches production (incidents excepted)
+  gradula releases                 what left the house, per lane: web, ios, android, ota — with the cards each carried
+  gradula next [--lane ios] [--all] the note for the release about to go: what reached production since the last one on that lane
   gradula relabel                  run the label rules over old cards:
                                  an empty axis is filled, a touched one is asked
   gradula suggestions              what the cartographer sees (it changes nothing)
@@ -811,6 +813,22 @@ switch (command) {
    * Release. A command of its own, because it is a decision of its own: a
    * card does not become public by slipping through a filter.
    */
+  case 'next': {
+    // gradula next [--lane ios|android|ota|web] [--all]   the note for the release about to go: public cards since the last one
+    const lane = String(flags.lane ?? 'ios');
+    const out = await call(`/api/v1/releases/next?lane=${encodeURIComponent(lane)}&visibility=${flags.all ? 'internal' : 'public'}`);
+    if (!out.cards.length) { console.log(`${lane}: nothing ${flags.all ? '' : 'public '}since ${out.previous ? `${out.previous.version ?? out.previous.id} (${String(out.previous.at).slice(0, 10)})` : 'the last month'}.`); break; }
+    console.log(out.text);
+    break;
+  }
+
+  case 'releases': {
+    const list = await call('/api/v1/releases');
+    if (!list.length) { console.log('No release seen yet.'); break; }
+    for (const r of list.slice(0, 20)) console.log(`${String(r.at).slice(0, 16).replace('T', ' ')}  ${r.lane.padEnd(7)} ${(r.version ?? (r.commit ?? '').slice(0, 7)).padEnd(14)} ${r.cards.length} cards${r.title ? `  ${r.title.slice(0, 60)}` : ''}`);
+    break;
+  }
+
   case 'publishing': {
     // gradula publishing hand|done — the board's rule for what becomes public
     const rule = String(words[0] ?? '');

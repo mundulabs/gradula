@@ -427,9 +427,19 @@ test('releasing is its own gesture — and only then does outside speak', async 
   await call(`/api/v1/cards/${card.key}/move`, { method: 'POST', token, actor: 'david', body: { state: 'ready' } });
   await done();
   await gradula.settle();
+  assert.deepEqual(said, [], 'public, done — and still quiet: outside speaks per RELEASE, not per card');
 
-  assert.equal(said.length, 1, 'now it goes out');
-  assert.equal(said[0].text, 'Done: Something for everyone');
+  // THE RELEASE: the production head that carries the card is seen once — one note, the public titles only.
+  const picture = { deployed: { production: { sha: 'abcdef1234567890abcdef1234567890abcdef12', at: '2026-09-10T16:00:00Z', cards: [card.key] } }, environments: [{ id: 'production', deployments: [{ status: 'live', title: 'Ship it' }] }], builds: [], updates: [] };
+  const spoken = await gradula.noteReleases('PRB', picture, { now: Date.parse('2026-09-10T16:30:00Z') });
+  assert.equal(spoken.length, 1);
+  assert.equal(said.length, 1, 'now it goes out — once');
+  assert.equal(said[0].text, 'Web abcdef1 — released\n• Something for everyone', 'the head, the lane, the public titles — no key, no deployment title');
+  await gradula.noteReleases('PRB', picture);
+  assert.equal(said.length, 1, 'the same release is not spoken twice');
+  const list = (await call('/api/v1/releases', { token })).body;
+  assert.equal(list.length, 1);
+  assert.deepEqual(list[0].cards, [card.key]);
 });
 
 test('the cartographer answers through its own door', async (t) => {

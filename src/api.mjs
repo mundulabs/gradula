@@ -377,6 +377,11 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     // --- The heralds: the outward direction -----------------------------------
     ['GET', /^\/api\/v1\/heralds$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.listHeralds(ctx.project) })],
     ['GET', /^\/api\/v1\/heralds\/templates$/, async () => ({ status: 200, body: gradula.templates() })],
+    ['GET', /^\/api\/v1\/releases$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.listReleases(ctx.project) })],
+    ['GET', /^\/api\/v1\/releases\/next$/, async (req, _m, ctx) => {
+      const url = new URL(req.url, 'http://x');
+      return { status: 200, body: await gradula.nextRelease(ctx.project, { lane: url.searchParams.get('lane') ?? 'ios', visibility: url.searchParams.get('visibility') ?? 'public' }) };
+    }],
     ['GET', /^\/api\/v1\/heralds\/house$/, async () => ({ status: 200, body: { available: gradula.houseKeyAvailable() } })],
     ['PUT', /^\/api\/v1\/heralds$/, async (req, _m, ctx) => ({
       status: 200, body: await gradula.setHerald(ctx.project, await readJson(req), ctx.actor),
