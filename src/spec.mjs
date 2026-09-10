@@ -172,7 +172,10 @@ export const isLoud = (value) => value === 'fatal' || value === 'error';
  * invisible to every filter in the house.
  */
 export const VERBS = ['created', 'changed', 'moved', 'linked', 'started', 'evidenced',
-  'suggested', 'confirmed', 'said', 'decided', 'ingested', 'resurfaced', 'deployed'];
+  'suggested', 'confirmed', 'said', 'decided', 'ingested', 'resurfaced', 'deployed',
+  // The incident happened again in an environment the board does not watch
+  // (`{ environment, count }`) — the chronicle shows it, the card does not move.
+  'seen'];
 
 /**
  * A gate as it is stored. `call` is what gets called (a test name, a command, a

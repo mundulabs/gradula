@@ -11,7 +11,7 @@ import { createHmac } from 'node:crypto';
 import { createGradula } from '../src/gradula.mjs';
 import { createMemoryStore } from '../src/store.mjs';
 import { createApi } from '../src/api.mjs';
-import { issueToCard, issueOf, actionOf, signatureOk, publicConnection, BASE_EU } from '../src/sentry.mjs';
+import { issueToCard, issueOf, actionOf, environmentOf, readEnvironments, environmentsOf, takesEnvironment, signatureOk, publicConnection, BASE_EU } from '../src/sentry.mjs';
 
 const ADMIN = 'verwaltung-secret';
 const HOOK = 'the-integrations-hook-secret';
@@ -31,9 +31,14 @@ const ISSUE = {
 
 const VOKABULAR = [{ id: 'panels', paths: ['packages/panels'], words: [] }];
 
-async function start2() {
+/**
+ * No network: whatever the service would ask Sentry on its own — the
+ * environment of an issue whose hook did not say — gets this fetch, and a
+ * test that wants an answer hands one in.
+ */
+async function start2({ fetchImpl = async () => { throw new Error('nobody may be asked'); } } = {}) {
   const store = createMemoryStore();
-  const gradula = createGradula(store);
+  const gradula = createGradula(store, { fetchImpl });
   const server = createServer(createApi(gradula, { adminToken: ADMIN }));
   await new Promise((done) => server.listen(0, '127.0.0.1', done));
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -92,6 +97,53 @@ test('secrets do not leave the service', () => {
   assert.equal(shown.token, 'set');
   assert.equal(shown.hookSecret, 'set');
   assert.equal(shown.org, 'mundulabs-67');
+  assert.deepEqual(shown.environments, ['production', 'prod'], 'a connection that never said shows what counts, not a null');
+  assert.deepEqual(shown.lanes, {});
+});
+
+/**
+ * WHERE IT HAPPENED.
+ *
+ * The apps tag every event with an environment (prod, dev, local). A hook
+ * carries it in one of a few places, depending on the kind of integration;
+ * the reader has to know them all, and say `null` — not a guess — when
+ * none of them speaks.
+ */
+test('the environment is read from every shape a hook has', () => {
+  // An issue alert: the event says where.
+  assert.equal(environmentOf({ action: 'triggered', data: { event: { event_id: 'e1', environment: 'dev', tags: [['level', 'error']] }, issue: ISSUE } }), 'dev');
+  // The same, only in the event's tags (pairs).
+  assert.equal(environmentOf({ data: { event: { event_id: 'e1', tags: [['environment', 'prod'], ['os', 'iOS']] } } }), 'prod');
+  // The issue webhook (`{ action, data: { issue } }`): the issue's own field, or its tags.
+  assert.equal(environmentOf({ action: 'created', data: { issue: { ...ISSUE, environment: 'local' } } }), 'local');
+  assert.equal(environmentOf({ action: 'created', data: { issue: { ...ISSUE, tags: [{ key: 'environment', value: 'dev' }] } } }), 'dev');
+  // The old flat alert, with its event.
+  assert.equal(environmentOf({ ...ISSUE, event: { environment: 'prod' } }), 'prod');
+  assert.equal(environmentOf({ ...ISSUE, event: { tags: { environment: 'dev' } } }), 'dev', 'tags as an object, the oldest shape');
+  // A bare issue from a pull says nothing — and that is null, not production.
+  assert.equal(environmentOf(ISSUE), null);
+  assert.equal(environmentOf({ action: 'created', data: { issue: ISSUE } }), null);
+  assert.equal(environmentOf({ data: { event: { environment: '   ' } } }), null, 'blank is nothing');
+  assert.equal(environmentOf(null), null);
+});
+
+test('which environments become cards: what the connection says, or production', () => {
+  assert.deepEqual(readEnvironments('prod,dev'), ['prod', 'dev'], 'the CLI sends a comma list');
+  assert.deepEqual(readEnvironments(['prod', ' dev ', '']), ['prod', 'dev']);
+  assert.equal(readEnvironments('all'), 'all');
+  assert.equal(readEnvironments('prod,all'), 'all', 'all among names is all');
+  assert.equal(readEnvironments(null), null, 'null goes back to the default');
+  assert.equal(readEnvironments(undefined), undefined, 'not said keeps what was there');
+  assert.deepEqual(environmentsOf({}), ['production', 'prod']);
+  assert.deepEqual(environmentsOf({ environments: null }), ['production', 'prod']);
+  assert.deepEqual(environmentsOf({ environments: ['dev'] }), ['dev']);
+  assert.equal(environmentsOf({ environments: 'all' }), 'all');
+  assert.equal(takesEnvironment({}, 'prod'), true);
+  assert.equal(takesEnvironment({}, 'dev'), false);
+  assert.equal(takesEnvironment({}, 'Production'), true, 'Sentry spells it as it likes');
+  assert.equal(takesEnvironment({}, null), true, 'a crash nobody can place counts as production');
+  assert.equal(takesEnvironment({ environments: 'all' }, 'local'), true);
+  assert.equal(takesEnvironment({ environments: ['prod', 'dev'] }, 'dev'), true);
 });
 
 test('the hook accepts only what is signed', async (t) => {
@@ -385,4 +437,159 @@ test('a crash from another Sentry project is not made into a card here', async (
   });
   assert.equal(taken.body.fresh, true);
   assert.equal(taken.body.card, 'MDLA-1');
+});
+
+/**
+ * A DEV CRASH IS NOT AN INCIDENT ON THE BOARD.
+ *
+ * MDLA-79, 2026-09-10: a WatchdogTermination from a developer's own dev
+ * build on his own phone, environment `dev`, taken in five times — an
+ * incident card in Ready about a crash nobody in production ever saw. The
+ * crash is real; the card is noise. So only the connection's environments
+ * become cards, and production is the default.
+ */
+test('an issue from an environment the connection does not watch becomes no card and no note', async (t) => {
+  const { gradula, call, token, close } = await start2();
+  t.after(close);
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
+
+  const dev = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'dev' } } }, 'probe');
+  assert.equal(dev.ignored, true);
+  assert.equal(dev.environment, 'dev');
+  assert.match(dev.reason, /environment dev is not watched/);
+  assert.equal(dev.card, undefined, 'no card');
+  assert.deepEqual((await call('/api/v1/cards', { token })).body, [], 'and nothing was written');
+
+  // The same crash from production: a card, as before.
+  const prod = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'prod' } } }, 'probe');
+  assert.equal(prod.fresh, true);
+  assert.equal(prod.card.key, 'MDLA-1');
+});
+
+test('with `all`, every environment becomes a card', async (t) => {
+  const { gradula, call, token, close } = await start2();
+  t.after(close);
+  const set = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: 'all' } });
+  assert.equal(set.body.environments, 'all');
+  const dev = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'dev' } } }, 'probe');
+  assert.equal(dev.fresh, true);
+  const local = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: '2' }, event: { environment: 'local' } } }, 'probe');
+  assert.equal(local.fresh, true);
+});
+
+test('an environment nobody can place counts as production — a card', async (t) => {
+  const { gradula, call, token, close } = await start2();
+  t.after(close);
+  // No token: Sentry cannot be asked, so the environment stays unknown.
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
+  const unknown = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE } }, 'probe');
+  assert.equal(unknown.fresh, true, 'a crash you cannot place is worse than a card you have to close');
+  assert.equal(unknown.card.key, 'MDLA-1');
+});
+
+test('when the hook does not say, Sentry is asked once per issue — and the answer decides', async (t) => {
+  const asked = [];
+  const fetchImpl = async (url, init) => {
+    asked.push({ url: String(url), auth: init.headers.Authorization });
+    const id = String(url).match(/issues\/([^/]+)\/events\/latest/)?.[1];
+    return { ok: true, status: 200, json: async () => ({ eventID: 'e', environment: id === 'in-dev' ? 'dev' : 'prod' }), text: async () => '' };
+  };
+  const { gradula, call, token, close } = await start2({ fetchImpl });
+  t.after(close);
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
+
+  const dev = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: 'in-dev' } } }, 'probe');
+  assert.equal(dev.ignored, true);
+  assert.equal(dev.environment, 'dev');
+  assert.equal(asked.length, 1);
+  assert.match(asked[0].url, /^https:\/\/de\.sentry\.io\/api\/0\/issues\/in-dev\/events\/latest\/$/);
+  assert.equal(asked[0].auth, 'Bearer sntrys_x');
+
+  // The same issue again: the answer is held, Sentry is not asked twice.
+  await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: 'in-dev' } } }, 'probe');
+  assert.equal(asked.length, 1, 'once per issue id');
+
+  const prod = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: 'in-prod' } } }, 'probe');
+  assert.equal(prod.fresh, true);
+  assert.equal(asked.length, 2);
+  assert.equal((await call('/api/v1/cards', { token })).body.length, 1, 'one card: the production one');
+
+  // A Sentry that does not answer leaves the environment unknown — a card, and no answer is held.
+  const down = await start2({ fetchImpl: async () => ({ ok: false, status: 502, text: async () => 'bad gateway' }) });
+  t.after(down.close);
+  await down.call('/api/v1/sentry', { method: 'PUT', token: down.token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
+  const blind = await down.gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE } }, 'probe');
+  assert.equal(blind.fresh, true, 'unknown is production');
+});
+
+test('a foreign hook on an existing card leaves one seen line and moves nothing', async (t) => {
+  const { gradula, call, token, close } = await start2();
+  t.after(close);
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, hookSecret: HOOK } });
+
+  // The card exists — from production.
+  const made = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'prod' } } }, 'probe');
+  assert.equal(made.fresh, true);
+  await call('/api/v1/cards/MDLA-1/move', { method: 'POST', token, body: { state: 'done', reason: 'fixed' } });
+
+  // Then it happens again, on a developer's phone, with a higher count: one line, no move.
+  const body = JSON.stringify({ action: 'created', data: { issue: { ...ISSUE, count: '30', lastSeen: '2026-09-10T09:00:00Z' }, event: { environment: 'dev' } } });
+  const hooked = await call('/api/v1/sentry/hook/MDLA', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': createHmac('sha256', HOOK).update(body, 'utf8').digest('hex') } });
+  assert.equal(hooked.status, 200);
+  assert.equal(hooked.body.ignored, true);
+  assert.equal(hooked.body.card, 'MDLA-1', 'the door names the card the line landed on');
+
+  const card = (await call('/api/v1/cards/MDLA-1', { token })).body;
+  assert.equal(card.state, 'done', 'never resurrected, never moved');
+  assert.equal(card.count, 23, "the counter is production's — the dev count does not touch it");
+  const seen = card.history.filter((e) => e.verb === 'seen');
+  assert.equal(seen.length, 1, 'exactly one line');
+  assert.equal(seen[0].data.environment, 'dev');
+  assert.equal(seen[0].data.count, 30);
+  assert.equal((await call('/api/v1/cards', { token })).body.length, 1, 'and no second card');
+});
+
+test('a pull asks Sentry for the watched environments only — or for everything with `all`', async (t) => {
+  const { gradula, call, token, close } = await start2();
+  t.after(close);
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
+
+  const asked = [];
+  const fetchImpl = async (url) => { asked.push(new URL(String(url)).searchParams.getAll('environment')); return { ok: true, status: 200, json: async () => [ISSUE], text: async () => '[]' }; };
+  const pulled = await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  assert.deepEqual(pulled, { seen: 1, fresh: 1, again: 0 });
+  assert.deepEqual(asked, [['production', 'prod']], 'the default: production, in both spellings — and no second call to place what Sentry already filtered');
+
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: 'prod,dev' } });
+  await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  assert.deepEqual(asked.at(-1), ['prod', 'dev']);
+
+  await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: 'all' } });
+  await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  assert.deepEqual(asked.at(-1), [], 'all means no filter');
+});
+
+test('the connection door sets, keeps and shows the environments', async (t) => {
+  const { gradula, call, token, close } = await start2();
+  t.after(close);
+  const first = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
+  assert.deepEqual(first.body.environments, ['production', 'prod'], 'unset shows the default');
+  assert.equal((await gradula.getSentry('MDLA', { raw: true })).environments, null, 'and is stored as not said');
+
+  const set = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: ['prod', 'dev'], lanes: { production: 'prod', development: ['dev'] } } });
+  assert.deepEqual(set.body.environments, ['prod', 'dev']);
+  assert.deepEqual(set.body.lanes, { production: ['prod'], development: ['dev'] });
+
+  const kept = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
+  assert.deepEqual(kept.body.environments, ['prod', 'dev'], 'not said keeps what was there');
+  assert.deepEqual(kept.body.lanes, { production: ['prod'], development: ['dev'] });
+  assert.deepEqual((await call('/api/v1/sentry', { token })).body.environments, ['prod', 'dev'], 'GET shows the same');
+
+  const reset = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: null } });
+  assert.deepEqual(reset.body.environments, ['production', 'prod'], 'null goes back to the default');
+
+  // The lane map under its old name is still the lane map, not the list.
+  const old = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: { production: 'live' } } });
+  assert.deepEqual(old.body.lanes, { production: ['live'] });
+  assert.deepEqual(old.body.environments, ['production', 'prod'], 'and the list is untouched');
 });

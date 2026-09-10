@@ -125,6 +125,9 @@ gradula due <CARD> <YYYY-MM-DD>  a date on a milestone or a venture ("none" clea
 gradula standing                 where things have arrived (reads Dokploy)
 gradula app [--app @acc/slug --token <expo token>]   where the app has arrived (reads EAS)
 gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
+gradula sentry [--org <org> --project <slug>] [--base eu|us] [--token <t>] [--hook-secret <s>]
+               [--write-back [off]] [--environments prod,dev|all|default]
+                                 the Sentry connection — and which environments become cards
 gradula system                   one picture of the whole system (see below)
 gradula history [--after N]      what happened while you were away
 gradula report [--plain] [--period "…"] [--milestone GRD-43] [--send]
@@ -146,6 +149,44 @@ through `gradula sync` (or automatically, once `gradula hook` is installed).
 | deployed, per environment | Dokploy + GitHub, read by the system picture | `deployed` — once per lane, the first time the card is seen inside the deployed head (`{ environment, sha, at }`, hand `dokploy`) |
 | done | a hand — `gradula approve`, or the gate | `moved` to `done`; the gate proves, the deployment only reports |
 | resolved in Sentry | the board, when the card is an incident and the connection allows writing back | `resolved in Sentry` |
+| seen elsewhere | the Sentry hook, when an incident that already has a card happens again in an environment the connection does not watch (`dev`, `local`) | `seen` — one line per sighting (`{ environment, count }`); the card does not move and is never resurrected |
+
+## Sentry — the incidents
+
+One card per Sentry issue, recognised by `sentry:<id>`; the counter and the
+last sighting come from Sentry. Two ways in: the hook (`POST
+/api/v1/sentry/hook/KEY`, checked by its signature) and the pull (`POST
+/api/v1/sentry/fetch`, or the schedule). The connection (`PUT`/`GET
+/api/v1/sentry`, `gradula sentry`):
+
+```
+{ org, project, base,                  base: https://de.sentry.io/api/0 (EU) or https://sentry.io/api/0 (US)
+  token: 'set' | null,                 an internal integration's token — the pull and the write-back
+  hookSecret: 'set' | null,            the integration's client secret — the hook's signature
+  writeBack: bool,                     may the board resolve an issue in Sentry when its card is done
+  environments: ['production', 'prod'] | [...names] | 'all',   which Sentry environments become cards
+  lanes: { production?: [...names], development?: [...names] } }   how Sentry names the board's lanes (system picture)
+```
+
+**Which environments become cards.** The apps tag every event with an
+environment (`prod`, `dev`, `local`), and a crash from a developer's own dev
+build on their own phone is real without being the board's business (MDLA-79
+was one — a WatchdogTermination from `dev`, five times, in Ready). So an issue
+becomes a card only when its environment is in the connection's
+`environments` — `production` and `prod` unless the connection says otherwise:
+`gradula sentry --environments prod,dev` (a comma list), `--environments all`
+(every environment), `--environments default` (back to production). The
+environment is read from the hook where it carries one (the alert's event, the
+issue's tags); when the payload does not say, Sentry is asked once per issue
+(the latest event) and the answer is held for the process; when it cannot be
+asked (no token, Sentry down), the environment is unknown — and an unknown
+environment counts as production, because a crash you cannot place is worse
+than a card you have to close. An issue from an environment that is not
+watched becomes no card and moves nothing; if a card for it already exists it
+gets one `seen` line (see the table above), so the chronicle shows it keeps
+happening. The pull asks Sentry for the watched environments only (all of them
+with `all`). Cards that already exist are untouched by the setting: MDLA-79
+stays until a hand decides.
 
 `gradula show KEY` prints `deployed: dev 10:41 · production —` from those notes,
 without the network; `gradula cards` marks a card production has carried with
@@ -167,7 +208,7 @@ is connected, every field optional:
   updates:   [{ channel, at, message, runtime }],
   pipeline:  [{ name, branch, status, at, url }],
   releases:  [{ tag, at, url }],
-  errors:    [{ environment, count24h, lastAt, title, url }],   per lane; null where no lane claims it
+  errors:    [{ environment, count24h, lastAt, title, url }],   per lane, or the environment's own name (local); null where nobody claims it
   people:    [{ actor, card, verb, at, labels[] }],      the last 24 h of the chronicle
   cards:     [{ key, title, state, labels[], actor,      making, review, and done within a week
                 deployed: { development: bool|null, production: bool|null },     null = nobody knows
@@ -196,9 +237,13 @@ so a page can say what it is not seeing instead of pretending. Dokploy watches
 one compose per lane (`composes: { production, development }`; the old single
 `composeId` means production). Sentry is asked once per lane under the names
 it knows the lane by — `production`/`prod`, `development`/`dev`, or what the
-connection says in `environments: { production: 'live', development: ['dev'] }`
-(`PUT /api/v1/sentry`) — so an error carries its lane and the day count of
-that lane; an issue no lane claims keeps `environment: null`. The fetched parts are gathered at most once per
+connection says in `lanes: { production: 'live', development: ['dev'] }`
+(`PUT /api/v1/sentry`) — and once per environment beside the lanes (`local`,
+plus every name the connection watches for cards that no lane asks under), so
+`errors` carries ALL environments: an error names its lane where a lane claims
+it, the environment's own name (`local`) where none does, and the day count of
+that place; an issue nobody claims keeps `environment: null`. The board decides
+what becomes a card; the picture shows what is happening. The fetched parts are gathered at most once per
 30 s per project, however many ask; the board's own half (`people`, `cards`) is
 read anew on every ask, so a card that moved a second ago is in the next picture.
 

@@ -27,6 +27,11 @@
  * EU organization answers under `https://de.sentry.io/api/0` — which is why
  * the base is a field and not a constant. Set it wrongly and you get a 404 on
  * an organization that very much exists.
+ *
+ * ENVIRONMENT: the apps tag every event with one (prod, dev, local), and only
+ * the connection's `environments` become cards — production unless it says
+ * otherwise (environmentOf, takesEnvironment). A crash from a developer's own
+ * dev build is real and still not an incident on the board.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -95,6 +100,100 @@ const num = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const name = (value) => {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed ? trimmed.slice(0, 80) : null;
+};
+
+/** The `environment` tag out of the shapes Sentry sends tags in. */
+const tagOf = (tags) => {
+  if (Array.isArray(tags)) {
+    for (const tag of tags) {
+      // An event carries `[key, value]` pairs; an issue `{ key, value }`.
+      if (Array.isArray(tag) && tag[0] === 'environment') return name(tag[1]);
+      if (tag && typeof tag === 'object' && tag.key === 'environment') return name(tag.value);
+    }
+    return null;
+  }
+  return tags && typeof tags === 'object' ? name(tags.environment) : null;
+};
+
+/**
+ * WHERE an issue happened: the Sentry environment (`prod`, `dev`, `local`).
+ *
+ * A crash from a developer's own dev build on their own phone is real, and
+ * it is still not an incident on the board — MDLA-79 was exactly that, a
+ * WatchdogTermination from `dev`, taken in five times. So the environment is
+ * read wherever the payload carries it: the event of an alert
+ * (`data.event.environment`, or its tags as pairs), the issue itself, or
+ * the old flat alert with its `event`. Pure; `null` when the payload does
+ * not say — then Sentry is asked once (fetchLatestEnvironment).
+ */
+export function environmentOf(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const event = payload.data?.event ?? payload.event ?? null;
+  const issue = issueOf(payload);
+  return name(event?.environment)
+    ?? tagOf(event?.tags)
+    ?? name(issue?.environment)
+    ?? tagOf(issue?.tags)
+    ?? name(payload.environment)
+    ?? null;
+}
+
+/** Which environments become cards when the connection does not say: production, in both spellings the apps use. */
+export const CARD_ENVIRONMENTS = ['production', 'prod'];
+
+/**
+ * The connection's `environments` as it is SET: `'all'`, a list, or `null`
+ * for "the default". Accepts what a form or the CLI sends — a comma list
+ * (`prod,dev`), the word `all`, an array — and `undefined` for "not said".
+ */
+export function readEnvironments(given) {
+  if (given === undefined) return undefined;
+  if (given === null || given === '' || given === 'default') return null;
+  const list = (Array.isArray(given) ? given : String(given).split(','))
+    .map((n) => name(n)).filter(Boolean);
+  if (list.some((n) => n.toLowerCase() === 'all')) return 'all';
+  return list.length ? [...new Set(list)] : null;
+}
+
+/** The environments whose issues become cards: `'all'`, or a list of names. */
+export function environmentsOf(connection) {
+  const given = connection?.environments;
+  if (given === 'all') return 'all';
+  if (Array.isArray(given)) {
+    const list = given.map((n) => name(n)).filter(Boolean);
+    return list.length ? list : CARD_ENVIRONMENTS;
+  }
+  return CARD_ENVIRONMENTS;
+}
+
+/**
+ * How Sentry names the board's lanes (`{ production: ['prod'], development: ['dev'] }`).
+ * Optional; the system picture asks each lane's errors under these names.
+ * Before `environments` was a list, this map lived under that name — a
+ * connection that still carries the map there is read the same.
+ */
+export function lanesOf(connection) {
+  const given = connection?.lanes ?? (connection?.environments && typeof connection.environments === 'object' && !Array.isArray(connection.environments) ? connection.environments : null);
+  if (!given || typeof given !== 'object') return {};
+  return Object.fromEntries(Object.entries(given).map(([lane, names]) => [lane, [].concat(names).map((n) => name(n)).filter(Boolean)]));
+}
+
+/**
+ * Does an issue from this environment become a card here? An environment
+ * nobody can place (`null`) does: a crash you cannot place is worse than a
+ * card you have to close.
+ */
+export function takesEnvironment(connection, environment) {
+  if (!environment) return true;
+  const list = environmentsOf(connection);
+  if (list === 'all') return true;
+  const wanted = String(environment).toLowerCase();
+  return list.some((n) => n.toLowerCase() === wanted);
+}
 
 /**
  * A Sentry issue as a card. Pure, so a test can pin down every line — and
@@ -171,8 +270,17 @@ export function fetchIssues({ base, org, project, token, query = 'is:unresolved'
   // `statsPeriod=24h` makes Sentry add `stats['24h']` — the count of the last
   // day, which is what a live picture asks; the lifetime `count` is not.
   if (statsPeriod) suche.set('statsPeriod', statsPeriod);
-  for (const name of environments) if (name) suche.append('environment', String(name));
+  for (const one of Array.isArray(environments) ? environments : []) if (one) suche.append('environment', String(one));
   return call(base, `/projects/${org}/${project}/issues/?${suche}`, token, {}, fetchImpl);
+}
+
+/**
+ * The environment of an issue's latest event — asked when the payload did
+ * not say. One call; the caller caches per issue id for the process.
+ */
+export async function fetchLatestEnvironment({ base, token, id }, fetchImpl = fetch) {
+  const event = await call(base, `/issues/${id}/events/latest/`, token, {}, fetchImpl);
+  return name(event?.environment) ?? tagOf(event?.tags) ?? null;
 }
 
 /** What an issue did in the last day, from the stats Sentry sends with `statsPeriod=24h`. */
@@ -198,5 +306,13 @@ export const issueIdOf = (foreignId) => (String(foreignId ?? '').startsWith('sen
 export function publicConnection(connection) {
   if (!connection) return null;
   const { token, hookSecret, ...rest } = connection;
-  return { ...rest, token: token ? 'set' : null, hookSecret: hookSecret ? 'set' : null };
+  return {
+    ...rest,
+    token: token ? 'set' : null,
+    hookSecret: hookSecret ? 'set' : null,
+    // As it COUNTS, not as it was set: a connection that never said which
+    // environments become cards shows the default, not a null.
+    environments: environmentsOf(connection),
+    lanes: lanesOf(connection),
+  };
 }

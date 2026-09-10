@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 
-import { gatherSystem, emptySystem, boardPicture, changedParts, createSystemPoll, ENVIRONMENTS, sentryEnvironmentsOf } from '../src/system.mjs';
+import { gatherSystem, emptySystem, boardPicture, changedParts, createSystemPoll, ENVIRONMENTS, sentryEnvironmentsOf, sentryExtraEnvironmentsOf } from '../src/system.mjs';
 import { createGradula } from '../src/gradula.mjs';
 import { createMemoryStore } from '../src/store.mjs';
 import { createLive } from '../src/live.mjs';
@@ -100,17 +100,49 @@ test('the picture has every part, every source says ok, and each lane carries it
   assert.deepEqual(doc.cards, [{ key: 'PRB-1', title: 'A card', state: 'making', labels: ['core', 'web'], actor: 'david', deployed: { development: null, production: true }, evidence: 0 }], 'named by the head of production; development has no live head, so nobody knows — and no commit stands behind it yet');
 });
 
-test('the errors are asked per lane, under the names Sentry knows the lane by', async () => {
+test('the errors are asked per lane, under the names Sentry knows the lane by — and per environment beside the lanes', async () => {
   const asked = [];
   const fetchImpl = async (url) => { asked.push(new URL(String(url)).searchParams.getAll('environment')); return { ok: true, status: 200, json: async () => [], text: async () => '[]' }; };
   await gatherSystem({ connections: { sentry: CONNECTIONS.sentry }, fetchImpl });
-  assert.deepEqual(asked.sort(), [[], ['development', 'dev'], ['production', 'prod']], 'both lanes and the whole, the lane by its name and its short form');
-  assert.deepEqual(sentryEnvironmentsOf({ environments: { production: 'live', development: ['dev', 'staging'] } }, 'production'), ['live']);
-  assert.deepEqual(sentryEnvironmentsOf({ environments: { production: 'live' } }, 'development'), ['development', 'dev'], 'a lane the connection does not name keeps the default');
+  assert.deepEqual(asked.sort(), [[], ['development', 'dev'], ['local'], ['production', 'prod']], 'both lanes, the local machine, and the whole — one call each, the lane by its name and its short form');
+  assert.deepEqual(sentryEnvironmentsOf({ lanes: { production: 'live', development: ['dev', 'staging'] } }, 'production'), ['live']);
+  assert.deepEqual(sentryEnvironmentsOf({ lanes: { production: 'live' } }, 'development'), ['development', 'dev'], 'a lane the connection does not name keeps the default');
+  assert.deepEqual(sentryEnvironmentsOf({ environments: { production: 'live' } }, 'production'), ['live'], 'the map under its old name still means the lanes');
   // One issue firing in both lanes stands twice, once per lane, never as a guess.
   const both = world({ issues: [{ id: '1', title: 'Both', lastSeen: '2026-09-10T06:00:00Z', stats: { '24h': [[1, 2]] }, environments: ['prod', 'dev'] }] });
   const doc = await gatherSystem({ connections: { sentry: CONNECTIONS.sentry }, fetchImpl: both });
   assert.deepEqual(doc.errors.map((e) => e.environment), ['production', 'development']);
+});
+
+/**
+ * ALL ENVIRONMENTS STAND IN THE PICTURE — the board decides what becomes a
+ * card, the picture shows what is happening. A crash on a developer's own
+ * machine is not a lane's incident and still counts somewhere: under its
+ * own name.
+ */
+test('errors carry their environment: a lane where a lane claims them, the name itself beside the lanes', async () => {
+  const asked = [];
+  const fetchImpl = async (url, init) => {
+    asked.push(new URL(String(url)).searchParams.getAll('environment'));
+    return world({ issues: [
+      { id: '1', title: 'Live', lastSeen: '2026-09-10T06:00:00Z', stats: { '24h': [[1, 5]] }, environments: ['prod'] },
+      { id: '2', title: 'On a phone', lastSeen: '2026-09-10T07:00:00Z', stats: { '24h': [[1, 3]] }, environments: ['local'] },
+      { id: '3', title: 'On stage', lastSeen: '2026-09-10T07:30:00Z', stats: { '24h': [[1, 1]] }, environments: ['staging'] },
+    ] })(url, init);
+  };
+  // The connection watches `staging` for cards too — so the picture asks for it, once.
+  const connection = { ...CONNECTIONS.sentry, environments: ['prod', 'staging'] };
+  const doc = await gatherSystem({ connections: { sentry: connection }, fetchImpl });
+  assert.deepEqual(asked.sort(), [[], ['development', 'dev'], ['local'], ['production', 'prod'], ['staging']], 'one call per place, and only that');
+  assert.deepEqual(doc.errors.map((e) => [e.environment, e.title]), [
+    ['production', 'Live'], ['staging', 'On stage'], ['local', 'On a phone'],
+  ], 'every error carries where it happened; none is null when a place claims it');
+  assert.equal(doc.sources.sentry, 'ok');
+
+  // A connection that takes `all` asks nothing extra beyond the fixed set.
+  const all = { ...CONNECTIONS.sentry, environments: 'all' };
+  assert.deepEqual(sentryExtraEnvironmentsOf(all), ['local'], 'dev is a lane already; local is the fixed extra');
+  assert.deepEqual(sentryExtraEnvironmentsOf({ ...CONNECTIONS.sentry, lanes: { development: ['local'] } }), ['dev'], 'a name a lane asks under is not asked twice — and one no lane asks under any more is');
 });
 
 test('a connection that is not set up yields an empty list AND says so', async () => {

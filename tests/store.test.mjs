@@ -233,6 +233,19 @@ for (const [name, build] of implementations) {
     // And off again — a flag that can only be switched on is not a switch.
     await store.sentry.set('PRB', { ...read, writeBack: false });
     assert.equal((await store.sentry.get('PRB')).writeBack, false);
+
+    // Which environments become cards, and how Sentry names the lanes —
+    // both stored, both read back; unset stays null (the default), `all`
+    // stays the word.
+    assert.equal(read.environments ?? null, null, 'not said is null, not an empty list');
+    await store.sentry.set('PRB', { ...read, environments: ['prod', 'dev'], lanes: { production: ['prod'], development: ['dev'] } });
+    const placed = await store.sentry.get('PRB');
+    assert.deepEqual(placed.environments, ['prod', 'dev']);
+    assert.deepEqual(placed.lanes, { production: ['prod'], development: ['dev'] });
+    await store.sentry.set('PRB', { ...placed, environments: 'all' });
+    assert.equal((await store.sentry.get('PRB')).environments, 'all');
+    await store.sentry.set('PRB', { ...placed, environments: null });
+    assert.equal((await store.sentry.get('PRB')).environments ?? null, null, 'back to the default');
   });
 
   test(`${name}: a card answers with the agreed field names, and a patch finds them`, async (t) => {

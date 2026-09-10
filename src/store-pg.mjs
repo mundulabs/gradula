@@ -416,6 +416,13 @@ alter table project  add column if not exists language text;
 -- in the service, handed back in the answer, and never stored — so the one
 -- line that reads it -- closeInSentry -- has never once been true on Postgres.
 alter table sentry   add column if not exists write_back boolean not null default false;
+-- Which Sentry environments become cards (a list, "all", or null for the
+-- default: production), and how Sentry names the board's lanes. The lane map
+-- was computed in the service and never stored; a dev crash on a developer's
+-- own phone became an incident card (MDLA-79) because nothing said where it
+-- happened.
+alter table sentry   add column if not exists environments jsonb;
+alter table sentry   add column if not exists lanes jsonb not null default '{}'::jsonb;
 -- One compose per environment. compose_id stays as the production lane
 -- for a connection made before the development lane existed.
 alter table dokploy  add column if not exists composes jsonb not null default '{}'::jsonb;
@@ -493,6 +500,8 @@ export async function createPgStore(url, { schema = null } = {}) {
       /** A clean start for one project: cards, links and history go (cascade); the project row, people and keys stay. */
       async wipe(key) {
         const { rowCount } = await q('delete from card where project = $1', [key]);
+        // the counter lives ON the project (see the header): a clean start begins at 1 again, as in memory
+        await q('update project set counter = 0 where key = $1', [key]);
         return { project: key, removed: rowCount };
       },
       async get(key) {
@@ -746,13 +755,15 @@ export async function createPgStore(url, { schema = null } = {}) {
     sentry: {
       async set(projectKey, connection) {
         await q(
-          `insert into sentry (project, org, sentry_project, base, token, hook_secret, write_back)
-           values ($1,$2,$3,$4,$5,$6,$7)
+          `insert into sentry (project, org, sentry_project, base, token, hook_secret, write_back, environments, lanes)
+           values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)
            on conflict (project) do update set org = excluded.org, sentry_project = excluded.sentry_project,
              base = excluded.base, token = excluded.token, hook_secret = excluded.hook_secret,
-             write_back = excluded.write_back, set_at = now()`,
+             write_back = excluded.write_back, environments = excluded.environments, lanes = excluded.lanes, set_at = now()`,
           [projectKey, connection.org, connection.project, connection.base, connection.token ?? null,
-            connection.hookSecret ?? null, connection.writeBack === true],
+            connection.hookSecret ?? null, connection.writeBack === true,
+            connection.environments === undefined || connection.environments === null ? null : JSON.stringify(connection.environments),
+            JSON.stringify(connection.lanes ?? {})],
         );
         return connection;
       },
@@ -762,7 +773,9 @@ export async function createPgStore(url, { schema = null } = {}) {
         return row ? {
           org: row.org, project: row.sentry_project, base: row.base,
           token: row.token, hookSecret: row.hook_secret,
-          writeBack: row.write_back === true, setAt: iso(row.set_at),
+          writeBack: row.write_back === true,
+          environments: row.environments ?? null, lanes: row.lanes ?? {},
+          setAt: iso(row.set_at),
         } : null;
       },
     },

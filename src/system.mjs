@@ -22,7 +22,7 @@
 import * as dokploy from './dokploy.mjs';
 import * as eas from './eas.mjs';
 import * as github from './github.mjs';
-import { fetchIssues, count24hOf } from './sentry.mjs';
+import { fetchIssues, count24hOf, environmentsOf, lanesOf } from './sentry.mjs';
 import { gatherDeployed, evidenceOf, unknownDeployed, DONE_WINDOW_MS } from './deployed.mjs';
 
 /** How long a gathered picture is served as-is. */
@@ -36,14 +36,29 @@ const labelsOf = (card) => [...new Set([...(card?.module ?? []), ...(card?.stack
 
 /**
  * The names Sentry knows a lane by. A connection may say so
- * (`environments: { production: 'prod', development: ['dev', 'development'] }`);
+ * (`lanes: { production: 'prod', development: ['dev', 'development'] }`);
  * without that, the lane's own name and its short form are asked for.
  */
 export const SENTRY_ENVIRONMENTS = { production: ['production', 'prod'], development: ['development', 'dev'] };
 export function sentryEnvironmentsOf(connection, environment) {
-  const named = connection?.environments?.[environment];
+  const named = lanesOf(connection)[environment];
   const list = named === undefined || named === null ? SENTRY_ENVIRONMENTS[environment] ?? [environment] : [].concat(named);
   return list.map((name) => String(name).trim()).filter(Boolean);
+}
+
+/**
+ * The environments the picture asks for BESIDE the lanes: every name the
+ * connection watches for cards, plus `dev` and `local` — the ones the apps
+ * tag — minus what a lane already asks under. A small fixed set, one call
+ * each; the errors of these stand under their own name, so the inspector
+ * can count a developer's own crashes without mistaking them for a lane's.
+ */
+export const SENTRY_EXTRA_ENVIRONMENTS = ['dev', 'local'];
+export function sentryExtraEnvironmentsOf(connection) {
+  const inLanes = new Set(ENVIRONMENTS.flatMap((lane) => sentryEnvironmentsOf(connection, lane)));
+  const watched = environmentsOf(connection);
+  const names = [...(watched === 'all' ? [] : watched), ...SENTRY_EXTRA_ENVIRONMENTS];
+  return [...new Set(names.map((name) => String(name).trim()).filter(Boolean))].filter((name) => !inLanes.has(name) && !ENVIRONMENTS.includes(name));
 }
 
 /** The empty picture — what a project without a single connection gets. */
@@ -203,19 +218,29 @@ export async function gatherSystem({
      * The issue list does not say which environment an issue belongs to
      * unless it is ASKED per environment — so it is asked once per lane,
      * under the names Sentry knows the lane by (the connection may name
-     * them; otherwise the lane's own name and its short form). An issue no
-     * lane claims keeps `environment: null` rather than a guess; one that
-     * fires in both lanes stands twice, each with the count of its lane.
+     * them; otherwise the lane's own name and its short form), and once per
+     * environment beside the lanes (`dev`, `local`, whatever the connection
+     * watches — sentryExtraEnvironmentsOf), under that environment's own
+     * name. ALL environments stand in `errors`: the board decides what
+     * becomes a card, the picture shows what is happening. An issue nobody
+     * claims keeps `environment: null` rather than a guess; one that fires
+     * in two places stands twice, each with the count of its place. One
+     * call per lane, one per extra environment, one for the whole — held
+     * with the rest of the picture for FRESH_MS.
      */
     const inLane = {};
     const everywhere = [];
-    const asks = ENVIRONMENTS.map((environment) => fetchIssues({ ...se, limit: 25, statsPeriod: '24h', environments: sentryEnvironmentsOf(se, environment) }, fetchImpl)
+    const places = [
+      ...ENVIRONMENTS.map((environment) => ({ environment, names: sentryEnvironmentsOf(se, environment) })),
+      ...sentryExtraEnvironmentsOf(se).map((name) => ({ environment: name, names: [name] })),
+    ];
+    const asks = places.map(({ environment, names }) => fetchIssues({ ...se, limit: 25, statsPeriod: '24h', environments: names }, fetchImpl)
       .then((issues) => { inLane[environment] = Array.isArray(issues) ? issues : []; }));
-    asks.push(fetchIssues({ ...se, limit: 25, statsPeriod: '24h' }, fetchImpl).then((issues) => { everywhere.push(...(Array.isArray(issues) ? issues : [])); }));
+    asks.push(fetchIssues({ ...se, limit: 25, statsPeriod: '24h', environments: [] }, fetchImpl).then((issues) => { everywhere.push(...(Array.isArray(issues) ? issues : [])); }));
     jobs.push(Promise.all(asks).then(() => {
       const claimed = new Set();
       const errors = [];
-      for (const environment of ENVIRONMENTS) {
+      for (const { environment } of places) {
         for (const issue of inLane[environment] ?? []) { claimed.add(String(issue.id)); errors.push(errorOfIssue(issue, environment)); }
       }
       for (const issue of everywhere) if (!claimed.has(String(issue.id))) errors.push(errorOfIssue(issue, null));

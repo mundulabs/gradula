@@ -36,7 +36,7 @@ import { dueHeralds, CADENCES } from './schedule.mjs';
 import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES } from './spec.mjs';
 import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
-import { issueToCard, issueOf, projectOf, actionOf, fetchIssues, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
+import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
 
 export class Refusal extends Error {
   constructor(status, code, message) { super(message); this.status = status; this.code = code; }
@@ -109,7 +109,7 @@ const labelled = (fields, vocabulary) => {
  */
 const HERALD_KINDS = { telegram };
 
-export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null } = {}) {
+export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch } = {}) {
   const findItem = async (key) => {
     const parsed = parseItemKey(key);
     if (!parsed) throw bad('id', `"${key}" is not a card key (example: MDLA-142).`);
@@ -121,6 +121,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
   // What is going out right now. `settle()` waits for it — a test needs that,
   // and so does a service being shut down.
   const inFlight = new Set();
+
+  // Where a Sentry issue happened, when its payload did not say: asked once
+  // per issue id for the life of the process (see ingestIssue).
+  const issueEnvironments = new Map();
 
   /** The last system picture per project — see `system()`. */
   const systemHeld = new Map();
@@ -1449,6 +1453,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         throw bad('base', `base: ${BASE_EU} (EU) or ${BASE_US} (US).`);
       }
       const before = await store.sentry.get(project.key);
+      const laneMapGiven = connection.environments && typeof connection.environments === 'object' && !Array.isArray(connection.environments);
+      const laneMap = laneMapGiven ? connection.environments : connection.lanes;
+      const lanes = laneMap && typeof laneMap === 'object'
+        ? Object.fromEntries(Object.entries(laneMap).map(([lane, names]) => [text(lane, 40, 'lanes'), [].concat(names).map((n) => text(n, 80, 'lanes'))]))
+        : undefined;
+      const environments = laneMapGiven ? undefined : readEnvironments(connection.environments);
+      if (Array.isArray(environments)) for (const one of environments) text(one, 80, 'environments');
       const kept = {
         org,
         project: sentryProject,
@@ -1458,11 +1469,18 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         token: connection.token ? String(connection.token) : before?.token ?? null,
         hookSecret: connection.hookSecret ? String(connection.hookSecret) : before?.hookSecret ?? null,
         writeBack: connection.writeBack === true,
+        /*
+         * WHICH ENVIRONMENTS BECOME CARDS. A list of Sentry environment
+         * names (`['prod', 'dev']`), the word `all`, or nothing — then
+         * production in both spellings the apps use. Not said (undefined)
+         * keeps what was there; `null` goes back to the default. The map of
+         * lane names used to live under this name; it is a map, and a map
+         * given here still means the lanes.
+         */
+        environments: environments === undefined ? readEnvironments(Array.isArray(before?.environments) || before?.environments === 'all' ? before.environments : null) : environments,
         // How Sentry names the lanes — optional; the system picture asks each
         // lane's errors under these names (see system.mjs, sentryEnvironmentsOf).
-        ...(connection.environments && typeof connection.environments === 'object'
-          ? { environments: Object.fromEntries(Object.entries(connection.environments).map(([lane, names]) => [text(lane, 40, 'environments'), [].concat(names).map((n) => text(n, 80, 'environments'))])) }
-          : before?.environments ? { environments: before.environments } : {}),
+        lanes: lanes === undefined ? lanesOf(before) : lanes,
       };
       await store.sentry.set(project.key, kept);
       return publicConnection(kept);
@@ -1480,7 +1498,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * the chronicle says why. A crash that comes back is not a new note but
      * bad news about an old one.
      */
-    async ingestIssue(projectKey, raw, actor = 'sentry') {
+    async ingestIssue(projectKey, raw, actor = 'sentry', { askSentry = true, fetchImpl = defaultFetch } = {}) {
       const project = await this.getProject(projectKey);
       const issue = issueOf(raw) ?? (raw?.id ? raw : null);
       if (!issue) throw bad('form', 'There is no issue in this payload.');
@@ -1530,6 +1548,34 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         return { fresh: false, action, card: await this.getItem(existing.key) };
       }
 
+      /*
+       * WHERE IT HAPPENED DECIDES WHETHER IT IS AN INCIDENT.
+       *
+       * The apps tag every event with an environment (prod, dev, local), and
+       * a crash from a developer's own dev build on their own phone is real
+       * and still not the board's business: MDLA-79 (a WatchdogTermination
+       * from `dev`, taken in five times) stood in Ready like a production
+       * fire. So only the connection's environments become cards — production
+       * unless it says otherwise. The payload says where it happened when it
+       * can; when it cannot, Sentry is asked once per issue (the latest
+       * event), and an environment nobody can place counts as production: a
+       * crash you cannot place is worse than a card you have to close.
+       *
+       * A foreign issue touches nothing — except that a card which already
+       * exists for it gets one `seen` line, so the chronicle shows it keeps
+       * happening. Never a new card, never a move, never a resurrection.
+       * A pull hands over issues Sentry already filtered by environment; it
+       * says so (`askSentry: false`) and no issue is asked about twice.
+       */
+      const environment = environmentOf(raw)
+        ?? (askSentry ? await this.environmentOfIssue(connection, issue.id, { fetchImpl }) : null);
+      if (!takesEnvironment(connection, environment)) {
+        const reason = `environment ${environment} is not watched`;
+        if (!existing) return { fresh: false, ignored: true, environment, reason };
+        await note(existing, actor, 'seen', { environment, count: fields.count, lastSeen: fields.lastSeen, foreignId: fields.foreignId });
+        return { fresh: false, ignored: true, environment, reason, card: await this.getItem(existing.key) };
+      }
+
       if (!existing) {
         const card = await store.items.create(project.key, { ...fields, createdBy: actor });
         await note(card, actor, 'ingested', { foreignId: fields.foreignId, count: fields.count });
@@ -1573,14 +1619,38 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return { fresh: false, resurfaced: resurrected, card: await this.getItem(existing.key) };
     },
 
-    /** Fetching instead of waiting — for what a hook that was down missed. */
+    /**
+     * Where an issue happened, when its hook did not say: Sentry's latest
+     * event for it, asked ONCE per issue id and held for the process. No
+     * token, or a Sentry that does not answer: unknown (`null`) — and not
+     * held, so the next ask may do better.
+     */
+    async environmentOfIssue(connection, id, { fetchImpl = defaultFetch } = {}) {
+      if (!connection?.token || !id) return null;
+      const key = `${connection.base}|${connection.org}|${id}`;
+      if (issueEnvironments.has(key)) return issueEnvironments.get(key);
+      try {
+        const environment = await fetchLatestEnvironment({ base: connection.base, token: connection.token, id }, fetchImpl);
+        issueEnvironments.set(key, environment);
+        return environment;
+      } catch {
+        return null;
+      }
+    },
+
+    /**
+     * Fetching instead of waiting — for what a hook that was down missed.
+     * Sentry is asked for the connection's environments only (all of them
+     * when it says `all`), so what arrives here is already placed.
+     */
     async pullSentry(projectKey, actor = 'sentry', { fetchImpl = fetch, limit = 25 } = {}) {
       const connection = await this.getSentry(projectKey, { raw: true });
       if (!connection?.token) throw bad('no-sentry', 'No Sentry token is stored for this project.');
-      const issues = await fetchIssues({ ...connection, token: connection.token, limit }, fetchImpl);
+      const environments = environmentsOf(connection);
+      const issues = await fetchIssues({ ...connection, token: connection.token, limit, environments: environments === 'all' ? [] : environments }, fetchImpl);
       const result = { seen: issues.length, fresh: 0, again: 0 };
       for (const issue of issues) {
-        const ingested = await this.ingestIssue(projectKey, issue, actor);
+        const ingested = await this.ingestIssue(projectKey, issue, actor, { askSentry: false });
         if (ingested.fresh) result.fresh += 1; else result.again += 1;
       }
       return result;

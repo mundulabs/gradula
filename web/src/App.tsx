@@ -495,6 +495,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                     : e.verb === 'decided' ? `${d.result} — ${d.reason}`
                     : e.verb === 'evidenced' ? <>{d.kind === 'commit' && d.ref ? commit(d.ref) : d.ref}{d.comment ? ` · ${d.comment}` : ''}</>
                     : e.verb === 'deployed' ? <>{d.environment}{d.sha ? <> · {commit(String(d.sha), true)}</> : null}</>
+                    : e.verb === 'seen' ? <>{d.environment}{d.count != null ? ` · ${d.count}` : ''}</>
                     : '';
                   return (
                     <span key={i} className={e.verb === 'decided' ? 'decision' : undefined}>

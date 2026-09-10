@@ -61,6 +61,9 @@ const HELP = `gradula — wish, board, standing
   gradula app [--app @acc/slug --token <expo token>]
                                  where the APP has arrived (reads EAS)
   gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
+  gradula sentry [--org <org> --project <slug>] [--base eu|us] [--token <t>]
+                 [--hook-secret <s>] [--write-back [off]]
+                 [--environments prod,dev|all|default]   which Sentry environments become cards
   gradula system                   ONE picture: deployments, builds, updates,
                                  pipeline, releases, errors, people — and what is not seen
   gradula history [--after N]      what happened while you were away
@@ -1038,6 +1041,46 @@ switch (command) {
     const lanes = Object.entries(set.composes ?? {}).map(([env, id]) => `${env} ${id}`).join(' · ') || '—';
     console.log(`Dokploy: ${set.base} · composes ${lanes} · key ${set.token ?? 'MISSING'}`);
     console.log('It only reads. There is no deploy button, and that is deliberate.');
+    break;
+  }
+
+  /**
+   * The Sentry connection. Without a flag it shows what is there; with one
+   * it sets — and the fields it does not name it carries over, so
+   * `gradula sentry --environments prod,dev` is a whole sentence on its own.
+   * The environments are the line that matters: a crash from a developer's
+   * own dev build on his own phone was an incident card in Ready (MDLA-79)
+   * until the connection could say which environments count.
+   */
+  case 'sentry': {
+    const bases = { eu: 'https://de.sentry.io/api/0', us: 'https://sentry.io/api/0' };
+    const show = (on) => {
+      if (!on) { console.log('No Sentry connection.\nConnect it:  gradula sentry --org <org> --project <slug> --base eu --token <t> --hook-secret <s>'); return; }
+      const watched = on.environments === 'all' ? 'all' : (on.environments ?? []).join(', ');
+      console.log(`Sentry: ${on.org}/${on.project} · ${on.base} · token ${on.token ?? 'MISSING'} · hook ${on.hookSecret ?? 'MISSING'} · write back ${on.writeBack ? 'on' : 'off'}`);
+      console.log(`  cards from: ${watched}${on.environments === 'all' ? '' : '  (an issue nobody can place counts as production)'}`);
+      const lanes = Object.entries(on.lanes ?? {}).map(([lane, names]) => `${lane} ${[].concat(names).join('/')}`).join(' · ');
+      if (lanes) console.log(`  lanes: ${lanes}`);
+    };
+    const setting = ['org', 'project', 'base', 'token', 'hook-secret', 'write-back', 'environments'].some((name) => flags[name] !== undefined);
+    if (!setting) { show(await call('/api/v1/sentry')); break; }
+    const before = await call('/api/v1/sentry');
+    const org = flags.org ?? before?.org;
+    const project = flags.project ?? before?.project;
+    if (!org || !project) stop('Say which Sentry project: --org <org> --project <slug>.');
+    const base = typeof flags.base === 'string' ? bases[flags.base.toLowerCase()] ?? flags.base : before?.base ?? bases.us;
+    const writeBack = flags['write-back'] === true ? true : flags['write-back'] === 'off' ? false : before?.writeBack === true;
+    const set = await call('/api/v1/sentry', {
+      method: 'PUT',
+      body: {
+        org, project, base, writeBack,
+        ...(typeof flags.token === 'string' ? { token: flags.token } : {}),
+        ...(typeof flags['hook-secret'] === 'string' ? { hookSecret: flags['hook-secret'] } : {}),
+        // `default` (or an empty word) goes back to production; not said keeps what was there.
+        ...(typeof flags.environments === 'string' ? { environments: flags.environments === 'default' ? null : flags.environments } : {}),
+      },
+    });
+    show(set);
     break;
   }
 
