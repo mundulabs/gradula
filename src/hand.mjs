@@ -65,8 +65,17 @@ export function isAgent(env, { machine = false } = {}) {
   const said = String(env.GRADULA_HAND ?? '').toLowerCase();
   if (said === 'agent') return true;
   if (said === 'person') return false;
-  return Boolean(env.CLAUDECODE) || Object.keys(env).some((name) => name.startsWith('CODEX_'));
+  return AGENT_SIGNS.some((sign) => (sign.endsWith('_') ? Object.keys(env).some((name) => name.startsWith(sign)) : Boolean(env[sign])));
 }
+
+/**
+ * How the agents announce themselves in their shells. Claude Code sets
+ * CLAUDECODE, the Codex CLI a family of CODEX_ variables, Gemini CLI
+ * GEMINI_CLI, Cursor's agent CURSOR_AGENT. One that sets nothing (a new IDE)
+ * says it in the project: GRADULA_HAND=agent in its environment — the
+ * sentence above, not a guess from a process name.
+ */
+export const AGENT_SIGNS = ['CLAUDECODE', 'CODEX_', 'GEMINI_CLI', 'CURSOR_AGENT', 'ANTIGRAVITY', 'COPILOT_AGENT'];
 
 /**
  * The key and the name this process speaks with. `hand` says which was
