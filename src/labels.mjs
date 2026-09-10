@@ -124,7 +124,7 @@ export function normalizeVocabulary(entries) {
     if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(id)) throw new TypeError(`vocabulary: "${raw?.id}" is not a module id`);
     if (seen.has(id)) throw new TypeError(`vocabulary: ${id} stands there twice`);
     seen.add(id);
-    const paths = (raw.paths ?? []).map((p) => String(p).replace(/^\/+|\/+$/g, '')).filter(Boolean).slice(0, 20);
+    const paths = (raw.paths ?? []).map((p) => (String(p) === '/' ? '/' : String(p).replace(/^\/+|\/+$/g, ''))).filter(Boolean).slice(0, 20);
     const said = raw.area === undefined || raw.area === null ? '' : String(raw.area).trim().toLowerCase();
     if (said && !/^[a-z0-9][a-z0-9-]{0,40}$/.test(said)) throw new TypeError(`vocabulary: "${raw.area}" is not an area`);
     return {
@@ -160,7 +160,8 @@ export function labelsFor({ title = '', text = '', files = [], vocabulary = [] }
     if (!entry?.id) continue;
     const entryPaths = Array.isArray(entry.paths) ? entry.paths : [];
     const entryWords = Array.isArray(entry.words) ? entry.words : [];
-    const byPath = entryPaths.some((p) => paths.some((found) => found === p || found.startsWith(`${p}/`)));
+    // `/` is the root itself: the files that live beside package.json and belong to no folder
+    const byPath = entryPaths.some((p) => paths.some((found) => (p === '/' ? !found.includes('/') : found === p || found.startsWith(`${p}/`))));
     if (byPath) { ausPfad.push(entry.id); continue; }
     if (mentions(prosa, entry.id) || entryWords.some((w) => mentions(prosa, w))) ausWort.push(entry.id);
   }

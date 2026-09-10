@@ -320,3 +320,11 @@ test('the commit\'s files label the card: evidence with paths adds the modules t
   const after = await gradula.getItem(card.key);
   assert.deepEqual(after.module, ['docs', 'tools'], 'the files said where the work was');
 });
+
+test('the root itself is a place: a vocabulary path "/" labels the files beside package.json', async () => {
+  const { labelsFor, normalizeVocabulary } = await import('../src/labels.mjs');
+  const vocabulary = normalizeVocabulary([{ id: 'repo', paths: ['/'] }, { id: 'githooks', paths: ['.githooks'] }]);
+  assert.deepEqual(labelsFor({ files: ['package.json', 'AGENTS.md'], vocabulary }).module, ['repo']);
+  assert.deepEqual(labelsFor({ files: ['.githooks/pre-push'], vocabulary }).module, ['githooks'], 'a dot-folder is a module without its dot');
+  assert.deepEqual(labelsFor({ files: ['docs/x.md'], vocabulary }).module, [], 'a folder the vocabulary does not know is not the root');
+});

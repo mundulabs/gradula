@@ -210,9 +210,28 @@ function vocabularyOf(root = process.cwd()) {
       module.set(id, found);
     }
   }
-  for (const extra of ['tools', 'infra', 'docs', 'tests']) {
-    if (existsSync(join(root, extra))) module.set(extra, { id: extra, paths: [extra], words: [] });
+  /*
+   * EVERY PLACE A COMMIT CAN TOUCH IS A MODULE. A hand-typed list (tools,
+   * infra, docs, tests) left every other folder — templates, patches, the
+   * hooks — and every root file outside the vocabulary, and a card touching
+   * only those stood unlabelled on the map. So: every top-level directory
+   * git tracks is a module (a dot-folder without its dot: .githooks →
+   * githooks), and the root files together are the module `repo`.
+   */
+  let tracked = [];
+  try { tracked = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).split('\n').filter(Boolean); } catch { /* no git: the workspaces alone */ }
+  const covered = (relative) => [...module.values()].some((m) => m.paths.some((p) => relative === p || relative.startsWith(`${p}/`) || p.startsWith(`${relative}/`)));
+  let rootFiles = false;
+  for (const first of new Set(tracked.map((f) => f.split('/')[0]))) {
+    if (!tracked.some((f) => f.startsWith(`${first}/`))) { rootFiles = true; continue; }   /* a file at the root */
+    if (first === 'node_modules' || covered(first)) continue;
+    const id = first.replace(/^\./, '').toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(id)) continue;
+    // the same name twice (packages/tools and tools/): one module, both paths
+    if (module.has(id)) { module.get(id).paths.push(first); continue; }
+    module.set(id, { id, paths: [first], words: [] });
   }
+  if (rootFiles) module.set('repo', { id: 'repo', paths: ['/'], words: [] });
   /*
    * THE AREAS A PROJECT DECLARES. By default an app is its own area and
    * everything else is the first segment of its path — which calls the kit
