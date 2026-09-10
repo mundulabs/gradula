@@ -40,7 +40,7 @@ test('a public channel gets ONLY what was released — and it hears releases, no
   const filter = TEMPLATES.outside.filter;
   assert.equal(matches(filter, move()), false, 'a card is internal by itself');
   assert.equal(matches(filter, move({ card: { visibility: 'public' } })), false, 'a public card moving is still not a release');
-  assert.deepEqual(filter.verbs, ['released']);
+  assert.deepEqual(filter.verbs, ['notes'], 'the outside hears reviewed notes, not raw releases');
   const { releaseNote } = await import('../src/releases.mjs');
   const release = { id: 'build:x', lane: 'ios', at: '2026-09-10T16:00:00Z', version: '0.0.1 · 3', profile: 'beta', title: 'internal build title', url: 'https://expo.dev/b/x' };
   const cards = [{ key: 'P-1', title: 'Public thing', visibility: 'public' }, { key: 'P-2', title: 'Secret thing', visibility: 'internal' }];
@@ -208,7 +208,7 @@ test('a commit as evidence is its own line — the hash, linked into the reposit
   await gradula.settle(); said.length = 0;
   await gradula.addEvidence(card.key, { kind: 'commit', ref: 'd2de57062b76abcdef', note: 'Every editor: the hooks are git\'s', files: ['docs/x.md'] }, 'David (Claude Code · mac)');
   await gradula.settle();
-  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ ← <a href="https://github.com/acc/repo/commit/d2de57062b76">d2de57062b76</a>\nEvery editor: the hooks are git's\nDavid (Claude Code · mac)`);
+  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ commit <a href="https://github.com/acc/repo/commit/d2de57062b76">d2de57062b76</a>\nEvery editor: the hooks are git's\nDavid (Claude Code · mac)`);
   assert.deepEqual(await gradula.cardsOfRef('PRB', 'd2de57062b76'), [card.key], 'the commit knows its card — adopted once');
 });
 

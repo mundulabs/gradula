@@ -66,7 +66,7 @@ export const TEMPLATES = {
   workshop: {
     name: 'Workshop',
     line: 'Everything that moves — for the team channel.',
-    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'released'], voice: 'plain' },
+    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'released', 'notes'], voice: 'plain' },
   },
   /*
    * Release meant "target: release" — the ladder of how far a wish may travel,
@@ -78,7 +78,7 @@ export const TEMPLATES = {
   release: {
     name: 'Release',
     line: 'One note per release — web, iOS, Android, update — with the cards it carries.',
-    filter: { verbs: ['released'], voice: 'human' },
+    filter: { verbs: ['released', 'notes'], voice: 'human' },
   },
   fire: {
     name: 'Fire',
@@ -92,8 +92,8 @@ export const TEMPLATES = {
   },
   outside: {
     name: 'Outside',
-    line: 'Release notes for the community: per release, the public cards, titles only.',
-    filter: { verbs: ['released'], visibility: 'public', voice: 'human' },
+    line: 'The reviewed release notes — the text the store shows — and nothing else.',
+    filter: { verbs: ['notes'], visibility: 'public', voice: 'human' },
   },
 };
 
@@ -155,6 +155,7 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
    * THREE LINES, THE SAME EVERY TIME — the eye finds each thing where it was
    * last time:
    *   MDLA-3 ■■▩□□ moved → review          the key (a link), where it stands, what happened
+ *   MDLA-3 ■■▩□□ commit d2de57062b76     a commit as evidence: the hash (a link) — an arrow said the same and nobody read it
    *   The title of the card [docs tools]  what it is
    *   dokploy · seen on dev (e81d7c6)      whose hand, and why
    * A commit as evidence puts the commit on the first line (its hash a link)
@@ -163,7 +164,7 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
    * rest; the public voice drops the hand, the reason and the labels.
    */
   const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? String(data.ref).slice(0, 12) : null;
-  const what = commit ? `← ${commit}`
+  const what = commit ? `commit ${commit}`
     : verb === 'moved' ? `moved → ${card.state ?? 'moving'}`   /* plain: the state is an identifier, not a word */
       : verb;
   const labels = labelsOf(card);

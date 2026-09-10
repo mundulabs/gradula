@@ -223,6 +223,37 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     return sent;
   }
 
+  /**
+   * THE NOTES A PERSON REVIEWED. A raw release note lists card titles, and a
+   * card's title is a commit subject — right for the workshop, wrong for the
+   * people outside ("the MCP server for Cursor and Gemini in the repository"
+   * is not a sentence for a customer). What the outside gets is the text the
+   * store gets: the release notes written for the version and reviewed by a
+   * hand (Mundula: release:notes → release:version). Those are filed here,
+   * once per lane and version, and spoken to every herald that listens to
+   * `notes` — the Outside channel listens to nothing else.
+   */
+  async function announceNotes(projectKey, note) {
+    const sent = [];
+    try {
+      const heralds = await store.heralds.list(projectKey, { raw: true });
+      const board = await store.projects.get(projectKey);
+      for (const herald of heralds) {
+        if (herald.active === false) continue;
+        const filter = herald.filter ?? {};
+        if (Array.isArray(filter.verbs) && filter.verbs.length && !filter.verbs.includes('notes')) continue;
+        const kind = heraldKinds[herald.kind];
+        if (!kind?.send) continue;
+        const language = filter.language ?? board?.language ?? 'en';
+        const text = note.locales?.[language] ?? note.locales?.[`${language}-${language.toUpperCase()}`] ?? note.text;
+        const head = `${note.name ?? board?.name ?? projectKey} ${note.version}${note.lane && note.lane !== 'web' ? ` · ${note.lane === 'ios' ? 'iOS' : note.lane === 'android' ? 'Android' : note.lane}` : ''}`;
+        const result = await kind.send({ token: keyOf(herald), chat: herald.chat }, escapeHtml(`${head}\n${text}`), { html: true, preview: false });
+        sent.push({ herald: herald.id, name: herald.name, ...result });
+      }
+    } catch { /* a mute herald is not the note's failure */ }
+    return sent;
+  }
+
   const heraldOut = (herald) => ({ ...herald, token: herald.token ? 'set' : null, house: herald.token === HOUSE_KEY });
 
   return {
@@ -543,6 +574,29 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const project = await this.getProject(projectKey);
       if (!/^[0-9a-f]{7,40}$/i.test(String(ref))) throw bad('ref', 'ref: a commit hash.');
       return store.events.byRef(project.key, String(ref).toLowerCase());
+    },
+
+    /**
+     * File the reviewed release notes for a lane and version — the text the
+     * store shows — and speak them to the heralds that listen to `notes`.
+     * Filed once: the same version again changes nothing and says nothing.
+     */
+    async fileNotes(projectKey, { lane = 'web', version, text = null, locales = null, name = null }, actor) {
+      const project = await this.getProject(projectKey);
+      if (!LANES.includes(lane)) throw bad('lane', `lane: ${LANES.join(', ')}.`);
+      const v = String(version ?? '').trim();
+      if (!v) throw bad('version', 'version: the version these notes are for.');
+      const body = text ? String(text).trim() : null;
+      const byLocale = locales && typeof locales === 'object' ? Object.fromEntries(Object.entries(locales).map(([k, t]) => [String(k), String(t).trim()]).filter(([, t]) => t)) : null;
+      if (!body && !(byLocale && Object.keys(byLocale).length)) throw bad('text', 'text or locales: the notes themselves.');
+      const id = `notes:${lane}:${v}`;
+      const known = await store.releases.list(project.key);
+      if (known.some((r) => r.id === id)) return { id, lane, version: v, filed: false };
+      const note = { id, lane, version: v, at: new Date().toISOString(), text: body ?? Object.values(byLocale)[0], locales: byLocale, name: name ? String(name).slice(0, 80) : null, by: actor ?? null, cards: [] };
+      await store.releases.add(project.key, note);
+      const sent = await announceNotes(project.key, note);
+      live?.announce(project.key, { verb: 'released', card: null, actor: actor ?? 'system', data: { lane, id, notes: true } });
+      return { id, lane, version: v, filed: true, sent };
     },
 
     async listReleases(projectKey) {
