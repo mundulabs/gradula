@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { gather, plainReport, humanReport, htmlReport, escapeHtml, bar } from '../src/report.mjs';
 
 const cards = [
-  { id: 'a', key: 'PRB-9', title: 'A picture and a file', module: ['infra'], stack: ['backend'], target: 'release', gate: { kind: 'test' } },
+  { id: 'a', key: 'PRB-9', title: 'A picture and a file', module: ['infra'], stack: ['backend'], target: 'release', gate: { kind: 'test' }, state: 'done' },
   { id: 'b', key: 'PRB-22', title: 'Ideas or wishes?' },
   { id: 'c', key: 'PRB-40', title: 'Crash while loading', count: 12, source: 'sentry' },
   { id: 'd', key: 'PRB-7', title: 'Something internal', gate: null },
@@ -44,7 +44,7 @@ test('the plain shape carries keys, labels and the missing gate', () => {
   assert.match(text, /PRB-9/);
   assert.match(text, /\[infra backend\]/);
   assert.doesNotMatch(text, /NO GATE/, 'a gate is a choice, not a lack — production decides what is done');
-  assert.match(text, /^• PRB-9\n  A picture and a file/m, 'a list: the key on its line, the title beneath');
+  assert.match(text, /^• PRB-9 ■■■■■ done\n  A picture and a file/m, 'a list: the key on its line, the title beneath');
 });
 
 test('the human shape names no key, no actor, no module', () => {
