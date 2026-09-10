@@ -66,7 +66,7 @@ export const TEMPLATES = {
   workshop: {
     name: 'Workshop',
     line: 'Everything that moves — for the team channel.',
-    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'released', 'notes'], voice: 'plain' },
+    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'ingested', 'resurfaced', 'released', 'notes'], voice: 'plain' },
   },
   /*
    * Release meant "target: release" — the ladder of how far a wish may travel,
@@ -192,7 +192,9 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
    */
   const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? String(data.ref).slice(0, 7) : null;   /* seven: git's own abbreviation */
   // the ladder is a picture, the state is the word — both, so neither the eye nor the reader has to decode; then what happened
-  const what = `${card.state ?? 'moving'} · ${commit ? `commit ${commit}` : verb}`;
+  // an incident carries how loud it was (Sentry's own word: fatal, error, warning, info) — beside what happened, every time it is named
+  const loud = card.level && card.source === 'sentry' ? ` · ${card.level}` : '';
+  const what = `${card.state ?? 'moving'} · ${commit ? `commit ${commit}` : verb}${loud}`;
   const labels = labelsOf(card);
   const second = commit ? short(data.comment ?? '', 140) || title : title;
   const tail = [!isPublic && actor ? actor : '', !isPublic && data.reason ? short(data.reason, 200) : ''].filter(Boolean);
@@ -202,7 +204,7 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
     const kopf = verb === 'moved'
       ? (card.state === 'done' ? head.done : `${head.now} ${word(card.state ?? 'moving', language)}`)
       : head;
-    const first = [mark, ladder, kopf].filter(Boolean).join(' ');
+    const first = [mark, ladder, kopf + (card.level && card.source === 'sentry' ? ` · ${card.level}` : '')].filter(Boolean).join(' ');
     const reason = !isPublic && data.reason ? ` — ${short(data.reason, 160)}` : '';
     return `${first}\n${second}${reason}`;
   }

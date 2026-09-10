@@ -222,3 +222,13 @@ test('everything with an address is a link: keys in a reason, hashes anywhere �
   assert.equal(out, '<a href="https://grad.test/MDLA-3">MDLA-3</a> moved → ice\nthe same commit adopted twice (fixed in <a href="https://github.com/acc/repo/commit/88ae5c0">88ae5c0</a>) — <a href="https://grad.test/MDLA-2">MDLA-2</a> is the card\ndokploy · seen on development (<a href="https://github.com/acc/repo/commit/054935da6242">054935da6242</a>) in 2026');
   assert.equal(linkify('MDLA-3 at 88ae5c0', { origin: null, repo: null }), 'MDLA-3 at 88ae5c0', 'no address known, no link');
 });
+
+test('the workshop hears incidents as they come in and when they come back, with how loud they were', () => {
+  const filter = TEMPLATES.workshop.filter;
+  const crash = { key: 'GRD-40', title: 'TypeError in StageView', kind: 'task', state: 'ready', source: 'sentry', level: 'fatal', module: [], stack: [] };
+  assert.equal(matches(filter, { verb: 'ingested', actor: 'sentry', data: {}, card: crash }), true);
+  assert.equal(matches(filter, { verb: 'resurfaced', actor: 'sentry', data: {}, card: crash }), true);
+  assert.equal(lineFor({ verb: 'ingested', actor: 'sentry', data: {}, card: crash }, { voice: 'plain' }).split('\n')[0], 'GRD-40 ■▩□□□ ready · ingested · fatal');
+  assert.equal(lineFor({ verb: 'moved', actor: 'dokploy', data: { reason: 'seen on production (abc1234)' }, card: { ...crash, state: 'done' } }, { voice: 'plain' }).split('\n')[0], 'GRD-40 ■■■■■ done · moved · fatal', 'the fix: the card done, and it still says how loud it was');
+  assert.equal(lineFor({ verb: 'ingested', actor: 'sentry', data: {}, card: crash }, { voice: 'human' }).split('\n')[0], 'GRD-40 ■▩□□□ Crash · fatal');
+});
