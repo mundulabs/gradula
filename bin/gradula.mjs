@@ -41,7 +41,7 @@ const HELP = `gradula — wish, board, standing
   gradula start <CARD> [--tree]    --tree creates a branch and a worktree
                  [--anyway "why"]  start a card that waits on another — the sentence is the reason
   gradula link <CARD> <needs|blocks|part-of|resembles|touches> <CARD>
-  gradula sync [--since <ref>]     send commits carrying "Plan: CARD" as evidence
+  gradula sync [--since <ref>] [--adopt]   send commits carrying "Plan: CARD" as evidence; --adopt gives a card to one that carries none
   gradula gates [--commands]       run the gates; green moves the card to done
   gradula wave [<VENTURE>]         what can go side by side right now
   gradula heralds                  who speaks outward, and about what
@@ -522,6 +522,7 @@ switch (command) {
     } catch { /* no branch, no harm */ }
 
     const found = new Map();
+    const orphans = [];
     const add = (card, hash, title, author, email, files) => {
       if (!found.has(card)) found.set(card, []);
       found.get(card).push({ hash: hash.trim().slice(0, 12), title: (title ?? '').trim(), author, email, files });
@@ -535,6 +536,24 @@ switch (command) {
       const named = [...`${title}\n${body ?? ''}`.matchAll(/^\s*Plan:\s*([A-Z]{2,8}-[0-9]{1,7})\s*$/gm)];
       if (named.length) for (const hit of named) add(hit[1].toUpperCase(), hash, title, author, email, files);
       else if (onBranch) add(onBranch, hash, title, author, email, files);
+      else if (flags.adopt && !/^(Merge |fixup!|squash!)/.test(String(title ?? ''))) orphans.push({ hash, title: (title ?? '').trim(), body: (body ?? '').trim(), author, email, files });
+    }
+
+    /*
+     * ADOPTION. A commit without a Plan line happens: the board was mid-deploy
+     * when the commit hook asked, and the hook — by its law — let the commit
+     * through. The push hook passes --adopt, and such a commit gets its card
+     * here: a task from its subject, started, evidenced — the same card the
+     * commit hook would have made a minute earlier. Merges and fixups are
+     * nobody's work of their own and are left alone.
+     */
+    for (const orphan of orphans) {
+      try {
+        const made = await call('/api/v1/cards', { method: 'POST', body: { kind: 'task', title: orphan.title.slice(0, 140), text: `Born from a commit that found no board when it was made (${orphan.hash.trim().slice(0, 12)}).${orphan.body ? `\n\n${orphan.body.slice(0, 2000)}` : ''}` } });
+        await call(`/api/v1/cards/${made.key}/start`, { method: 'POST', body: {} }).catch(() => {});
+        add(made.key, orphan.hash, orphan.title, orphan.author, orphan.email, orphan.files);
+        console.log(`${made.key} adopted  ${orphan.title.slice(0, 52)}`);
+      } catch (error) { console.log(`no card for ${orphan.hash.trim().slice(0, 12)} — ${error.message}`); }
     }
 
     if (!found.size) {
