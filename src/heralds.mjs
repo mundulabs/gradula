@@ -67,10 +67,17 @@ export const TEMPLATES = {
     line: 'Everything that moves — for the team channel.',
     filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided'], voice: 'plain' },
   },
+  /*
+   * Release meant "target: release" — the ladder of how far a wish may travel,
+   * which nobody sets since the board moves by itself. Since 2026-09-10 done
+   * IS production: a card goes to done when its commits are seen on main
+   * (deployed.mjs, arrived) or when a hand approves it. So "what left the
+   * house" is exactly: moved to done.
+   */
   release: {
     name: 'Release',
-    line: 'Only what actually left the house.',
-    filter: { verbs: ['moved'], states: ['done'], targets: ['release'], voice: 'human' },
+    line: 'What reached production — every card that went to done.',
+    filter: { verbs: ['moved'], states: ['done'], voice: 'human' },
   },
   fire: {
     name: 'Fire',
@@ -84,7 +91,7 @@ export const TEMPLATES = {
   },
   outside: {
     name: 'Outside',
-    line: 'Only what was released, titles only — for the community.',
+    line: 'Only what a person published (gradula publish), titles only — for the community.',
     filter: { verbs: ['moved'], states: ['done'], visibility: 'public', voice: 'human' },
   },
 };
