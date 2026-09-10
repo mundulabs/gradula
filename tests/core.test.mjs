@@ -328,3 +328,11 @@ test('the root itself is a place: a vocabulary path "/" labels the files beside 
   assert.deepEqual(labelsFor({ files: ['.githooks/pre-push'], vocabulary }).module, ['githooks'], 'a dot-folder is a module without its dot');
   assert.deepEqual(labelsFor({ files: ['docs/x.md'], vocabulary }).module, [], 'a folder the vocabulary does not know is not the root');
 });
+
+test('the files say the craft too: a commit in the hooks is tooling, one in the server is backend — without a word of prose', async () => {
+  const { labelsFor } = await import('../src/labels.mjs');
+  assert.deepEqual(labelsFor({ title: 'Every editor', files: ['.githooks/pre-push', 'tools/sdk/plan-line.mjs'] }).stack, ['tooling']);
+  assert.deepEqual(labelsFor({ title: 'The door', files: ['apps/mundula-web/server/gate.mjs'] }).stack, ['backend']);
+  assert.deepEqual(labelsFor({ title: 'A ring', files: ['apps/mundula-web/server/docs-page/page.js', 'docs/skills.json'] }).stack, ['backend', 'web', 'docs'], 'the docs page is served by the server and is a web page');
+  assert.deepEqual(labelsFor({ title: 'The store notes', files: ['tools/release/Fastfile', 'apps/mundula/eas.json'] }).stack, ['ios', 'tooling']);
+});

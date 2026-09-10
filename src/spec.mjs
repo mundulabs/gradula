@@ -88,6 +88,11 @@ export const STACKS = [
   // of models and embeddings. `desktop` and `midi` are NOT here — zero
   // mentions, and a craft nobody writes about labels nothing.
   'speech', 'model',
+  // The house's own tools: hooks, the SDK's scripts, the release kit, the
+  // tests. Measured 2026-09-10: sixteen of a week's cards touched nothing
+  // but these and carried no craft — the axis that says WHAT KIND of work
+  // said nothing about the work that keeps the house running.
+  'tooling',
 ];
 
 /**

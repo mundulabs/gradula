@@ -208,7 +208,7 @@ test('a commit as evidence is its own line — the hash, linked into the reposit
   await gradula.settle(); said.length = 0;
   await gradula.addEvidence(card.key, { kind: 'commit', ref: 'd2de57062b76abcdef', note: 'Every editor: the hooks are git\'s', files: ['docs/x.md'] }, 'David (Claude Code · mac)');
   await gradula.settle();
-  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ ready · commit <a href="https://github.com/acc/repo/commit/d2de570">d2de570</a>\nEvery editor: the hooks are git's\nDavid (Claude Code · mac)`);
+  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ ready · commit <a href="https://github.com/acc/repo/commit/d2de570">d2de570</a>\nEvery editor: the hooks are git's [docs]\nDavid (Claude Code · mac)`);
   assert.deepEqual(await gradula.cardsOfRef('PRB', 'd2de57062b76'), [card.key], 'the commit knows its card — adopted once');
 });
 

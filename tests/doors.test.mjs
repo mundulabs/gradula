@@ -674,13 +674,13 @@ test('relabel fills an empty axis and asks about a touched one', async (t) => {
   const byKey = Object.fromEntries(done.body.map((r) => [r.card, r]));
 
   const filled = await call(`/api/v1/cards/${empty.body.key}`, { token });
-  assert.deepEqual(filled.body.stack, ['gpu'], 'an empty axis is filled, and needs no hand');
+  assert.deepEqual(filled.body.stack, ['gpu', 'frontend'], 'an empty axis is filled, and needs no hand — the word says gpu, the path says frontend');
   assert.deepEqual(filled.body.module, ['panels']);
   assert.deepEqual(byKey[empty.body.key].asked, { module: [], stack: [] }, 'and nothing was asked about it');
 
   const held = await call(`/api/v1/cards/${touched.body.key}`, { token });
   assert.deepEqual(held.body.stack, ['design'], "what a hand set is not touched");
-  assert.deepEqual(held.body.suggestions.stack, ['gpu'], 'what the rule would add stands beside it');
+  assert.deepEqual(held.body.suggestions.stack, ['gpu', 'frontend'], 'what the rule would add stands beside it');
   assert.deepEqual(held.body.module, ['panels'], 'the other axis was empty, so it was filled');
 });
 

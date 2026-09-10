@@ -21,6 +21,29 @@ import { STACKS } from './spec.mjs';
  */
 // The German words below are DATA, not prose: a card may be written in either
 // language, and "Oberfläche" must find the same stack as "UI".
+/**
+ * Where a craft lives in a tree. Read against a card's files — the paths the
+ * commits touched — so a card born from a commit carries its craft without a
+ * word of prose. The rules are the house's shape (apps/, packages/, infra/);
+ * a project with another shape says its own in the vocabulary one day.
+ */
+export const STACK_PATHS = {
+  backend: [/^apps\/[^/]+\/server\//, /^packages\/hub\//, /^packages\/cloud\//],
+  frontend: [/^apps\/[^/]+\/(?!server\/).*\.tsx$/, /^packages\/(panels|ui|stage)\//, /\.css$/],
+  web: [/^apps\/[^/]+\/(web|marketing)\//, /^apps\/[^/]+\/server\/(marketing|docs)/, /\.html$/],
+  ios: [/(^|\/)ios\//, /\.swift$/, /(^|\/)fastlane\//, /(^|\/)eas\.json$/],
+  android: [/(^|\/)android\//, /\.kt$/],
+  native: [/^packages\/native\//],
+  engine: [/^packages\/engine\//, /^packages\/core\/src\/audio\//, /\.(dsp|wasm)$/],
+  gpu: [/^packages\/scene\/src\/gpu\//, /\.wgsl$/, /\.(glsl|metal)$/],
+  infra: [/^infra\//, /(^|\/)Dockerfile$/, /\.compose\.yml$/, /(^|\/)docker-compose\.yml$/, /^\.github\//, /(^|\/)\.dockerignore$/],
+  docs: [/^docs\//, /\.md$/],
+  design: [/^packages\/brand\//, /(^|\/)brand\//, /\.(svg|afdesign|sketch|fig)$/],
+  speech: [/^packages\/(word|lingo)\//, /^packages\/control\/src\/(speech|ear)/],
+  model: [/^packages\/ai\//],
+  tooling: [/^\.githooks\//, /^tools\//, /^tests\//, /^scripts\//, /(^|\/)package\.json$/, /(^|\/)package-lock\.json$/, /^\.claude\//, /^\.mcp\.json$/, /^GEMINI\.md$/, /^AGENTS\.md$/, /^CLAUDE\.md$/],
+};
+
 export const STACK_WORDS = {
   backend: ['server', 'api', 'endpunkt', 'endpoint', 'route', 'datenbank', 'database', 'postgres', 'sql', 'relay', 's3', 'minio', 'bucket'],
   frontend: ['ui', 'oberfläche', 'oberflaeche', 'panel', 'window', 'ansicht', 'view', 'button', 'knopf', 'layout', 'css', 'react'],
@@ -40,6 +63,8 @@ export const STACK_WORDS = {
   speech: ['sprache', 'speech', 'stimme', 'voice', 'gesprochen', 'locale', 'tts', 'asr', 'whisper', 'diktat', 'aussprache', 'silbe'],
   // What runs a model: on the device or behind the relay.
   model: ['modell', 'model', 'embedding', 'clip', 'tensor', 'neural', 'foundation', 'inferenz', 'inference', 'prompt', 'coreml'],
+  // not `hook`: a webhook is infrastructure, and "the Sentry token and hook" must stay infra
+  tooling: ['githook', 'git hook', 'pre-push', 'pre-commit', 'script', 'cli', 'werkzeug', 'tooling', 'generator', 'lint', 'test suite'],
   // `token` is NOT in that list. On this board a token is almost always an
   // access token — "store the Sentry token and hook" came back labelled
   // `model`, and a craft that is wrong is worse than a craft that is absent.
@@ -172,7 +197,14 @@ export function labelsFor({ title = '', text = '', files = [], vocabulary = [] }
 
   const stack = [];
   for (const name of STACKS) {
-    if (STACK_WORDS[name].some((word) => mentions(prosa, word))) stack.push(name);
+    if ((STACK_WORDS[name] ?? []).some((word) => mentions(prosa, word))) stack.push(name);
+  }
+  // THE FILES SAY THE CRAFT TOO. A card born from a commit has no prose that
+  // names a craft — but a commit in apps/*/server is backend work whatever the
+  // subject says, and one in .githooks is tooling. Paths first, prose adds.
+  for (const name of STACKS) {
+    if (stack.includes(name)) continue;
+    if ((STACK_PATHS[name] ?? []).some((rule) => paths.some((found) => rule.test(found)))) stack.push(name);
   }
 
   return { module, stack };
