@@ -164,10 +164,10 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
     verb,
     title,
     labels.length && !isPublic ? `[${labels.join(' ')}]` : '',
-    !isPublic && actor ? `· ${actor}` : '',
-    !isPublic && data.reason ? `· ${short(data.reason, 120)}` : '',
   ].filter(Boolean);
-  return parts.join(' ');
+  // who, and why, on a line of their own: the hand is long ("Name (Claude Code · machine)"), and a sentence that ends in it is hard to read
+  const tail = [!isPublic && actor ? actor : '', !isPublic && data.reason ? short(data.reason, 200) : ''].filter(Boolean);
+  return parts.join(' ') + (tail.length ? `\n${tail.join(' · ')}` : '');
 }
 
 /**

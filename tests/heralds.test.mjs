@@ -66,7 +66,7 @@ test('the title goes outward — and nothing else', () => {
 test('two voices, two sentences', () => {
   const event = move({ data: { reason: 'gate green' } });
   assert.equal(lineFor(event, { voice: 'human' }), 'Done: A picture and a file — gate green');
-  assert.match(lineFor(event, { voice: 'plain' }), /^GRD-9 moved .* \[infra backend\] · david/);
+  assert.match(lineFor(event, { voice: 'plain' }), /^GRD-9 moved .* \[infra backend\]\ndavid · gate green$/, 'the hand and the reason on a line of their own');
 });
 
 test('a long title is shortened, not cut off', () => {
@@ -175,7 +175,7 @@ test('the key at the head of the line is the link — no second key beneath, and
   const card = await gradula.addItem('PRB', { title: 'A thing & another', kind: 'task' }, 'david');
   await gradula.settle();
   const plain = said.find((m) => m.text.includes(' created '));
-  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> created A thing &amp; another · david`, 'the key is the link, then the sentence — nothing appended');
+  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> created A thing &amp; another\ndavid`, 'the key is the link, then the sentence, the hand beneath — nothing appended');
   const human = said.find((m) => m.text.includes('New:'));
   assert.equal(human.text, `<a href="https://board.test/${card.key}">${card.key}</a> New: A thing &amp; another`);
   said.length = 0;
