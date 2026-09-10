@@ -416,6 +416,8 @@ alter table project  add column if not exists people jsonb not null default '{}'
 -- other half: half a board in German and half in English is a board you
 -- cannot search, and neither reader can fix it alone.
 alter table project  add column if not exists language text;
+-- How a card becomes public: 'hand' (someone publishes it) or 'done' (whatever reaches production, incidents excepted).
+alter table project  add column if not exists publish text;
 -- May Gradula close an issue in Sentry when its card is done? It was computed
 -- in the service, handed back in the answer, and never stored — so the one
 -- line that reads it -- closeInSentry -- has never once been true on Postgres.
@@ -496,7 +498,7 @@ export async function createPgStore(url, { schema = null } = {}) {
     projects: {
       async create({ key, name, repo = null }) {
         const { rows } = await q(
-          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, created',
+          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, created',
           [mintId(), key, name, repo],
         );
         return { ...rows[0], created: iso(rows[0].created) };
@@ -509,7 +511,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         return { project: key, removed: rowCount };
       },
       async get(key) {
-        const { rows } = await q('select id, key, name, repo, people, language, created from project where key = $1', [key]);
+        const { rows } = await q('select id, key, name, repo, people, language, publish, created from project where key = $1', [key]);
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       /**
@@ -528,7 +530,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         try {
           await client.query('begin');
           const { rows } = await client.query(
-            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, created',
+            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, created',
             [oldKey, newKey],
           );
           if (!rows[0]) { await client.query('rollback'); return null; }
@@ -553,7 +555,7 @@ export async function createPgStore(url, { schema = null } = {}) {
       async patch(key, changes) {
         const sets = [];
         const values = [];
-        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language']]) {
+        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish']]) {
           if (changes[name] !== undefined) { values.push(changes[name]); sets.push(`${column} = $${values.length}`); }
         }
         // A map, not a column of its own: an alias is a word about a word.
@@ -561,13 +563,13 @@ export async function createPgStore(url, { schema = null } = {}) {
         if (!sets.length) return store.projects.get(key);
         values.push(key);
         const { rows } = await q(
-          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, created`,
+          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, created`,
           values,
         );
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       async list() {
-        const { rows } = await q('select id, key, name, repo, people, language, created from project order by key');
+        const { rows } = await q('select id, key, name, repo, people, language, publish, created from project order by key');
         return rows.map((row) => ({ ...row, created: iso(row.created) }));
       },
     },

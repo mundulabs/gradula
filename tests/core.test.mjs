@@ -289,3 +289,22 @@ test('a card that is only words may be removed; one with a chronicle goes on ice
   await gradula.moveItem(released.key, 'ideas', 'david');
   await assert.rejects(gradula.removeItem(released.key, 'david'), (e) => e.code === 'has-history', 'back in ideas, but it has a chronicle');
 });
+
+test('the publishing rule: with "done" a card that reaches done becomes public by itself, incidents excepted; by hand nothing does', async () => {
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  const quiet = await gradula.addItem('PRB', { title: 'By hand', kind: 'task' }, 'david');
+  await gradula.moveItem(quiet.key, 'done', 'david');
+  assert.equal((await gradula.getItem(quiet.key)).visibility, 'internal', 'the default: nothing leaves the house');
+  const project = await gradula.patchProject('PRB', { publish: 'done' }, 'david');
+  assert.equal(project.publish, 'done');
+  const shipped = await gradula.addItem('PRB', { title: 'Shipped', kind: 'task' }, 'david');
+  await gradula.moveItem(shipped.key, 'done', 'dokploy', 'seen on production (abc)');
+  assert.equal((await gradula.getItem(shipped.key)).visibility, 'public', 'reached production: public by the rule');
+  const crash = await gradula.addItem('PRB', { title: 'TypeError', kind: 'task' }, 'sentry');
+  await store.items.patch(crash.key, { source: 'sentry' });
+  await gradula.moveItem(crash.key, 'done', 'dokploy', 'seen on production (abc)');
+  assert.equal((await gradula.getItem(crash.key)).visibility, 'internal', 'a crash is never news for the outside');
+  await assert.rejects(gradula.patchProject('PRB', { publish: 'always' }, 'david'), (e) => e.code === 'publish');
+});

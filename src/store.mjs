@@ -95,7 +95,7 @@ export function createMemoryStore() {
     projects: {
       async create({ key, name, repo = null }) {
         if (projects.has(key)) throw Object.assign(new Error(`Project ${key} already exists`), { code: 'taken' });
-        const row = { id: mintId(), key, name, repo, people: {}, language: null, created: now() };
+        const row = { id: mintId(), key, name, repo, people: {}, language: null, publish: null, created: now() };
         projects.set(key, row);
         counters.set(key, 0);
         return clone(row);
@@ -139,6 +139,7 @@ export function createMemoryStore() {
         if (changes.repo !== undefined) row.repo = changes.repo;
         if (changes.people !== undefined) row.people = changes.people;
         if (changes.language !== undefined) row.language = changes.language;
+        if (changes.publish !== undefined) row.publish = changes.publish;
         return clone(row);
       },
       async list() { return clone([...projects.values()]); },

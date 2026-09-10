@@ -466,6 +466,18 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         else if (!LANGUAGES.includes(String(changes.language))) throw bad('language', `language: ${LANGUAGES.join(', ')}.`);
         else next.language = String(changes.language);
       }
+      /*
+       * HOW A CARD BECOMES PUBLIC. By hand — someone publishes it, and nothing
+       * leaves the house otherwise — or by the rule 'done': whatever reaches
+       * production is public, incidents excepted (a crash is never news for
+       * the outside). One rule per board, chosen in the open; the Outside
+       * herald then needs no tap per card.
+       */
+      if (changes.publish !== undefined) {
+        if (changes.publish === null || changes.publish === 'hand') next.publish = null;
+        else if (changes.publish !== 'done') throw bad('publish', 'publish: hand or done.');
+        else next.publish = 'done';
+      }
       if (!Object.keys(next).length) return project;
       return store.projects.patch(project.key, next);
     },
@@ -1160,6 +1172,14 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       await store.items.patch(item.key, { state: target });
       await note(item, actor, 'moved', { from: item.state, to: target, reason });
       if (target === 'done') await this.closeInSentry(item, actor);
+      /* the board's rule: what reaches done is public — incidents excepted, and only what is not public already */
+      if (target === 'done' && item.visibility !== 'public' && item.source !== 'sentry') {
+        const board = await store.projects.get(item.project);
+        if (board?.publish === 'done') {
+          await store.items.patch(item.key, { visibility: 'public' });
+          await note(item, actor, 'changed', { fields: ['visibility'], visibility: 'public', by: 'rule', rule: 'done' });
+        }
+      }
       const alsoClosed = ['done', 'ice'].includes(target) ? await this.ripen(item.project) : [];
       return { ...(await this.getItem(item.key)), ...(alsoClosed.length ? { alsoClosed } : {}) };
     },

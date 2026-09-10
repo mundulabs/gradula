@@ -49,6 +49,7 @@ const HELP = `gradula — wish, board, standing
                  [--every daily|weekly --hour 7]   a report that comes by itself (UTC)
   gradula herald probe|drop <id>
   gradula publish|unpublish <CARD> what may leave the house
+  gradula publishing hand|done     the rule: by hand, or everything that reaches production (incidents excepted)
   gradula relabel                  run the label rules over old cards:
                                  an empty axis is filled, a touched one is asked
   gradula suggestions              what the cartographer sees (it changes nothing)
@@ -810,6 +811,15 @@ switch (command) {
    * Release. A command of its own, because it is a decision of its own: a
    * card does not become public by slipping through a filter.
    */
+  case 'publishing': {
+    // gradula publishing hand|done — the board's rule for what becomes public
+    const rule = String(words[0] ?? '');
+    if (!['hand', 'done'].includes(rule)) stop('gradula publishing hand|done   (hand: someone publishes a card; done: whatever reaches production, incidents excepted)');
+    const project = await call('/api/v1/project', { method: 'PATCH', body: { publish: rule } });
+    console.log(`${project.key}: a card becomes public ${project.publish === 'done' ? 'when it reaches production (incidents excepted)' : 'only when someone publishes it'}.`);
+    break;
+  }
+
   case 'publish':
   case 'unpublish': {
     const key = String(words[0] ?? '').toUpperCase();
