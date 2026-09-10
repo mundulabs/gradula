@@ -403,7 +403,7 @@ test('releasing is its own gesture — and only then does outside speak', async 
 
   await call('/api/v1/heralds', {
     method: 'PUT', token,
-    body: { kind: 'probe', name: 'Outside', chat: 'outside', token: 'x', template: 'outside' },
+    body: { kind: 'probe', name: 'Outside', chat: 'outside', token: 'x', template: 'public-release' },
   });
   const card = (await call('/api/v1/cards', {
     method: 'POST', token, actor: 'david', body: { kind: 'task', title: 'Something for everyone' },

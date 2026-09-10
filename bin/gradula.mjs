@@ -52,7 +52,7 @@ const HELP = `gradula — wish, board, standing
   gradula publishing hand|done     the rule: by hand, or everything that reaches production (incidents excepted)
   gradula releases                 what left the house, per lane: web, ios, android, ota — with the cards each carried
   gradula next [--lane ios] [--all] the note for the release about to go: what reached production since the last one on that lane
-  gradula notes --lane ios --version 1.2.0 --file notes.md   file the reviewed release notes — the text the store shows; Outside hears only these
+  gradula notes --lane ios --version 1.2.0 [--stage beta] --file notes.md   file the reviewed notes — the store's text; Release · public hears production, Beta · testers hears beta
   gradula relabel                  run the label rules over old cards:
                                  an empty axis is filled, a touched one is asked
   gradula suggestions              what the cartographer sees (it changes nothing)
@@ -870,7 +870,8 @@ switch (command) {
     const version = flags.version;
     const text = typeof flags.file === 'string' ? readFileSync(flags.file, 'utf8') : words.join(' ');
     if (!version || !text.trim()) stop('gradula notes --lane web|ios|android|ota --version <v> (--file notes.md | "the notes")');
-    const filed = await call('/api/v1/releases/notes', { method: 'POST', body: { lane, version: String(version), text } });
+    const stage = String(flags.stage ?? 'production');
+    const filed = await call('/api/v1/releases/notes', { method: 'POST', body: { lane, stage, version: String(version), text } });
     console.log(filed.filed ? `${lane} ${filed.version}: notes filed and spoken to ${filed.sent.length} ${filed.sent.length === 1 ? 'channel' : 'channels'}.` : `${lane} ${filed.version}: notes were filed before — nothing changed.`);
     break;
   }

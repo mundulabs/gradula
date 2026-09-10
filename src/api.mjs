@@ -380,7 +380,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['GET', /^\/api\/v1\/evidence\/([0-9a-f]{7,40})$/, async (_req, m, ctx) => ({ status: 200, body: { ref: m[1], cards: await gradula.cardsOfRef(ctx.project, m[1]) } })],
     ['POST', /^\/api\/v1\/releases\/notes$/, async (req, _m, ctx) => {
       const body = await readJson(req);
-      return { status: 201, body: await gradula.fileNotes(ctx.project, { lane: body.lane ?? 'web', version: body.version, text: body.text ?? null, locales: body.locales ?? null, name: body.name ?? null }, ctx.actor) };
+      return { status: 201, body: await gradula.fileNotes(ctx.project, { lane: body.lane ?? 'web', stage: body.stage ?? 'production', version: body.version, text: body.text ?? null, locales: body.locales ?? null, name: body.name ?? null }, ctx.actor) };
     }],
     ['GET', /^\/api\/v1\/releases$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.listReleases(ctx.project) })],
     ['GET', /^\/api\/v1\/releases\/next$/, async (req, _m, ctx) => {

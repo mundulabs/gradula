@@ -90,10 +90,37 @@ export const TEMPLATES = {
     line: 'Every decision with its reason. The most underrated channel.',
     filter: { verbs: ['decided'], voice: 'human' },
   },
+  /*
+   * Two releases, by audience. `release` is the machine's sentence, for the
+   * house; `public-release` is a person's sentence — the reviewed notes the
+   * store shows — for everyone else. Named by who they are for, because the
+   * one mistake that keeps happening is a public channel on the team's
+   * template.
+   */
+  'public-release': {
+    name: 'Release · public',
+    line: 'The reviewed release notes of what reached the store — for the people outside.',
+    filter: { verbs: ['notes'], stages: ['production'], visibility: 'public', voice: 'human' },
+  },
+  /*
+   * Testers get every beta: the TestFlight build with its What to Test, as
+   * it goes out — and nothing about production, which they will hear of
+   * with everyone else.
+   */
+  beta: {
+    name: 'Beta · testers',
+    line: 'Every TestFlight and beta build with its notes — for the testers.',
+    filter: { verbs: ['released', 'notes'], stages: ['beta'], visibility: 'public', voice: 'human' },
+  },
+  /*
+   * Outside is the community's window beyond releases: the milestones
+   * reached and the decisions taken that a person published. Not cards,
+   * not commits — the shape of where the thing is going.
+   */
   outside: {
     name: 'Outside',
-    line: 'The reviewed release notes — the text the store shows — and nothing else.',
-    filter: { verbs: ['notes'], visibility: 'public', voice: 'human' },
+    line: 'Milestones reached and decisions published — the road, for the community.',
+    filter: { verbs: ['moved', 'decided'], kinds: ['milestone', 'decision'], states: ['done'], visibility: 'public', voice: 'human' },
   },
 };
 

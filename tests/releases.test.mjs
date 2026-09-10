@@ -58,3 +58,23 @@ test('a release is remembered once and spoken once; an app build carries the car
   const list = await gradula.listReleases('PRB');
   assert.deepEqual(list.map((r) => r.lane), ['ios', 'ios', 'web'], 'newest first');
 });
+
+test('beta and production are two audiences: testers hear every beta with its notes, the public hears the store', async () => {
+  const { releasesIn, stageOf } = await import('../src/releases.mjs');
+  assert.equal(stageOf('beta'), 'beta'); assert.equal(stageOf('production'), 'production'); assert.equal(stageOf(null), 'production');
+  const found = releasesIn({ deployed: {}, environments: [], updates: [], builds: [
+    { profile: 'beta', platform: 'ios', status: 'built', at: '2026-09-10T15:00:00Z', url: 'b/1', version: '1 · 3' },
+    { profile: 'production', platform: 'ios', status: 'built', at: '2026-09-10T16:00:00Z', url: 'b/2', version: '1 · 4' },
+  ] });
+  assert.deepEqual(found.map((r) => r.stage), ['beta', 'production']);
+  const said = [];
+  const store = createMemoryStore();
+  const gradula = createGradula(store, { heraldKinds: { probe: { async send({ chat }, text) { said.push({ chat, text }); return { sent: true }; } } } });
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  await gradula.setHerald('PRB', { kind: 'probe', name: 'Testers', chat: 'testers', token: 'x', template: 'beta' }, 'david');
+  await gradula.setHerald('PRB', { kind: 'probe', name: 'World', chat: 'world', token: 'x', template: 'public-release' }, 'david');
+  await gradula.fileNotes('PRB', { lane: 'ios', stage: 'beta', version: '1.2.0 · 3', text: 'Try the new bass line.' }, 'david');
+  await gradula.fileNotes('PRB', { lane: 'ios', stage: 'production', version: '1.2.0', text: 'Hum a melody, get a bass line.' }, 'david');
+  assert.deepEqual(said.map((m) => [m.chat, m.text.split('\n')[0]]), [['testers', 'Probe 1.2.0 · 3 · iOS · TestFlight'], ['world', 'Probe 1.2.0 · iOS']], 'the beta to the testers, the store to the world — and never the other way');
+  await assert.rejects(gradula.setHerald('PRB', { kind: 'probe', name: 'x', chat: 'x', token: 'x', filter: { stages: ['alpha'] } }, 'david'), (e) => e.code === 'stages');
+});

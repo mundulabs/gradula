@@ -29,6 +29,16 @@ import { LADDER } from './spec.mjs';
 /** The lanes an app release may take — a build's platform, or the update channel. */
 export const LANES = ['web', 'ios', 'android', 'ota'];
 
+/**
+ * BETA OR PRODUCTION. A TestFlight build and an App Store release are both
+ * releases, and not the same audience: testers get every beta, the world
+ * gets the store. The stage comes from the build profile (EAS: beta,
+ * production) or the update channel; the web knows only production — dev
+ * is a review, not a release.
+ */
+export const STAGES = ['beta', 'production'];
+export const stageOf = (profileOrChannel) => (String(profileOrChannel ?? '').toLowerCase() === 'beta' ? 'beta' : 'production');
+
 /** A build that counts as a release: finished, for the people (not a dev client). */
 const isReleaseBuild = (b) => b?.status === 'built' && ['production', 'beta'].includes(String(b.profile ?? '').toLowerCase());
 const isReleaseUpdate = (u) => ['production', 'prod', 'beta'].includes(String(u?.channel ?? '').toLowerCase());
@@ -42,17 +52,17 @@ export function releasesIn(doc = {}) {
   const web = doc.deployed?.production;
   if (web?.sha) {
     const live = (doc.environments ?? []).find((e) => e.id === 'production')?.deployments?.find((d) => d.status === 'live' || d.status === 'done');
-    out.push({ id: `web:${web.sha}`, lane: 'web', at: web.at ?? null, commit: web.sha, version: null, title: live?.title ?? null, url: null, cards: [...(web.cards ?? [])] });
+    out.push({ id: `web:${web.sha}`, lane: 'web', at: web.at ?? null, commit: web.sha, version: null, title: live?.title ?? null, url: null, stage: 'production', cards: [...(web.cards ?? [])] });
   }
   for (const b of doc.builds ?? []) {
     if (!isReleaseBuild(b)) continue;
     const lane = String(b.platform ?? '').toLowerCase();
     if (!['ios', 'android'].includes(lane)) continue;
-    out.push({ id: `build:${b.url ?? `${lane}:${b.at}`}`, lane, at: b.at ?? null, commit: b.commit ?? null, version: b.version ?? null, title: b.title ?? null, url: b.url ?? null, profile: b.profile ?? null, cards: null });
+    out.push({ id: `build:${b.url ?? `${lane}:${b.at}`}`, lane, at: b.at ?? null, commit: b.commit ?? null, version: b.version ?? null, title: b.title ?? null, url: b.url ?? null, profile: b.profile ?? null, stage: stageOf(b.profile), cards: null });
   }
   for (const u of doc.updates ?? []) {
     if (!isReleaseUpdate(u)) continue;
-    out.push({ id: `update:${u.channel}:${u.at}`, lane: 'ota', at: u.at ?? null, commit: u.commit ?? null, version: u.runtime ?? null, title: u.message ?? null, url: null, platforms: u.platforms ?? [], cards: null });
+    out.push({ id: `update:${u.channel}:${u.at}`, lane: 'ota', at: u.at ?? null, commit: u.commit ?? null, version: u.runtime ?? null, title: u.message ?? null, url: null, platforms: u.platforms ?? [], stage: stageOf(u.channel), cards: null });
   }
   return out.filter((r) => r.at).sort((a, b) => String(a.at).localeCompare(String(b.at)));
 }
@@ -78,8 +88,8 @@ const LANE_NAMES = {
   de: { web: 'Web', ios: 'iOS', android: 'Android', ota: 'Update' },
 };
 const WORDS = {
-  en: { released: 'released', on: 'on', testflight: 'TestFlight', cards: (n) => `${n} ${n === 1 ? 'card' : 'cards'}`, since: 'since', nothing: 'no card named — a release of the plumbing', ota: 'over the air' },
-  de: { released: 'ausgeliefert', on: 'auf', testflight: 'TestFlight', cards: (n) => `${n} ${n === 1 ? 'Karte' : 'Karten'}`, since: 'seit', nothing: 'keine Karte genannt — eine Auslieferung der Leitungen', ota: 'über die Luft' },
+  en: { released: 'released', on: 'on', testflight: 'TestFlight', beta: 'beta', cards: (n) => `${n} ${n === 1 ? 'card' : 'cards'}`, since: 'since', nothing: 'no card named — a release of the plumbing', ota: 'over the air' },
+  de: { released: 'ausgeliefert', on: 'auf', testflight: 'TestFlight', beta: 'Beta', cards: (n) => `${n} ${n === 1 ? 'Karte' : 'Karten'}`, since: 'seit', nothing: 'keine Karte genannt — eine Auslieferung der Leitungen', ota: 'über die Luft' },
 };
 
 const shortSha = (sha) => (sha ? String(sha).slice(0, 7) : null);
@@ -95,7 +105,7 @@ export function releaseNote(release, cards = [], { visibility = 'internal', lang
   const lane = (LANE_NAMES[language] ?? LANE_NAMES.en)[release.lane] ?? release.lane;
   const shown = cards.filter((c) => !isPublic || c.visibility === 'public');
   if (isPublic && !shown.length) return null;
-  const where = release.lane === 'ios' && release.profile === 'beta' ? ` · ${w.testflight}` : release.lane === 'ota' ? ` · ${w.ota}` : '';
+  const where = release.stage === 'beta' ? ` · ${release.lane === 'ios' ? w.testflight : w.beta}` : release.lane === 'ota' ? ` · ${w.ota}` : '';
   const version = release.version ? ` ${release.version}` : release.commit ? ` ${shortSha(release.commit)}` : '';
   const title = release.title ? (String(release.title).length > 120 ? `${String(release.title).slice(0, 119)}…` : String(release.title)) : null;
   // the head is one line; the deployment's own title, when shown, stands beneath it — the head must read at a glance

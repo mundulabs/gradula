@@ -36,13 +36,17 @@ test('labels are an OR question across BOTH axes', () => {
   assert.equal(matches({ labels: ['infra'] }, move()), true, 'the module counts too');
 });
 
-test('a public channel gets ONLY what was released — and it hears releases, not card moves', async () => {
-  const filter = TEMPLATES.outside.filter;
+test('a public channel gets ONLY what was released — and Release · public hears reviewed notes, not card moves', async () => {
+  const filter = TEMPLATES['public-release'].filter;
   assert.equal(matches(filter, move()), false, 'a card is internal by itself');
   assert.equal(matches(filter, move({ card: { visibility: 'public' } })), false, 'a public card moving is still not a release');
-  assert.deepEqual(filter.verbs, ['notes'], 'the outside hears reviewed notes, not raw releases');
+  assert.deepEqual(filter.verbs, ['notes'], 'the public release hears reviewed notes, not raw releases');
+  const road = TEMPLATES.outside.filter;
+  assert.equal(matches(road, move({ card: { visibility: 'public', kind: 'task' } })), false, 'a task is not the road');
+  assert.equal(matches(road, move({ card: { visibility: 'public', kind: 'milestone', state: 'done' } })), true, 'a published milestone reached is');
+  assert.equal(matches(road, move({ card: { visibility: 'internal', kind: 'milestone', state: 'done' } })), false, 'and only published');
   const { releaseNote } = await import('../src/releases.mjs');
-  const release = { id: 'build:x', lane: 'ios', at: '2026-09-10T16:00:00Z', version: '0.0.1 · 3', profile: 'beta', title: 'internal build title', url: 'https://expo.dev/b/x' };
+  const release = { id: 'build:x', lane: 'ios', at: '2026-09-10T16:00:00Z', version: '0.0.1 · 3', profile: 'beta', stage: 'beta', title: 'internal build title', url: 'https://expo.dev/b/x' };
   const cards = [{ key: 'P-1', title: 'Public thing', visibility: 'public' }, { key: 'P-2', title: 'Secret thing', visibility: 'internal' }];
   const outward = releaseNote(release, cards, { visibility: 'public' });
   assert.equal(outward, 'iOS 0.0.1 · 3 · TestFlight — released\n• Public thing', 'titles of public cards only; no key, no build title, no link');
