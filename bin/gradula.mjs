@@ -63,6 +63,7 @@ const HELP = `gradula — wish, board, standing
   gradula standing                 where things have arrived (reads Dokploy)
   gradula app [--app @acc/slug --token <expo token>]
                                  where the APP has arrived (reads EAS)
+  gradula env --compose <id> --from <.env> KEY…  the server's variables from a file, then redeploy (DOKPLOY_URL/_API_TOKEN)
   gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
   gradula sentry [--org <org> --project <slug>] [--base eu|us] [--token <t>]
                  [--hook-secret <s>] [--write-back [off]]
@@ -1039,6 +1040,38 @@ switch (command) {
       console.log(`  ${d.standing.padEnd(10)} ${String(d.at ?? '').slice(0, 16).replace('T', ' ')}  ${d.title}`);
     }
     if (now.standing === 'unknown') console.log('\nConnect it:  gradula dokploy --base <api> --token <key> --compose <id>');
+    break;
+  }
+
+  case 'env': {
+    /*
+     * THE SERVER'S OWN VARIABLES, FROM A FILE THAT NEVER LEAVES THE MACHINE.
+     *   gradula env --compose <id> --from <.env file> KEY [KEY…]     (DOKPLOY_URL, DOKPLOY_API_TOKEN in the environment)
+     * Reads the named keys out of the file, merges them into the compose's variables in Dokploy,
+     * and redeploys. Nothing is typed, nothing is printed — the values go from the file to the
+     * server and nowhere else. This is how the house bot's key (TELEGRAM_BOT_TOKEN) reaches the board.
+     */
+    const base = String(process.env.DOKPLOY_URL ?? '').replace(/\/+$/, '');
+    const apiKey = process.env.DOKPLOY_API_TOKEN;
+    const composeId = flags.compose;
+    const from = flags.from;
+    if (!base || !apiKey) stop('DOKPLOY_URL and DOKPLOY_API_TOKEN must be in the environment.');
+    if (!composeId || !from || !words.length) stop('gradula env --compose <id> --from <.env file> KEY [KEY…]');
+    const file = Object.fromEntries(readFileSync(String(from), 'utf8').split(/\r?\n/).filter((l) => l.includes('=') && !l.trimStart().startsWith('#')).map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim()]));
+    const missing = words.filter((k) => !file[k]);
+    if (missing.length) stop(`${from} has no value for ${missing.join(', ')}.`);
+    const dok = async (path, body) => {
+      const res = await fetch(`${base}/${path}`, { method: body ? 'POST' : 'GET', headers: { 'x-api-key': apiKey, 'content-type': 'application/json', accept: 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      if (!res.ok) throw new Error(`${path}: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+      return res.json();
+    };
+    const compose = await dok(`compose.one?composeId=${encodeURIComponent(String(composeId))}`);
+    const merged = new Map();
+    for (const line of String(compose.env ?? '').split(/\r?\n/)) { const at = line.indexOf('='); if (at > 0 && !line.trimStart().startsWith('#')) merged.set(line.slice(0, at).trim(), line.slice(at + 1)); }
+    for (const k of words) merged.set(k, file[k]);
+    await dok('compose.saveEnvironment', { composeId: String(composeId), env: [...merged].map(([k, v]) => `${k}=${v}`).join('\n'), createEnvFile: true });
+    await dok('compose.deploy', { composeId: String(composeId) });
+    console.log(`${compose.appName ?? composeId}: ${words.join(', ')} set — redeploying.`);
     break;
   }
 
