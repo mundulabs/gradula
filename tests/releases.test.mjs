@@ -37,7 +37,7 @@ test('a release is remembered once and spoken once; an app build carries the car
   const spoken = await gradula.noteReleases('PRB', first, { now: clock });
   assert.equal(spoken.length, 1);
   assert.equal(said.length, 1);
-  assert.match(said[0].text, /^Web bbbbbbb — released · Ship\n• PRB-2 Second thing$/);
+  assert.match(said[0].text, /^Web bbbbbbb — released\nShip\n• PRB-2 Second thing$/);
   // the same head again: silence
   assert.deepEqual(await gradula.noteReleases('PRB', first), []);
   assert.equal(said.length, 1);
@@ -54,7 +54,7 @@ test('a release is remembered once and spoken once; an app build carries the car
   second.builds[0].version = '0.0.1 · 4';
   await gradula.noteReleases('PRB', second, { github: { repo: 'acc/repo', token: 't' }, fetchImpl, now: clock });
   assert.equal(said.length, 3);
-  assert.equal(said[2].text, `iOS 0.0.1 · 4 · TestFlight — released · A build\n• ${a.key} First thing\nhttps://expo.dev/b/2`, 'since the previous build: the cards its commits name');
+  assert.equal(said[2].text, `iOS 0.0.1 · 4 · TestFlight — released\nA build\n• ${a.key} First thing\nhttps://expo.dev/b/2`, 'since the previous build: the cards its commits name');
   const list = await gradula.listReleases('PRB');
   assert.deepEqual(list.map((r) => r.lane), ['ios', 'ios', 'web'], 'newest first');
 });

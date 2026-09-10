@@ -96,7 +96,8 @@ export function releaseNote(release, cards = [], { visibility = 'internal', lang
   const where = release.lane === 'ios' && release.profile === 'beta' ? ` · ${w.testflight}` : release.lane === 'ota' ? ` · ${w.ota}` : '';
   const version = release.version ? ` ${release.version}` : release.commit ? ` ${shortSha(release.commit)}` : '';
   const title = release.title ? (String(release.title).length > 120 ? `${String(release.title).slice(0, 119)}…` : String(release.title)) : null;
-  const head = `${lane}${version}${where} — ${w.released}${!isPublic && title ? ` · ${title}` : ''}`;
+  // the head is one line; the deployment's own title, when shown, stands beneath it — the head must read at a glance
+  const head = `${lane}${version}${where} — ${w.released}${!isPublic && title ? `\n${title}` : ''}`;
   const lines = shown.map((c) => (isPublic ? `• ${c.title}` : `• ${c.key} ${c.title}`));
   const body = lines.length ? lines.join('\n') : w.nothing;
   return `${head}\n${body}${release.url && !isPublic ? `\n${release.url}` : ''}`;
