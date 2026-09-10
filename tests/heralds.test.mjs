@@ -183,3 +183,15 @@ test('the key at the head of the line is the link — no second key beneath, and
   await gradula.settle();
   assert.deepEqual(said, [], 'started right after created is the same moment — no second message');
 });
+
+test('a template picked on an existing herald replaces its filter — the form sends the old filter along, and the template still wins', async () => {
+  const { createGradula } = await import('../src/gradula.mjs');
+  const { createMemoryStore } = await import('../src/store.mjs');
+  const gradula = createGradula(createMemoryStore());
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  const made = await gradula.setHerald('PRB', { kind: 'telegram', name: 'Lab', chat: '-1', token: 'x', template: 'outside' }, 'david');
+  const changed = await gradula.setHerald('PRB', { ...made, token: '', template: 'release' }, 'david');
+  assert.deepEqual(changed.filter, TEMPLATES.release.filter, 'the picked template is the filter now');
+  const byHand = await gradula.setHerald('PRB', { ...changed, token: '', template: undefined, filter: { verbs: ['decided'] } }, 'david');
+  assert.deepEqual(byHand.filter, { verbs: ['decided'] }, 'without a template, the filter given is the hand\'s own');
+});

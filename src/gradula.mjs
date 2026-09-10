@@ -560,7 +560,14 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!heraldKinds[kind]) throw bad('kind', `herald kind: ${Object.keys(heraldKinds).join(', ')}.`);
       const template = input.template ? TEMPLATES[String(input.template)] : null;
       if (input.template && !template) throw bad('template', `template: ${Object.keys(TEMPLATES).join(', ')}.`);
-      const filter = { ...(template?.filter ?? {}), ...(input.filter ?? {}) };
+      /*
+       * A CHOSEN TEMPLATE WINS. The form sends the herald as it is — its old
+       * filter included — plus the template that was picked; merging the old
+       * filter over the template meant a picked template never applied, and
+       * "Save" changed nothing (2026-09-10). A template is the filter; a
+       * filter given without a template is a hand's own.
+       */
+      const filter = template ? { ...template.filter } : { ...(input.filter ?? {}) };
       if (filter.voice && !VOICES.includes(filter.voice)) throw bad('voice', `voice: ${VOICES.join(', ')}.`);
       // The channel's own language. Not the developer's: a workshop channel in
       // German and a client channel in English is one board and two audiences.
