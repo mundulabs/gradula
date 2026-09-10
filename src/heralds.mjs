@@ -146,7 +146,7 @@ const short = (text, n) => {
 export function lineFor(moment, { voice = 'plain', visibility = 'internal', project = null, language = 'en' } = {}) {
   const { card = {}, verb, actor, data = {} } = moment;
   const isPublic = visibility === 'public';
-  const title = short(card.title, 120);
+  const title = short(card.title, 140);   /* a card's own cap — a title is never cut here */
   const mark = project ? `${card.key ?? project}` : card.key ?? '';
 
   if (voice === 'human') {

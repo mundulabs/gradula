@@ -167,10 +167,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!heralds.length) return sent;
       // The fresh standing: in some places `item` is the card BEFORE the move.
       const card = (await store.items.get(item.key)) ?? item;
+      // A card the hook created and started in the same breath is ONE moment, not two messages.
+      if (verb === 'started' && card.created && Date.now() - Date.parse(card.created) < 60_000) return sent;
       // Read only when somebody is actually listening — no herald, no query.
       const board = await store.projects.get(item.project);
       for (const { herald, text } of messages(heralds, { card, verb, actor, data: data ?? {} }, { language: board?.language ?? 'en' })) {
-      // The link leads to the card. The PREVIEW stays off as long as the card
+      // The link leads to the card, and it IS the key at the head of the line —
+      // not a second key beneath it. The PREVIEW stays off as long as the card
       // is internal: Telegram's crawler fetches the address itself and
       // without a sign-in, and what it fetches it stores. Only a released
       // card may show itself — the same rule as for the sentence itself.
@@ -178,9 +181,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const kind = heraldKinds[herald.kind];
         if (!kind?.send) continue;
         const html = Boolean(link);
-        const body = link
-          ? `${escapeHtml(text)}\n<a href="${escapeHtml(link)}">${escapeHtml(card.key)}</a>`
-          : text;
+        const anchor = link ? `<a href="${escapeHtml(link)}">${escapeHtml(card.key)}</a>` : null;
+        const body = !link ? text
+          : text.startsWith(`${card.key} `) ? `${anchor}${escapeHtml(text.slice(card.key.length))}`
+            : `${anchor} ${escapeHtml(text)}`;
         const result = await kind.send(
           { token: keyOf(herald), chat: herald.chat }, body,
           { html, preview: card.visibility === 'public' },

@@ -162,3 +162,24 @@ test('the human voice speaks the herald\'s language, the plain voice speaks none
 
   assert.match(lineFor(done, { voice: 'human' }), /^Done: /, 'without a language it is English');
 });
+
+test('the key at the head of the line is the link — no second key beneath, and a human line gets it in front', async () => {
+  const { createGradula } = await import('../src/gradula.mjs');
+  const { createMemoryStore } = await import('../src/store.mjs');
+  const said = [];
+  const store = createMemoryStore();
+  const gradula = createGradula(store, { origin: 'https://board.test', heraldKinds: { probe: { async send(_c, text, opts) { said.push({ text, ...opts }); return { sent: true }; } } } });
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  await gradula.setHerald('PRB', { kind: 'probe', name: 'Plain', chat: 'a', token: 'x', template: 'workshop' }, 'david');
+  await gradula.setHerald('PRB', { kind: 'probe', name: 'Human', chat: 'b', token: 'x', filter: { verbs: ['created', 'moved'], voice: 'human' } }, 'david');
+  const card = await gradula.addItem('PRB', { title: 'A thing & another', kind: 'task' }, 'david');
+  await gradula.settle();
+  const plain = said.find((m) => m.text.includes(' created '));
+  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> created A thing &amp; another · david`, 'the key is the link, then the sentence — nothing appended');
+  const human = said.find((m) => m.text.includes('New:'));
+  assert.equal(human.text, `<a href="https://board.test/${card.key}">${card.key}</a> New: A thing &amp; another`);
+  said.length = 0;
+  await gradula.startItem(card.key, 'david');
+  await gradula.settle();
+  assert.deepEqual(said, [], 'started right after created is the same moment — no second message');
+});
