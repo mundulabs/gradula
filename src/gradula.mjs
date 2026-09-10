@@ -472,7 +472,8 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
 
     async listHeralds(projectKey) {
       const project = await this.getProject(projectKey);
-      return store.heralds.list(project.key);
+      // raw, then veiled here: the list must say WHICH heralds speak with the house key, and only heraldOut knows
+      return (await store.heralds.list(project.key, { raw: true })).map(heraldOut);
     },
 
     /**
