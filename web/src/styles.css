@@ -372,6 +372,9 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .herald header { display: flex; gap: .5rem; align-items: baseline; }
 .row { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .4rem; }
 .draft label { display: block; margin: .4rem 0; }
+/* a yes/no in the draft: the box and its sentence on one line */
+.draft label.check { display: flex; align-items: center; gap: 8px; }
+.draft label.check input { width: auto; margin: 0; }
 .draft label input, .draft label select { display: block; width: 100%; margin-top: .2rem; }
 .report {
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;

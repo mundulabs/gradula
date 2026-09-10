@@ -28,7 +28,7 @@ import {
   card as readCard, system as readSystem, move, start, create, change, confirm, say, decide,
   vocabulary as readVocabulary, links as readLinks, live as liveLine,
   standing as readStanding, NotSignedIn,
-  heralds as heraldsRead, myKeys, mintKey, revokeKey, type OwnKey, pendingDevices, approveDevice, denyDevice, type Device, templates as templatesRead, saveHerald, dropHerald,
+  heralds as heraldsRead, myKeys, mintKey, revokeKey, type OwnKey, pendingDevices, approveDevice, denyDevice, type Device, templates as templatesRead, houseKey as houseKeyRead, HOUSE_KEY, saveHerald, dropHerald,
   probeHerald, heraldChats, chatsForKey, report as reportRead, sendReport,
   type Me, type Card, type Project, type State, type Herald, type Template, type Report, type Link,
   type Standing, type SystemCard,
@@ -685,6 +685,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
   const [draft, setDraft] = useState<(Partial<Herald> & { template?: string; token?: string }) | null>(null);
   const [chats, setChats] = useState<Record<string, { id: string; kind: string; name: string }[]>>({});
   const [draftChats, setDraftChats] = useState<{ id: string; kind: string; name: string }[]>([]);
+  const [house, setHouse] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Report | null>(null);
@@ -695,7 +696,17 @@ function Settings({ project, close }: { project: string; close: () => void }) {
     heraldsRead(project).then(setHeralds).catch((e) => setError(String(e.message ?? e)));
   }, [project]);
 
-  useEffect(() => { reload(); templatesRead(project).then(setTemplates).catch(() => setTemplates({})); }, [project, reload]);
+  useEffect(() => { reload(); templatesRead(project).then(setTemplates).catch(() => setTemplates({})); houseKeyRead(project).then((h) => setHouse(!!h.available)).catch(() => setHouse(false)); }, [project, reload]);
+  /*
+   * THE CHANNEL IS A LIST. With the house key the list needs no button: as
+   * soon as the draft says "the house key", Telegram is asked which channels
+   * the house bot can see, and the field is a choice, not a number.
+   */
+  const usingHouse = draft?.token === HOUSE_KEY;
+  useEffect(() => {
+    if (!usingHouse) return;
+    chatsForKey(project, HOUSE_KEY).then((out) => setDraftChats(out.ok ? out.chats ?? [] : [])).catch(() => setDraftChats([]));
+  }, [project, usingHouse]);
 
   const save = async () => {
     if (!draft) return;
@@ -798,13 +809,29 @@ function Settings({ project, close }: { project: string; close: () => void }) {
           </label>
           <p className="hint">{t('herald.nameWhy')}</p>
 
-          <label>
-            {t('herald.key')}
-            <input type="password" value={draft.token ?? ''}
-              placeholder={draft.id ? t('herald.keyKept') : t('herald.keyPlaceholder')}
-              onChange={(e) => setDraft({ ...draft, token: e.target.value })} />
-          </label>
-          <p className="hint">{t('herald.keyWhy')}</p>
+          {/*
+            THE KEY: THE HOUSE'S, OR ONE TYPED IN. The house bot's key lives in
+            the server's environment; a herald that uses it carries only the
+            word "house". Typing a key stays possible for a bot of one's own.
+          */}
+          {house ? (
+            <label className="check">
+              <input type="checkbox" checked={usingHouse}
+                onChange={(e) => { setDraftChats([]); setDraft({ ...draft, token: e.target.checked ? HOUSE_KEY : '' }); }} />
+              {' '}{t('herald.houseKey')}
+            </label>
+          ) : null}
+          {!usingHouse ? (
+            <>
+              <label>
+                {t('herald.key')}
+                <input type="password" value={draft.token ?? ''}
+                  placeholder={draft.id ? t('herald.keyKept') : t('herald.keyPlaceholder')}
+                  onChange={(e) => setDraft({ ...draft, token: e.target.value })} />
+              </label>
+              <p className="hint">{t('herald.keyWhy')}</p>
+            </>
+          ) : <p className="hint">{t('herald.houseKeyWhy')}</p>}
 
           {/*
             The channel is a LIST, not a number to look up. The key that is

@@ -186,6 +186,9 @@ export const approveDevice = (project: string, id: string) =>
 export const denyDevice = (project: string, id: string) =>
   call<{ denied: boolean }>(`/api/v1/device/${id}/deny?project=${project}`, { method: 'POST' });
 export const templates = (project: string) => call<Record<string, Template>>(`/api/v1/heralds/templates?project=${project}`);
+/** Whether the house has a bot key of its own (the server's TELEGRAM_BOT_TOKEN) — then a herald may say "the house key" instead of carrying one. */
+export const houseKey = (project: string) => call<{ available: boolean }>(`/api/v1/heralds/house?project=${project}`);
+export const HOUSE_KEY = 'house';
 export const saveHerald = (project: string, herald: Partial<Herald> & { template?: string }) =>
   call<Herald>(`/api/v1/heralds?project=${project}`, { method: 'PUT', body: JSON.stringify(herald) });
 export const dropHerald = (project: string, id: string) =>

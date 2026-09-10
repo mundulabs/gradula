@@ -109,7 +109,18 @@ const labelled = (fields, vocabulary) => {
  */
 const HERALD_KINDS = { telegram };
 
-export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch } = {}) {
+/**
+ * THE HOUSE KEY. A bot key typed into a form on the board is a key that lives
+ * in a browser's memory and a person's clipboard on its way in. The house has
+ * one bot already, and its key lives where keys live — in the server's
+ * environment (TELEGRAM_BOT_TOKEN). A herald may say "the house key" instead
+ * of carrying one: the sentinel is stored, the key never is, and the seam
+ * below resolves it every time a herald speaks.
+ */
+export const HOUSE_KEY = 'house';
+
+export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null } = {}) {
+  const keyOf = (herald) => (herald?.token === HOUSE_KEY ? houseKey : herald?.token ?? null);
   const findItem = async (key) => {
     const parsed = parseItemKey(key);
     if (!parsed) throw bad('id', `"${key}" is not a card key (example: MDLA-142).`);
@@ -169,7 +180,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
           ? `${escapeHtml(text)}\n<a href="${escapeHtml(link)}">${escapeHtml(card.key)}</a>`
           : text;
         const result = await kind.send(
-          { token: herald.token, chat: herald.chat }, body,
+          { token: keyOf(herald), chat: herald.chat }, body,
           { html, preview: card.visibility === 'public' },
         );
         sent.push({ herald: herald.id, name: herald.name, ...result });
@@ -178,7 +189,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     return sent;
   }
 
-  const heraldOut = (herald) => ({ ...herald, token: herald.token ? 'set' : null });
+  const heraldOut = (herald) => ({ ...herald, token: herald.token ? 'set' : null, house: herald.token === HOUSE_KEY });
 
   return {
     store,
@@ -527,12 +538,16 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      *
      * The key is NOT stored by this call. It comes in, it asks, it is gone.
      */
+    /** Whether the house has a bot key — the form offers "the house key" only then. */
+    houseKeyAvailable() { return Boolean(houseKey); },
+
     async chatsFor({ kind = 'telegram', token }) {
       const door = heraldKinds[String(kind)];
       if (!door) throw bad('kind', `herald kind: ${Object.keys(heraldKinds).join(', ')}.`);
       if (!door.chats) return { ok: false, reason: `${kind} cannot list chats` };
       if (!token) return { ok: false, reason: 'no key' };
-      return door.chats({ token: String(token) });
+      if (String(token) === HOUSE_KEY && !houseKey) return { ok: false, reason: 'the house has no key (TELEGRAM_BOT_TOKEN)' };
+      return door.chats({ token: String(token) === HOUSE_KEY ? houseKey : String(token) });
     },
 
     async heraldChats(projectKey, id) {
@@ -541,7 +556,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!herald) throw missing('No such herald.');
       const kind = heraldKinds[herald.kind];
       if (!kind?.chats) return { ok: false, reason: `${herald.kind} cannot list chats` };
-      return kind.chats({ token: herald.token });
+      return kind.chats({ token: keyOf(herald) });
     },
 
     /**
@@ -609,7 +624,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!herald) throw missing('No such herald.');
       const kind = heraldKinds[herald.kind];
       if (!kind?.send) return { sent: false, reason: `${herald.kind} cannot send` };
-      return kind.send({ token: herald.token, chat: herald.chat }, String(text).slice(0, 3900), { html: true });
+      return kind.send({ token: keyOf(herald), chat: herald.chat }, String(text).slice(0, 3900), { html: true });
     },
 
     async probeHerald(projectKey, id) {
@@ -617,10 +632,11 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const herald = (await store.heralds.list(project.key, { raw: true })).find((b) => b.id === String(id));
       if (!herald) throw missing('No such herald.');
       const kind = heraldKinds[herald.kind];
-      const checked = kind.verify ? await kind.verify({ token: herald.token, chat: herald.chat }) : { ok: true };
+      if (herald.token === HOUSE_KEY && !houseKey) return { ok: false, sent: false, reason: 'the house has no key (TELEGRAM_BOT_TOKEN)' };
+      const checked = kind.verify ? await kind.verify({ token: keyOf(herald), chat: herald.chat }) : { ok: true };
       if (!checked.ok) return { ...checked, sent: false };
       const said = await kind.send(
-        { token: herald.token, chat: herald.chat },
+        { token: keyOf(herald), chat: herald.chat },
         `${project.key} · Gradula reporting in. This channel receives: ${herald.name}.`,
       );
       return { ...checked, ...said };

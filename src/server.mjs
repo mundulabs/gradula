@@ -55,7 +55,7 @@ const sentry = await watch();
  */
 const poll = { current: null };
 const live = createLive({ onPresence: (projectKey, count) => poll.current?.presence(projectKey, count) });
-const gradula = createGradula(store, { origin: process.env.PUBLIC_ORIGIN ?? null, live });
+const gradula = createGradula(store, { origin: process.env.PUBLIC_ORIGIN ?? null, live, houseKey: process.env.TELEGRAM_BOT_TOKEN || null });
 poll.current = createSystemPoll({ gradula, live });
 
 /**
