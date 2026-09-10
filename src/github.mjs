@@ -184,6 +184,25 @@ export async function fetchBranchCommits({ repo, token, branch }, { fetchImpl = 
 }
 
 /**
+ * One commit by its sha — title, the whole message, when. A webhook
+ * deployment names only its sha; the `Plan:` lines that say which cards it
+ * carries are in the message, and the message is here. Immutable: whoever
+ * asks twice has asked once too often (deployed.mjs keeps the answer).
+ */
+export async function fetchCommit({ repo, token, sha }, { fetchImpl = fetch } = {}) {
+  if (!repo || !sha) return { ok: false, reason: 'not set up' };
+  try {
+    const { status, body } = await ask(`/repos/${repo}/commits/${encodeURIComponent(sha)}`, token, fetchImpl);
+    if (status === 401) return { ok: false, reason: 'the key is not valid' };
+    if (status === 404) return { ok: false, reason: `${String(sha).slice(0, 12)} is not visible with this key` };
+    if (!body?.sha) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
+    return { ok: true, sha: String(body.sha), title: line(body.commit?.message), message: String(body.commit?.message ?? ''), at: body.commit?.committer?.date ?? body.commit?.author?.date ?? null };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
+/**
  * How two commits stand to each other: `identical`, `behind` (head is an
  * ancestor of base), `ahead`, `diverged`. Between two fixed commits that
  * never changes — whoever asks twice has asked once too often.

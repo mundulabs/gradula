@@ -26,6 +26,12 @@ const hub = ({ commits = {}, compares = {}, deployments = {} } = {}) => {
     const at = String(url);
     asked.push(at);
     if (at.includes('deployment.allByCompose')) return json(deployments[new URL(at).searchParams.get('composeId')] ?? []);
+    if (/\/commits\/[0-9a-f]{7,40}$/.test(at)) {
+      const sha = at.split('/commits/')[1];
+      const all = Object.values(commits).flat();
+      const hit = all.find((c) => c.sha === sha);
+      return hit ? json(hit) : json(null, 404);
+    }
     if (at.includes('/commits?sha=')) {
       const branch = new URL(at).searchParams.get('sha');
       return commits[branch] ? json(commits[branch]) : json(null, 404);
@@ -319,4 +325,24 @@ test('seen on development a card goes to review; seen on production a gated card
   const held = await gradula.getItem(gated.key);
   assert.equal(held.state, 'review', 'out on production, but the gate has not spoken — not done');
   assert.match(held.history.filter((e) => e.verb === 'moved').pop().data.reason, /^seen on production \(aaaaaaaaaaaa\) — The gate has not run yet/);
+});
+
+test('a webhook deployment names only its sha: the sha is taken as is, and the message behind it says what it carries', async () => {
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  await gradula.setDokploy('PRB', { base: 'https://dok.test/api', token: 't', composes: { production: 'c-prod', development: 'c-dev' } });
+  await gradula.setGithub('PRB', { repo: 'acc/repo', token: 't' });
+  const card = await gradula.addItem('PRB', { title: 'Pushed to dev', kind: 'task' }, 'david');
+  await gradula.moveItem(card.key, 'ready', 'david'); await gradula.startItem(card.key, 'david');
+  const world = hub({
+    deployments: { 'c-dev': [{ status: 'done', title: 'Pushed to dev', createdAt: '2026-09-10T09:00:00Z', finishedAt: '2026-09-10T09:02:00Z', description: `Commit: ${OLD}` }] },
+    commits: { dev: [{ sha: OLD, commit: { message: `Pushed to dev\n\nPlan: ${card.key}\n`, committer: { date: '2026-09-10T08:50:00Z' } } }] },
+  });
+  const cache = createDeployedCache();
+  const doc = await gradula.system('PRB', { fetchImpl: world.fetchImpl, now: () => new Date('2026-09-10T10:00:00Z').getTime(), fresh: true, deployedCache: cache });
+  assert.deepEqual(doc.deployed.development, { sha: OLD, at: '2026-09-10T09:02:00Z', cards: [card.key] }, 'no title search: the deployment said its sha, GitHub said its message');
+  assert.deepEqual(doc.environments[1].deployments[0].carries, [card.key]);
+  assert.ok(!world.asked.some((u) => u.includes('/commits?sha=')), 'the branch listing was never needed');
+  assert.equal((await gradula.getItem(card.key)).state, 'review', 'and the card went on');
 });

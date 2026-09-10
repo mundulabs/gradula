@@ -71,10 +71,12 @@ export const unknownDeployed = () => ({ development: null, production: null });
 export function createDeployedCache({ branchFreshMs = BRANCH_FRESH_MS, compareLimit = 5000 } = {}) {
   const branches = new Map();
   const compares = new Map();
+  const commits = new Map();   /* sha → { title, message, at } — a commit never changes */
   return {
     branchFreshMs,
     branches,
     compares,
+    commits,
     rememberCompare(key, status) {
       if (compares.size >= compareLimit) compares.delete(compares.keys().next().value);
       compares.set(key, status);
@@ -152,6 +154,22 @@ export async function resolveDeployedSha({ repo, token, branch, title }, { fetch
 }
 
 /**
+ * The message behind a sha, kept forever once seen. This is how a webhook
+ * deployment, which names only its sha, gets its `Plan:` lines back: the
+ * message is on GitHub, and one call fetches it — once.
+ */
+export async function messageOf({ repo, token, sha }, { fetchImpl = fetch, cache = SHARED, spend = () => true } = {}) {
+  if (!sha) return null;
+  if (cache.commits.has(sha)) return cache.commits.get(sha);
+  if (!spend()) return null;
+  const answer = await github.fetchCommit({ repo, token, sha }, { fetchImpl });
+  if (!answer.ok) return null;
+  const held = { title: answer.title, message: answer.message, at: answer.at };
+  cache.commits.set(sha, held);
+  return held;
+}
+
+/**
  * Is `evidence` inside `deployed`? `identical` or `behind` (the evidence is
  * an ancestor of the head) means yes; `ahead` and `diverged` mean no; an
  * unanswered compare means nobody knows. Answers are kept forever.
@@ -202,6 +220,24 @@ export async function gatherDeployed({
 
   const repo = connection?.repo ?? null;
   const token = connection?.token ?? null;
+  /*
+   * WHAT EACH DEPLOYMENT CARRIES. A deployment made by hand carries the full
+   * commit message (the Plan lines are read straight from it); one made by
+   * the webhook carries only `Commit: <sha>` — its message is fetched by the
+   * sha, once, and the cards it names are filled in. This is done for every
+   * deployment in the picture, not only the live one, because "what is
+   * deploying right now" is the one on its way.
+   */
+  if (repo && token) {
+    for (const environment of environments) {
+      for (const d of environment.deployments ?? []) {
+        if ((d.carries ?? []).length || !d.sha) continue;
+        const held = await messageOf({ repo, token, sha: d.sha }, { fetchImpl, cache, spend });
+        if (held) d.carries = carriesOf(held.message);
+      }
+    }
+  }
+
   const lanes = environments
     .map((environment) => ({ environment, live: (environment.deployments ?? []).find((d) => d.status === 'live' || d.status === 'done') ?? null }))
     .filter(({ live }) => live);
@@ -214,7 +250,8 @@ export async function gatherDeployed({
     for (const key of named) if (perCard.has(key)) perCard.get(key)[lane] = true;
     if (!repo || !token) continue;
 
-    const found = await resolveDeployedSha(
+    // The sha: named by the deployment itself (webhook), else found by the title on the branch.
+    const found = live.sha ? { sha: live.sha, at: live.finishedAt ?? live.at ?? null } : await resolveDeployedSha(
       { repo, token, branch: branchOf(connection, lane), title: live.head || live.title },
       { fetchImpl, cache, now, spend },
     );

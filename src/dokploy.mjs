@@ -40,6 +40,11 @@ const commitOf = (text) => {
   const m = String(text ?? '').match(/\b([0-9a-f]{7,40})\b/i);
   return m ? m[1].slice(0, 12) : null;
 };
+/** The whole sha, when the description carries one (a webhook deployment: `Commit: <sha>` or `Hash: <sha>`). */
+const shaOf = (text) => {
+  const m = String(text ?? '').match(/\b([0-9a-f]{40})\b/i);
+  return m ? m[1].toLowerCase() : null;
+};
 
 /**
  * Which compose stands for which environment. `composeId` alone is the
@@ -104,6 +109,7 @@ export async function fetchDeployments({ base, token, composeId }, { fetchImpl =
         // A webhook deployment carries the hash in its description; a manual
         // one carries none. Only what is there — never an invented one.
         ...(commitOf(d.description) ? { commit: commitOf(d.description) } : {}),
+        ...(shaOf(d.description) ? { sha: shaOf(d.description) } : {}),
       })),
     };
   } catch (error) {

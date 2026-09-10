@@ -155,6 +155,7 @@ export async function gatherSystem({
             ...(d.finishedAt ? { finishedAt: d.finishedAt } : {}),
             ...(d.head ? { head: d.head } : {}),
             ...(d.commit ? { commit: d.commit } : {}),
+            ...(d.sha ? { sha: d.sha } : {}),
             // The cards the built commit names — a deployment on its way
             // carries them too: that is "what is deploying right now".
             carries: d.carries ?? [],
