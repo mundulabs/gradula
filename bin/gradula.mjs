@@ -549,6 +549,9 @@ switch (command) {
      */
     for (const orphan of orphans) {
       try {
+        // adopted already — by an earlier push, another machine, a hand? then it is that card's evidence
+        const known = await call(`/api/v1/evidence/${orphan.hash.trim().slice(0, 12)}`).catch(() => ({ cards: [] }));
+        if (known.cards?.length) { for (const key of known.cards) add(key, orphan.hash, orphan.title, orphan.author, orphan.email, orphan.files); continue; }
         const made = await call('/api/v1/cards', { method: 'POST', body: { kind: 'task', title: orphan.title.slice(0, 140), text: `Born from a commit that found no board when it was made (${orphan.hash.trim().slice(0, 12)}).${orphan.body ? `\n\n${orphan.body.slice(0, 2000)}` : ''}` } });
         await call(`/api/v1/cards/${made.key}/start`, { method: 'POST', body: {} }).catch(() => {});
         add(made.key, orphan.hash, orphan.title, orphan.author, orphan.email, orphan.files);

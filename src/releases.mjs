@@ -95,7 +95,8 @@ export function releaseNote(release, cards = [], { visibility = 'internal', lang
   if (isPublic && !shown.length) return null;
   const where = release.lane === 'ios' && release.profile === 'beta' ? ` · ${w.testflight}` : release.lane === 'ota' ? ` · ${w.ota}` : '';
   const version = release.version ? ` ${release.version}` : release.commit ? ` ${shortSha(release.commit)}` : '';
-  const head = `${lane}${version}${where} — ${w.released}${!isPublic && release.title ? ` · ${release.title}` : ''}`;
+  const title = release.title ? (String(release.title).length > 120 ? `${String(release.title).slice(0, 119)}…` : String(release.title)) : null;
+  const head = `${lane}${version}${where} — ${w.released}${!isPublic && title ? ` · ${title}` : ''}`;
   const lines = shown.map((c) => (isPublic ? `• ${c.title}` : `• ${c.key} ${c.title}`));
   const body = lines.length ? lines.join('\n') : w.nothing;
   return `${head}\n${body}${release.url && !isPublic ? `\n${release.url}` : ''}`;

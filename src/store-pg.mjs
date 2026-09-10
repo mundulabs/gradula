@@ -714,6 +714,14 @@ export async function createPgStore(url, { schema = null } = {}) {
         const row = rows[0];
         return { id: row.id, item: row.card, actor: row.actor, verb: row.verb, data: row.data, at: iso(row.at) };
       },
+      /** The cards a commit already stands on as evidence — so a commit is adopted once, never twice. */
+      async byRef(projectKey, ref) {
+        const { rows } = await q(
+          `select distinct k.key from history h join card k on k.id = h.card where k.project = $1 and h.verb = 'evidenced' and left(h.data->>'ref', 12) = $2`,
+          [projectKey, String(ref).slice(0, 12)],
+        );
+        return rows.map((r) => r.key);
+      },
       async all(projectKey, { since = null, after = null, limit = 200 } = {}) {
         const values = [projectKey];
         let where = 'k.project = $1';

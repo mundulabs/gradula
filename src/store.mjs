@@ -299,6 +299,12 @@ export function createMemoryStore() {
         return clone(row);
       },
       async of(itemId) { return clone(events.filter((e) => e.item === itemId)); },
+      /** The cards a commit already stands on as evidence — so a commit is adopted once, never twice. */
+      async byRef(projectKey, ref) {
+        const short = String(ref).slice(0, 12);
+        const ids = new Set(events.filter((e) => e.verb === 'evidenced' && String(e.data?.ref ?? '').slice(0, 12) === short).map((e) => e.item));
+        return [...items.values()].filter((it) => it.project === projectKey && ids.has(it.id)).map((it) => it.key);
+      },
       /**
        * A PROJECT's history. The chronicle per card answers "what happened to
        * this thing"; this answers "what happened while I was away" — and that

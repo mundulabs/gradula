@@ -377,6 +377,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     // --- The heralds: the outward direction -----------------------------------
     ['GET', /^\/api\/v1\/heralds$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.listHeralds(ctx.project) })],
     ['GET', /^\/api\/v1\/heralds\/templates$/, async () => ({ status: 200, body: gradula.templates() })],
+    ['GET', /^\/api\/v1\/evidence\/([0-9a-f]{7,40})$/, async (_req, m, ctx) => ({ status: 200, body: { ref: m[1], cards: await gradula.cardsOfRef(ctx.project, m[1]) } })],
     ['GET', /^\/api\/v1\/releases$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.listReleases(ctx.project) })],
     ['GET', /^\/api\/v1\/releases\/next$/, async (req, _m, ctx) => {
       const url = new URL(req.url, 'http://x');

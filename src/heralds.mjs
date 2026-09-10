@@ -159,10 +159,12 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
   }
 
   const labels = labelsOf(card);
+  // a commit as evidence is its own sentence: the hash and the commit's line, not the card's title again
+  const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? `${String(data.ref).slice(0, 12)} ${short(data.comment ?? '', 140)}`.trim() : null;
   const parts = [
     mark,
-    verb,
-    title,
+    commit ? '←' : verb,
+    commit ?? title,
     labels.length && !isPublic ? `[${labels.join(' ')}]` : '',
   ].filter(Boolean);
   // who, and why, on a line of their own: the hand is long ("Name (Claude Code · machine)"), and a sentence that ends in it is hard to read

@@ -195,3 +195,19 @@ test('a template picked on an existing herald replaces its filter — the form s
   const byHand = await gradula.setHerald('PRB', { ...changed, token: '', template: undefined, filter: { verbs: ['decided'] } }, 'david');
   assert.deepEqual(byHand.filter, { verbs: ['decided'] }, 'without a template, the filter given is the hand\'s own');
 });
+
+test('a commit as evidence is its own line — the hash, linked into the repository, and the commit\'s sentence', async () => {
+  const { createGradula } = await import('../src/gradula.mjs');
+  const { createMemoryStore } = await import('../src/store.mjs');
+  const said = [];
+  const store = createMemoryStore();
+  const gradula = createGradula(store, { origin: 'https://board.test', heraldKinds: { probe: { async send(_c, text) { said.push(text); return { sent: true }; } } } });
+  await gradula.createProject({ key: 'PRB', name: 'Probe', repo: 'acc/repo' });
+  await gradula.setHerald('PRB', { kind: 'probe', name: 'Plain', chat: 'a', token: 'x', template: 'workshop' }, 'david');
+  const card = await gradula.addItem('PRB', { title: 'A thing', kind: 'task' }, 'david');
+  await gradula.settle(); said.length = 0;
+  await gradula.addEvidence(card.key, { kind: 'commit', ref: 'd2de57062b76abcdef', note: 'Every editor: the hooks are git\'s', files: ['docs/x.md'] }, 'David (Claude Code · mac)');
+  await gradula.settle();
+  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ← <a href="https://github.com/acc/repo/commit/d2de57062b76abcdef">d2de57062b76</a> Every editor: the hooks are git&#39;s\nDavid (Claude Code · mac)`.replace('&#39;', "'"));
+  assert.deepEqual(await gradula.cardsOfRef('PRB', 'd2de57062b76'), [card.key], 'the commit knows its card — adopted once');
+});

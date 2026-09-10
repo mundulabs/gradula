@@ -182,9 +182,16 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         if (!kind?.send) continue;
         const html = Boolean(link);
         const anchor = link ? `<a href="${escapeHtml(link)}">${escapeHtml(card.key)}</a>` : null;
-        const body = !link ? text
+        let body = !link ? text
           : text.startsWith(`${card.key} `) ? `${anchor}${escapeHtml(text.slice(card.key.length))}`
             : `${anchor} ${escapeHtml(text)}`;
+        // a commit as evidence: its hash is a link into the repository, when the board knows one
+        const ref = verb === 'evidenced' && data?.kind === 'commit' ? String(data.ref ?? '').slice(0, 12) : '';
+        if (ref && html && body.includes(escapeHtml(ref))) {
+          const repo = (await store.github.get(item.project))?.repo ?? board?.repo ?? null;
+          const url = github.commitUrl(repo, data.ref);
+          if (url) body = body.replace(escapeHtml(ref), `<a href="${escapeHtml(url)}">${escapeHtml(ref)}</a>`);
+        }
         const result = await kind.send(
           { token: keyOf(herald), chat: herald.chat }, body,
           { html, preview: card.visibility === 'public' },
@@ -536,6 +543,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         cards: carried.map((c) => ({ key: c.key, title: c.title, visibility: c.visibility })),
         text: carried.map((c) => (visibility === 'public' ? `• ${c.title}` : `• ${c.key} ${c.title}`)).join('\n'),
       };
+    },
+
+    /** Which cards a commit already stands on — the question `sync --adopt` asks before it makes a card. */
+    async cardsOfRef(projectKey, ref) {
+      const project = await this.getProject(projectKey);
+      if (!/^[0-9a-f]{7,40}$/i.test(String(ref))) throw bad('ref', 'ref: a commit hash.');
+      return store.events.byRef(project.key, String(ref).toLowerCase());
     },
 
     async listReleases(projectKey) {
