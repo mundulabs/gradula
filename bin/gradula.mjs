@@ -36,6 +36,7 @@ const HELP = `gradula — wish, board, standing
   gradula approve <CARD>           the review says yes — done, with a reason
   gradula reject <CARD> "what is missing" back to making, and the sentence is the reason
   gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
+  gradula remove <CARD>            an idea that was only words — anything with a chronicle goes on ice
   gradula confirm <CARD>…          take over the labels a rule proposed (a hand's call)
   gradula start <CARD> [--tree]    --tree creates a branch and a worktree
                  [--anyway "why"]  start a card that waits on another — the sentence is the reason
@@ -389,6 +390,13 @@ switch (command) {
       const labels = [card.module.length ? `[${card.module.join(' ')}]` : '', card.stack.filter((x) => !card.module.includes(x)).join(' ')].filter(Boolean).join('  ');
       console.log(`${card.key.padEnd(10)} ${labels || '(no label)'}`);
     }
+    break;
+  }
+
+  case 'remove': {
+    // Only a card that is nothing but words yet — an idea, or on ice, with no chronicle. Everything else: ice.
+    const gone = await call(`/api/v1/cards/${String(words[0] ?? '').toUpperCase()}`, { method: 'DELETE' });
+    console.log(`${gone.key} removed`);
     break;
   }
 

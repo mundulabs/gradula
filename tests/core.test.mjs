@@ -6,6 +6,8 @@ import { mintId, isId, parseItemKey, mentionedKeys, itemKey, cardOfBranch } from
 import { labelsFor, normalizeVocabulary, pathsIn, mergeLabels, proseOf, STACK_WORDS } from '../src/labels.mjs';
 import { cycleWith, blockedBy, collisions } from '../src/links.mjs';
 import { normalizeGate, bornIn, STACKS } from '../src/spec.mjs';
+import { createGradula } from '../src/gradula.mjs';
+import { createMemoryStore } from '../src/store.mjs';
 
 test('an identifier sorts itself by its time', () => {
   const early = mintId(1_000_000_000_000);
@@ -271,4 +273,19 @@ test('the ladder: five marks say where a card stands', async () => {
   assert.equal(ladderOf('done'), '■■■■■');
   assert.equal(ladderOf('ice'), '·····');
   assert.equal(ladderOf('nonsense'), '□□□□□');
+});
+
+test('a card that is only words may be removed; one with a chronicle goes on ice instead', async () => {
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  const idea = await gradula.addItem('PRB', { title: 'Just a test', kind: 'idea' }, 'david');
+  assert.deepEqual(await gradula.removeItem(idea.key, 'david'), { key: idea.key, removed: true });
+  await assert.rejects(gradula.getItem(idea.key), /There is no/);
+  const task = await gradula.addItem('PRB', { title: 'Real work', kind: 'task' }, 'david');
+  await assert.rejects(gradula.removeItem(task.key, 'david'), (e) => e.code === 'has-history' && /ice/.test(e.message), 'ready is past words');
+  const released = await gradula.addItem('PRB', { title: 'An idea that was released', kind: 'idea' }, 'david');
+  await gradula.moveItem(released.key, 'ready', 'david');
+  await gradula.moveItem(released.key, 'ideas', 'david');
+  await assert.rejects(gradula.removeItem(released.key, 'david'), (e) => e.code === 'has-history', 'back in ideas, but it has a chronicle');
 });

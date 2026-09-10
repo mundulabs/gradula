@@ -247,6 +247,15 @@ export function createMemoryStore() {
         Object.assign(row, clone(changes), { changed: now() });
         return shapeItem(clone(row));
       },
+      /** The card goes, with its links and its chronicle — gradula.mjs decides whether it may. */
+      async remove(key) {
+        const id = byKey.get(key);
+        if (!id) return false;
+        items.delete(id); byKey.delete(key);
+        for (const [lid, link] of links) if (link.from === id || link.to === id) links.delete(lid);
+        for (let i = events.length - 1; i >= 0; i--) if (events[i].item === id) events.splice(i, 1);
+        return true;
+      },
       async list(projectKey, filter = {}) {
         let rows = [...items.values()].filter((row) => row.project === projectKey);
         if (filter.state) rows = rows.filter((r) => r.state === filter.state);

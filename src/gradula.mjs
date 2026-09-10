@@ -1094,6 +1094,25 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return /^green\b/i.test(String(last.data?.comment ?? '')) ? 'green' : 'red';
     },
 
+    /**
+     * A CARD MAY GO ONLY WHILE IT IS NOTHING BUT WORDS. A test idea, a
+     * misheard sentence, a duplicate: gone, and nothing is lost. A card that
+     * carries evidence, was seen deployed, or ever left ideas is history —
+     * a commit names it, a deployment carried it, someone worked on it —
+     * and history is not deleted; it goes on ice, where it stays findable.
+     */
+    async removeItem(key, actor) {
+      const item = await findItem(key);
+      const history = await store.events.of(item.id);
+      const touched = history.some((e) => ['evidenced', 'deployed', 'started', 'moved'].includes(e.verb));
+      if (!['ideas', 'ice'].includes(item.state) || touched) {
+        throw new Refusal(409, 'has-history', `${item.key} is not just words any more (${item.state}${touched ? ', with a chronicle' : ''}) — put it on ice: gradula move ${item.key} ice --reason "…"`);
+      }
+      await store.items.remove(item.key);
+      live?.announce(item.project, { verb: 'removed', card: item.key, actor });
+      return { key: item.key, removed: true };
+    },
+
     async moveItem(key, state, actor, reason = null) {
       const item = await findItem(key);
       const target = String(state);

@@ -622,6 +622,11 @@ export async function createPgStore(url, { schema = null } = {}) {
         const { rows } = await q('select * from card where key = $1', [key]);
         return asItem(rows[0]) ?? null;
       },
+      /** The card goes; links and chronicle follow by cascade. gradula.mjs decides whether it may. */
+      async remove(key) {
+        const { rowCount } = await q('delete from card where key = $1', [key]);
+        return rowCount > 0;
+      },
       async patch(key, changes) {
         const columns = {
           kind: 'kind', state: 'state', title: 'title', text: 'text', module: 'module', stack: 'stack',

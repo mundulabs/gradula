@@ -286,6 +286,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       const body = await readJson(req);
       return { status: 200, body: await gradula.patchItem(m[1], body, ctx.actor) };
     }],
+    ['DELETE', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.removeItem(m[1], ctx.actor) })],
     ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/move$/, async (req, m, ctx) => {
       const body = await readJson(req);
       return { status: 200, body: await gradula.moveItem(m[1], body.state, ctx.actor, body.reason ?? null) };
