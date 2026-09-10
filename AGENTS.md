@@ -24,6 +24,7 @@ src/gates.mjs        the runner: file, url, test, command
 src/store.mjs        the CONTRACT of the store + the in-memory implementation
 src/store-pg.mjs     the same implementation on Postgres (same contract)
 src/sentry.mjs       incidents: signature, mapping, fetching, writing back
+src/system.mjs       ONE picture from every connection and the board; the poll behind the live line
 src/gradula.mjs      the verbs — the rules live here, not in the router
 src/api.mjs          the doors (node:http, no framework)
 src/hand.mjs         the ONE reader of .gradula.env for the CLI and the MCP server

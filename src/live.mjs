@@ -22,13 +22,23 @@
 
 const KEEPALIVE_MS = 25_000;
 
-export function createLive() {
+/**
+ * `onPresence(projectKey, count)` is told every time a project's audience
+ * changes size — the system poll (system.mjs) starts on the first listener
+ * and stops on the last, so a service nobody is watching asks nobody.
+ */
+export function createLive({ onPresence = null } = {}) {
   /** Who is listening — one set of responses per project. */
   const listeners = new Map();
 
   const write = (res, event, data) => {
     try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); }
     catch { /* a dead line clears itself away on the next move */ }
+  };
+
+  const presence = (projectKey) => {
+    try { onPresence?.(projectKey, listeners.get(projectKey)?.size ?? 0); }
+    catch { /* a watcher that throws must not take the line with it */ }
   };
 
   return {
@@ -42,12 +52,17 @@ export function createLive() {
       const clock = setInterval(() => write(res, 'ping', Date.now()), KEEPALIVE_MS);
       clock.unref?.();
 
+      let gone = false;
       const leave = () => {
+        if (gone) return;
+        gone = true;
         clearInterval(clock);
         listeners.get(projectKey)?.delete(res);
         if (!listeners.get(projectKey)?.size) listeners.delete(projectKey);
+        presence(projectKey);
       };
       res.on('close', leave);
+      presence(projectKey);
       return leave;
     },
 
@@ -61,6 +76,22 @@ export function createLive() {
       for (const res of here) write(res, 'moved', { verb, card, actor, at: new Date().toISOString() });
       return here.size;
     },
+
+    /**
+     * The system picture changed. Like a move, this carries NO content —
+     * only WHAT changed and when; whoever listens fetches /api/v1/system
+     * through the door that knows their rights. A picture that sat in an
+     * open line would be a second copy with rights of its own.
+     */
+    announceSystem(projectKey, { at, changed = [] }) {
+      const here = listeners.get(projectKey);
+      if (!here?.size) return 0;
+      for (const res of here) write(res, 'system', { at, changed });
+      return here.size;
+    },
+
+    /** The projects somebody is listening to right now. */
+    projects() { return [...listeners.keys()]; },
 
     /** How many browsers are hanging on right now — for the health door. */
     count() {

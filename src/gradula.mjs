@@ -26,6 +26,7 @@ import * as telegram from './telegram.mjs';
 import * as dokploy from './dokploy.mjs';
 import * as github from './github.mjs';
 import * as eas from './eas.mjs';
+import { gatherSystem, boardPicture, FRESH_MS } from './system.mjs';
 import { gather, plainReport, humanReport, htmlReport, escapeHtml } from './report.mjs';
 import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
@@ -119,6 +120,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
   // What is going out right now. `settle()` waits for it — a test needs that,
   // and so does a service being shut down.
   const inFlight = new Set();
+
+  /** The last system picture per project — see `system()`. */
+  const systemHeld = new Map();
 
   const note = (item, actor, verb, data) => {
     const entry = store.events.add({ item: item.id, actor, verb, data });
@@ -1247,10 +1251,18 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!/^https:\/\/[a-z0-9.-]+(\/[a-z0-9/_-]*)?$/i.test(base)) {
         throw bad('base', 'base: the Dokploy API address, e.g. https://dokploy.example.dev/api');
       }
+      // One compose per environment: `{ production, development }`. The old
+      // single `composeId` still counts and means production.
+      const composes = {};
+      for (const [environment, id] of Object.entries(input.composes && typeof input.composes === 'object' ? input.composes : {})) {
+        if (!/^(production|development)$/.test(environment)) throw bad('composes', 'composes: production and development only.');
+        if (id) composes[environment] = String(id).slice(0, 120);
+      }
       const stored = await store.dokploy.set(project.key, {
         base,
         token: input.token,
-        composeId: input.composeId ? String(input.composeId).slice(0, 120) : null,
+        composeId: input.composeId ? String(input.composeId).slice(0, 120) : composes.production ?? null,
+        composes,
       });
       return dokploy.publicConnection({ ...stored, setAt: new Date().toISOString() });
     },
@@ -1314,6 +1326,57 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       };
     },
 
+    /**
+     * The system — one picture from every connection and the board, in one
+     * shape (system.mjs). The FETCHED parts — what Dokploy, EAS, GitHub and
+     * Sentry answered — are held for FRESH_MS per project, however many ask:
+     * the second viewer costs nothing, and a page that polls costs one round
+     * per half minute, not one per viewer. The board's half (people, cards)
+     * is ours and costs two reads: it is taken anew on every ask, so a card
+     * that moved a second ago is in the next picture, not the one after
+     * the cache.
+     *
+     * `fresh` skips the cache — the live poll uses it, so its beat IS the
+     * cache's clock. Single-flight: two askers during a gather share it.
+     */
+    async system(projectKey, { fetchImpl, fresh = false, now = Date.now } = {}) {
+      const project = await this.getProject(projectKey);
+      const board = async () => {
+        const [history, cards] = await Promise.all([this.history(project.key, { limit: 500 }), store.items.list(project.key, {})]);
+        return { history, cards };
+      };
+      const held = systemHeld.get(project.key);
+      if (held?.promise) return held.promise;
+      if (held && !fresh && now() - held.at < FRESH_MS) {
+        const picture = boardPicture({ ...(await board()), now: now() });
+        return { ...held.doc, people: picture.people, cards: picture.cards };
+      }
+      const promise = (async () => {
+        const [dokployConnection, easConnection, githubConnection, sentryConnection, boardNow] = await Promise.all([
+          store.dokploy.get(project.key),
+          store.eas.get(project.key),
+          store.github.get(project.key).then((c) => c ?? (project.repo ? { repo: project.repo } : null)),
+          store.sentry.get(project.key),
+          board(),
+        ]);
+        return gatherSystem({
+          connections: { dokploy: dokployConnection, eas: easConnection, github: githubConnection, sentry: sentryConnection },
+          board: boardNow,
+          ...(fetchImpl ? { fetchImpl } : {}),
+          now,
+        });
+      })();
+      systemHeld.set(project.key, { ...(held ?? { at: 0, doc: null }), promise });
+      try {
+        const doc = await promise;
+        systemHeld.set(project.key, { at: now(), doc, promise: null });
+        return doc;
+      } catch (error) {
+        systemHeld.set(project.key, { ...(held ?? { at: 0, doc: null }), promise: null });
+        throw error;
+      }
+    },
+
     // ---- Sentry: the incidents -------------------------------------------
 
     /**
@@ -1338,6 +1401,11 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         token: connection.token ? String(connection.token) : before?.token ?? null,
         hookSecret: connection.hookSecret ? String(connection.hookSecret) : before?.hookSecret ?? null,
         writeBack: connection.writeBack === true,
+        // How Sentry names the lanes — optional; the system picture asks each
+        // lane's errors under these names (see system.mjs, sentryEnvironmentsOf).
+        ...(connection.environments && typeof connection.environments === 'object'
+          ? { environments: Object.fromEntries(Object.entries(connection.environments).map(([lane, names]) => [text(lane, 40, 'environments'), [].concat(names).map((n) => text(n, 80, 'environments'))])) }
+          : before?.environments ? { environments: before.environments } : {}),
       };
       await store.sentry.set(project.key, kept);
       return publicConnection(kept);

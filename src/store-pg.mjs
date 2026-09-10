@@ -416,6 +416,9 @@ alter table project  add column if not exists language text;
 -- in the service, handed back in the answer, and never stored — so the one
 -- line that reads it -- closeInSentry -- has never once been true on Postgres.
 alter table sentry   add column if not exists write_back boolean not null default false;
+-- One compose per environment. compose_id stays as the production lane
+-- for a connection made before the development lane existed.
+alter table dokploy  add column if not exists composes jsonb not null default '{}'::jsonb;
 -- A project key may change (DRM was the leftover of a dead name). That works
 -- only when the foreign keys move with it: without ON UPDATE CASCADE the
 -- first line breaks at the first card.
@@ -746,19 +749,19 @@ export async function createPgStore(url, { schema = null } = {}) {
     dokploy: {
       async set(projectKey, connection) {
         await q(
-          `insert into dokploy (project, base, token, compose_id)
-           values ($1,$2,$3,$4)
+          `insert into dokploy (project, base, token, compose_id, composes)
+           values ($1,$2,$3,$4,$5::jsonb)
            on conflict (project) do update set base = excluded.base,
              token = coalesce(excluded.token, dokploy.token),
-             compose_id = excluded.compose_id, set_at = now()`,
-          [projectKey, connection.base, connection.token ?? null, connection.composeId ?? null],
+             compose_id = excluded.compose_id, composes = excluded.composes, set_at = now()`,
+          [projectKey, connection.base, connection.token ?? null, connection.composeId ?? null, JSON.stringify(connection.composes ?? {})],
         );
         return connection;
       },
       async get(projectKey) {
         const { rows } = await q('select * from dokploy where project = $1', [projectKey]);
         const row = rows[0];
-        return row ? { base: row.base, token: row.token, composeId: row.compose_id, setAt: iso(row.set_at) } : null;
+        return row ? { base: row.base, token: row.token, composeId: row.compose_id, composes: row.composes ?? {}, setAt: iso(row.set_at) } : null;
       },
     },
 

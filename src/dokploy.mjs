@@ -32,6 +32,26 @@ const STANDING = {
  */
 const line = (text) => String(text ?? '').split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, 120);
 
+/** The hash in a deployment's description — Dokploy writes `Hash: abc…` for a webhook. */
+const commitOf = (text) => {
+  const m = String(text ?? '').match(/\b([0-9a-f]{7,40})\b/i);
+  return m ? m[1].slice(0, 12) : null;
+};
+
+/**
+ * Which compose stands for which environment. `composeId` alone is the
+ * old shape and means production; `composes` names both lanes. A lane
+ * without a compose is not watched — and says so, instead of borrowing
+ * the other lane's deployments.
+ */
+export function composesOf(connection = {}) {
+  const named = connection.composes && typeof connection.composes === 'object' ? connection.composes : {};
+  const out = {};
+  for (const [environment, id] of Object.entries(named)) if (id) out[environment] = String(id);
+  if (!out.production && connection.composeId) out.production = String(connection.composeId);
+  return out;
+}
+
 async function ask(base, path, token, fetchImpl) {
   const response = await fetchImpl(`${base.replace(/\/+$/, '')}/${path}`, {
     headers: { 'x-api-key': token, accept: 'application/json' },
@@ -72,6 +92,9 @@ export async function fetchDeployments({ base, token, composeId }, { fetchImpl =
         standing: STANDING[String(d.status ?? 'idle')] ?? 'idle',
         title: line(d.title),
         at: d.createdAt ?? null,
+        // A webhook deployment carries the hash in its description; a manual
+        // one carries none. Only what is there — never an invented one.
+        ...(commitOf(d.description) ? { commit: commitOf(d.description) } : {}),
       })),
     };
   } catch (error) {
@@ -98,5 +121,5 @@ export function standingOf(deployments = []) {
 
 /** A connection never shows its key outward. */
 export const publicConnection = (connection) => (connection
-  ? { base: connection.base, composeId: connection.composeId, token: connection.token ? 'set' : null, setAt: connection.setAt ?? null }
+  ? { base: connection.base, composeId: connection.composeId, composes: composesOf(connection), token: connection.token ? 'set' : null, setAt: connection.setAt ?? null }
   : null);

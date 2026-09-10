@@ -77,13 +77,38 @@ query($fullName: String!, $limit: Int!) {
     id
     builds(limit: $limit, offset: 0) {
       id status platform appVersion appBuildVersion createdAt completedAt
-      gitCommitHash gitCommitMessage
+      gitCommitHash gitCommitMessage buildProfile channel
     }
     submissions(limit: $limit, offset: 0, filter: {}) {
       id status platform createdAt updatedAt
     }
   } }
 }`;
+
+/**
+ * The updates — the third clock, and the one that ships without a store: an
+ * EAS Update lands on a channel and every installed build on that channel
+ * takes it at the next start. Read per channel, newest branch first.
+ */
+const UPDATES = `
+query($fullName: String!, $limit: Int!) {
+  app { byFullName(fullName: $fullName) {
+    id
+    updateChannels(limit: $limit, offset: 0) {
+      name
+      updateBranches(limit: 3, offset: 0) {
+        name
+        updates(limit: 3, offset: 0) { id group message runtimeVersion platform createdAt }
+      }
+    }
+  } }
+}`;
+
+/** The address of a build on expo.dev — a string, not a request. */
+export const buildUrl = (app, id) => {
+  const m = String(app ?? '').match(/^@([\w.-]+)\/([\w.-]+)$/);
+  return m && id ? `https://expo.dev/accounts/${m[1]}/projects/${m[2]}/builds/${id}` : null;
+};
 
 /** Do the credentials hold? Reads exactly one app and changes nothing. */
 export async function verify({ token, app }, { fetchImpl = fetch } = {}) {
@@ -127,6 +152,9 @@ export async function fetchWork({ token, app }, { fetchImpl = fetch, limit = 10 
         commit: b.gitCommitHash ? String(b.gitCommitHash).slice(0, 12) : null,
         title: line(b.gitCommitMessage),
         at: b.completedAt ?? b.createdAt ?? null,
+        profile: b.buildProfile ?? null,
+        channel: b.channel ?? null,
+        url: buildUrl(app, b.id),
       }))),
       submissions: newestFirst((found.submissions ?? []).map((s) => ({
         id: s.id,
@@ -135,6 +163,43 @@ export async function fetchWork({ token, app }, { fetchImpl = fetch, limit = 10 
         standing: SUBMIT_STANDING[s.status] ?? 'idle',
         at: s.updatedAt ?? s.createdAt ?? null,
       }))),
+    };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
+/**
+ * The last updates per channel, flattened and newest first. One entry per
+ * update GROUP would be the honest unit (one publish = one group, one row
+ * per platform in it); the rows are folded by group so that an iOS and an
+ * Android row of the same publish read as one line with two platforms.
+ */
+export async function fetchUpdates({ token, app }, { fetchImpl = fetch, limit = 5 } = {}) {
+  if (!token || !app) return { ok: false, reason: 'not set up' };
+  try {
+    const { status, body } = await ask(UPDATES, { fullName: app, limit }, token, fetchImpl);
+    const found = body?.data?.app?.byFullName;
+    if (!found) return { ok: false, reason: line(body?.errors?.[0]?.message) || `unexpected answer (HTTP ${status})` };
+    const byGroup = new Map();
+    for (const channel of found.updateChannels ?? []) {
+      for (const branch of channel.updateBranches ?? []) {
+        for (const u of branch.updates ?? []) {
+          const key = u.group ?? u.id;
+          const row = byGroup.get(key) ?? {
+            id: key, channel: channel.name ?? null, branch: branch.name ?? null,
+            message: line(u.message), runtime: u.runtimeVersion ?? null, at: u.createdAt ?? null, platforms: [],
+          };
+          const platform = String(u.platform ?? '').toLowerCase();
+          if (platform && !row.platforms.includes(platform)) row.platforms.push(platform);
+          if (u.createdAt && (!row.at || u.createdAt > row.at)) row.at = u.createdAt;
+          byGroup.set(key, row);
+        }
+      }
+    }
+    return {
+      ok: true,
+      updates: [...byGroup.values()].sort((a, b) => new Date(b.at ?? 0) - new Date(a.at ?? 0)).slice(0, limit * 2),
     };
   } catch (error) {
     return { ok: false, reason: line(error.message) };

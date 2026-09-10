@@ -60,7 +60,9 @@ const HELP = `gradula — wish, board, standing
   gradula standing                 where things have arrived (reads Dokploy)
   gradula app [--app @acc/slug --token <expo token>]
                                  where the APP has arrived (reads EAS)
-  gradula dokploy --base <api> --token <key> --compose <id>
+  gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
+  gradula system                   ONE picture: deployments, builds, updates,
+                                 pipeline, releases, errors, people — and what is not seen
   gradula history [--after N]      what happened while you were away
   gradula report [--plain] [--period "…"] [--milestone GRD-43] [--send]
   gradula chats                    which channels the heralds can see
@@ -1009,10 +1011,40 @@ switch (command) {
   case 'dokploy': {
     const set = await call('/api/v1/dokploy', {
       method: 'PUT',
-      body: { base: flags.base, token: flags.token, composeId: flags.compose },
+      body: {
+        base: flags.base, token: flags.token, composeId: flags.compose,
+        composes: { production: flags.compose, development: flags['compose-dev'] },
+      },
     });
-    console.log(`Dokploy: ${set.base} · compose ${set.composeId ?? '—'} · key ${set.token ?? 'MISSING'}`);
+    const lanes = Object.entries(set.composes ?? {}).map(([env, id]) => `${env} ${id}`).join(' · ') || '—';
+    console.log(`Dokploy: ${set.base} · composes ${lanes} · key ${set.token ?? 'MISSING'}`);
     console.log('It only reads. There is no deploy button, and that is deliberate.');
+    break;
+  }
+
+  case 'system': {
+    const doc = await call('/api/v1/system');
+    const when = (at) => String(at ?? '').slice(0, 16).replace('T', ' ');
+    for (const env of doc.environments ?? []) {
+      console.log(`${env.id.padEnd(12)} ${env.standing?.standing ?? 'unknown'}${env.standing?.line ? ` — ${env.standing.line}` : ''}`);
+      for (const d of (env.deployments ?? []).slice(0, 3)) console.log(`  ${d.status.padEnd(10)} ${when(d.at)}  ${d.title}`);
+    }
+    const rows = [
+      ['builds', (doc.builds ?? []).slice(0, 3).map((b) => `${b.platform} ${b.profile ?? ''} ${b.status} ${when(b.at)} ${b.version ?? ''}`)],
+      ['updates', (doc.updates ?? []).slice(0, 3).map((u) => `${u.channel} ${when(u.at)} ${u.message}`)],
+      ['pipeline', (doc.pipeline ?? []).slice(0, 3).map((r) => `${r.status.padEnd(7)} ${r.branch ?? ''} ${when(r.at)} ${r.name}`)],
+      ['releases', (doc.releases ?? []).slice(0, 3).map((r) => `${r.tag} ${when(r.at)}`)],
+      ['errors', (doc.errors ?? []).slice(0, 5).map((e) => `${String(e.count24h).padStart(4)}/24h ${when(e.lastAt)} ${e.title}`)],
+      ['people', (doc.people ?? []).slice(0, 8).map((p) => `${when(p.at)} ${p.actor} ${p.verb} ${p.card}`)],
+      ['in hand', (doc.cards ?? []).map((c) => `${c.key} ${c.state} ${c.title}${c.actor ? ` — ${c.actor}` : ''}`)],
+    ];
+    for (const [name, lines] of rows) {
+      if (!lines.length) continue;
+      console.log(`\n${name}`);
+      for (const one of lines) console.log(`  ${one}`);
+    }
+    const unseen = Object.entries(doc.sources ?? {}).filter(([, state]) => state !== 'ok');
+    if (unseen.length) console.log(`\nnot seen: ${unseen.map(([name, state]) => `${name} (${state})`).join(', ')}`);
     break;
   }
 

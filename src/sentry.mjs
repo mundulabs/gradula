@@ -159,10 +159,27 @@ async function call(base, path, token, init = {}, fetchImpl = fetch) {
   return res.json();
 }
 
-/** A project's unresolved issues — what the board is meant to carry. */
-export function fetchIssues({ base, org, project, token, query = 'is:unresolved', limit = 25 }, fetchImpl = fetch) {
+/**
+ * A project's unresolved issues — what the board is meant to carry.
+ *
+ * `environments` narrows the list to Sentry's environments of those names
+ * (repeated `environment=` parameters; Sentry takes any of them) — and with
+ * it the `stats`, so the day count is the count IN that environment.
+ */
+export function fetchIssues({ base, org, project, token, query = 'is:unresolved', limit = 25, statsPeriod = null, environments = [] }, fetchImpl = fetch) {
   const suche = new URLSearchParams({ query, limit: String(Math.min(limit, 100)) });
+  // `statsPeriod=24h` makes Sentry add `stats['24h']` — the count of the last
+  // day, which is what a live picture asks; the lifetime `count` is not.
+  if (statsPeriod) suche.set('statsPeriod', statsPeriod);
+  for (const name of environments) if (name) suche.append('environment', String(name));
   return call(base, `/projects/${org}/${project}/issues/?${suche}`, token, {}, fetchImpl);
+}
+
+/** What an issue did in the last day, from the stats Sentry sends with `statsPeriod=24h`. */
+export function count24hOf(issue) {
+  const rows = issue?.stats?.['24h'];
+  if (!Array.isArray(rows)) return null;
+  return rows.reduce((sum, row) => sum + (Number(row?.[1]) || 0), 0);
 }
 
 /**

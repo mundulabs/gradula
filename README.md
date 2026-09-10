@@ -124,7 +124,8 @@ gradula pulse [--since ISO]      what happened, where to, in time, where the ene
 gradula due <CARD> <YYYY-MM-DD>  a date on a milestone or a venture ("none" clears)
 gradula standing                 where things have arrived (reads Dokploy)
 gradula app [--app @acc/slug --token <expo token>]   where the app has arrived (reads EAS)
-gradula dokploy --base <api> --token <key> --compose <id>
+gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
+gradula system                   one picture of the whole system (see below)
 gradula history [--after N]      what happened while you were away
 gradula report [--plain] [--period "…"] [--milestone GRD-43] [--send]
 gradula chats                    which channels the heralds can see
@@ -136,6 +137,42 @@ gradula project [--alias "david=David Bläsing"] [--language de|en]
 
 A commit whose message contains `Plan: KEY-42` becomes evidence on that card
 through `gradula sync` (or automatically, once `gradula hook` is installed).
+
+## The system picture
+
+`GET /api/v1/system` (project key) answers ONE document gathered from every
+connection the project has and from the board itself — the same shape whatever
+is connected, every field optional:
+
+```
+{ at,
+  environments: [{ id: production|development,
+                   deployments: [{ status, title, commit?, at, url? }], standing }],
+  builds:    [{ profile, channel, platform, status, at, url, version }],
+  updates:   [{ channel, at, message, runtime }],
+  pipeline:  [{ name, branch, status, at, url }],
+  releases:  [{ tag, at, url }],
+  errors:    [{ environment, count24h, lastAt, title, url }],   per lane; null where no lane claims it
+  people:    [{ actor, card, verb, at, labels[] }],      the last 24 h of the chronicle
+  cards:     [{ key, title, state, labels[], actor }],   what is in making or review
+  sources:   { dokploy, eas, github, sentry, board } }   'ok' | 'not configured' | 'error: …'
+```
+
+A connection that is not set up yields an empty list AND says so in `sources`,
+so a page can say what it is not seeing instead of pretending. Dokploy watches
+one compose per lane (`composes: { production, development }`; the old single
+`composeId` means production). Sentry is asked once per lane under the names
+it knows the lane by — `production`/`prod`, `development`/`dev`, or what the
+connection says in `environments: { production: 'live', development: ['dev'] }`
+(`PUT /api/v1/sentry`) — so an error carries its lane and the day count of
+that lane; an issue no lane claims keeps `environment: null`. The fetched parts are gathered at most once per
+30 s per project, however many ask; the board's own half (`people`, `cards`) is
+read anew on every ask, so a card that moved a second ago is in the next picture.
+
+`GET /api/v1/live` (SSE, project key) announces `event: system` with
+`{ at, changed: [...] }` whenever the gathered picture changed — no content, the
+door above has it. The poll behind it runs only while at least one client is on
+the line and stops with the last one.
 
 ## The MCP server
 

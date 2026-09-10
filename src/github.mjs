@@ -104,6 +104,60 @@ export async function branchStanding({ repo, token, branch }, { fetchImpl = fetc
   }
 }
 
+/**
+ * The pipeline: the last workflow runs of the repository, one line each.
+ *
+ * The same three states as a check run — a workflow run is a check run
+ * with a name and a branch — and the same refusal to fetch logs: the link
+ * points at the real one.
+ */
+export async function fetchPipeline({ repo, token }, { fetchImpl = fetch, limit = 10 } = {}) {
+  if (!repo) return { ok: false, reason: 'not set up' };
+  try {
+    const { status, body } = await ask(`/repos/${repo}/actions/runs?per_page=${limit}`, token, fetchImpl);
+    if (status === 401) return { ok: false, reason: 'the key is not valid' };
+    if (status === 404) return { ok: false, reason: 'the repository is not visible with this key' };
+    if (!Array.isArray(body?.workflow_runs)) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
+    return {
+      ok: true,
+      runs: body.workflow_runs.slice(0, limit).map((run) => ({
+        name: line(run.name ?? run.display_title),
+        branch: run.head_branch ?? null,
+        status: standingOfRun(run),
+        at: run.updated_at ?? run.created_at ?? null,
+        url: run.html_url ?? null,
+        commit: run.head_sha ? String(run.head_sha).slice(0, 12) : null,
+        title: line(run.display_title),
+      })),
+    };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
+/** The releases: a tag, a date, a link — what the store and TestFlight hang on. */
+export async function fetchReleases({ repo, token }, { fetchImpl = fetch, limit = 5 } = {}) {
+  if (!repo) return { ok: false, reason: 'not set up' };
+  try {
+    const { status, body } = await ask(`/repos/${repo}/releases?per_page=${limit}`, token, fetchImpl);
+    if (status === 401) return { ok: false, reason: 'the key is not valid' };
+    if (status === 404) return { ok: false, reason: 'the repository is not visible with this key' };
+    if (!Array.isArray(body)) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
+    return {
+      ok: true,
+      releases: body.slice(0, limit).map((release) => ({
+        tag: release.tag_name ?? null,
+        name: line(release.name),
+        at: release.published_at ?? release.created_at ?? null,
+        url: release.html_url ?? null,
+        prerelease: Boolean(release.prerelease),
+      })),
+    };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
 /** A connection never shows its key outward. */
 export const publicConnection = (connection) => (connection
   ? { repo: connection.repo, token: connection.token ? 'set' : null, setAt: connection.setAt ?? null }

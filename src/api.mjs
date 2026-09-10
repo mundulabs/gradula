@@ -443,6 +443,9 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       }),
     })],
     ['GET', /^\/api\/v1\/standing$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.standing(ctx.project) })],
+    // One picture of the whole system — every connection and the board, one
+    // shape, with `sources` saying what is not being seen (system.mjs).
+    ['GET', /^\/api\/v1\/system$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.system(ctx.project) })],
     ['GET', /^\/api\/v1\/report$/, async (_req, _m, ctx) => ({
       status: 200,
       body: await gradula.report(ctx.project, {

@@ -44,6 +44,7 @@ test('builds and submissions come back cut down to what a board may show', async
   assert.deepEqual(got.builds[0], {
     id: 'b1', platform: 'ios', status: 'FINISHED', standing: 'built', version: '1.4.0 · 31',
     commit: 'abcdef012345', title: 'the first line', at: '2026-09-08T10:20:00Z',
+    profile: null, channel: null, url: 'https://expo.dev/accounts/a/projects/b/builds/b1',
   });
   assert.equal(got.submissions[0].standing, 'sending');
 });

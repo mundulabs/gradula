@@ -14,6 +14,7 @@ import { createApi } from './api.mjs';
 import { createAuth } from './auth.mjs';
 import { createStatic } from './static.mjs';
 import { createLive } from './live.mjs';
+import { createSystemPoll } from './system.mjs';
 import { watch } from './watch.mjs';
 
 const port = Number(process.env.PORT ?? 3200);
@@ -46,8 +47,16 @@ const store = await chooseStore();
 // should be able to put its own there.
 const sentry = await watch();
 
-const live = createLive();
+/**
+ * The system poll hangs on the live line's audience: it beats while a
+ * project has a listener and stops when the last one leaves. `createLive`
+ * needs the poll and the poll needs `gradula`, which needs `live` — so the
+ * poll is wired through a holder that is filled one line later.
+ */
+const poll = { current: null };
+const live = createLive({ onPresence: (projectKey, count) => poll.current?.presence(projectKey, count) });
 const gradula = createGradula(store, { origin: process.env.PUBLIC_ORIGIN ?? null, live });
+poll.current = createSystemPoll({ gradula, live });
 
 /**
  * The sign-in is optional: without its four values it does not exist, and the
