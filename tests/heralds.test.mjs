@@ -65,8 +65,8 @@ test('the title goes outward — and nothing else', () => {
 
 test('two voices, two sentences', () => {
   const event = move({ data: { reason: 'gate green' } });
-  assert.equal(lineFor(event, { voice: 'human' }), 'Done: A picture and a file — gate green');
-  assert.match(lineFor(event, { voice: 'plain' }), /^GRD-9 moved .* \[infra backend\]\ndavid · gate green$/, 'the hand and the reason on a line of their own');
+  assert.equal(lineFor(event, { voice: 'human' }), 'GRD-9 ■■■■■ Done\nA picture and a file — gate green');
+  assert.equal(lineFor(event, { voice: 'plain' }), 'GRD-9 ■■■■■ moved → done\nA picture and a file [infra backend]\ndavid · gate green', 'three lines: key, ladder and what; the title; the hand and the reason');
 });
 
 test('a long title is shortened, not cut off', () => {
@@ -149,18 +149,18 @@ test('verifying says whom you have set up', async () => {
  */
 test('the human voice speaks the herald\'s language, the plain voice speaks none', () => {
   const done = move({ card: { key: 'GRD-9', title: 'A picture and a file', state: 'done', kind: 'task', module: [], stack: [], visibility: 'internal' } });
-  assert.match(lineFor(done, { voice: 'human', language: 'en' }), /^Done: /);
-  assert.match(lineFor(done, { voice: 'human', language: 'de' }), /^Fertig: /);
+  assert.match(lineFor(done, { voice: 'human', language: 'en' }), /^GRD-9 ■■■■■ Done\n/);
+  assert.match(lineFor(done, { voice: 'human', language: 'de' }), /^GRD-9 ■■■■■ Fertig\n/);
 
   const making = move({ card: { key: 'GRD-9', title: 'x', state: 'making', kind: 'task', module: [], stack: [], visibility: 'internal' } });
-  assert.match(lineFor(making, { voice: 'human', language: 'de' }), /^Jetzt Arbeit: /, 'the state comes from the shared vocabulary');
-  assert.match(lineFor(making, { voice: 'human', language: 'en' }), /^Now Making: /);
+  assert.match(lineFor(making, { voice: 'human', language: 'de' }), /^GRD-9 ■■▩□□ Jetzt Arbeit\n/, 'the state comes from the shared vocabulary');
+  assert.match(lineFor(making, { voice: 'human', language: 'en' }), /^GRD-9 ■■▩□□ Now Making\n/);
 
   const plain = lineFor(done, { voice: 'plain', language: 'de' });
   assert.match(plain, /\bmoved\b/, 'the verb stays an identifier');
   assert.doesNotMatch(plain, /Fertig|verschoben/, 'the plain voice does not translate');
 
-  assert.match(lineFor(done, { voice: 'human' }), /^Done: /, 'without a language it is English');
+  assert.match(lineFor(done, { voice: 'human' }), /^GRD-9 ■■■■■ Done\n/, 'without a language it is English');
 });
 
 test('the key at the head of the line is the link — no second key beneath, and a human line gets it in front', async () => {
@@ -174,10 +174,10 @@ test('the key at the head of the line is the link — no second key beneath, and
   await gradula.setHerald('PRB', { kind: 'probe', name: 'Human', chat: 'b', token: 'x', filter: { verbs: ['created', 'moved'], voice: 'human' } }, 'david');
   const card = await gradula.addItem('PRB', { title: 'A thing & another', kind: 'task' }, 'david');
   await gradula.settle();
-  const plain = said.find((m) => m.text.includes(' created '));
-  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> created A thing &amp; another\ndavid`, 'the key is the link, then the sentence, the hand beneath — nothing appended');
-  const human = said.find((m) => m.text.includes('New:'));
-  assert.equal(human.text, `<a href="https://board.test/${card.key}">${card.key}</a> New: A thing &amp; another`);
+  const plain = said.find((m) => m.text.includes(' created'));
+  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ created\nA thing &amp; another\ndavid`, 'the key is the link, the ladder, what happened; the title; the hand — nothing appended');
+  const human = said.find((m) => m.text.includes(' New\n'));
+  assert.equal(human.text, `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ New\nA thing &amp; another`);
   said.length = 0;
   await gradula.startItem(card.key, 'david');
   await gradula.settle();
@@ -208,6 +208,13 @@ test('a commit as evidence is its own line — the hash, linked into the reposit
   await gradula.settle(); said.length = 0;
   await gradula.addEvidence(card.key, { kind: 'commit', ref: 'd2de57062b76abcdef', note: 'Every editor: the hooks are git\'s', files: ['docs/x.md'] }, 'David (Claude Code · mac)');
   await gradula.settle();
-  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ← <a href="https://github.com/acc/repo/commit/d2de57062b76abcdef">d2de57062b76</a> Every editor: the hooks are git&#39;s\nDavid (Claude Code · mac)`.replace('&#39;', "'"));
+  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ ← <a href="https://github.com/acc/repo/commit/d2de57062b76">d2de57062b76</a>\nEvery editor: the hooks are git's\nDavid (Claude Code · mac)`);
   assert.deepEqual(await gradula.cardsOfRef('PRB', 'd2de57062b76'), [card.key], 'the commit knows its card — adopted once');
+});
+
+test('everything with an address is a link: keys in a reason, hashes anywhere — never a year, never without a repository', async () => {
+  const { linkify } = await import('../src/heralds.mjs');
+  const out = linkify('MDLA-3 moved → ice\nthe same commit adopted twice (fixed in 88ae5c0) — MDLA-2 is the card\ndokploy · seen on development (054935da6242) in 2026', { origin: 'https://grad.test', repo: 'acc/repo' });
+  assert.equal(out, '<a href="https://grad.test/MDLA-3">MDLA-3</a> moved → ice\nthe same commit adopted twice (fixed in <a href="https://github.com/acc/repo/commit/88ae5c0">88ae5c0</a>) — <a href="https://grad.test/MDLA-2">MDLA-2</a> is the card\ndokploy · seen on development (<a href="https://github.com/acc/repo/commit/054935da6242">054935da6242</a>) in 2026');
+  assert.equal(linkify('MDLA-3 at 88ae5c0', { origin: null, repo: null }), 'MDLA-3 at 88ae5c0', 'no address known, no link');
 });

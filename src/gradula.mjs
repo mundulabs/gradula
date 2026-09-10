@@ -21,7 +21,7 @@ import { labelsFor, mergeLabels, normalizeVocabulary, areaOf } from './labels.mj
 import { cycleWith, blockedBy, collisions } from './links.mjs';
 import { suggestions as cartograph } from './cartographer.mjs';
 import { wave, ripe, coverage } from './wave.mjs';
-import { messages, TEMPLATES, VOICES, VISIBILITIES } from './heralds.mjs';
+import { messages, linkify, TEMPLATES, VOICES, VISIBILITIES } from './heralds.mjs';
 import { releasesIn, previousOf, cardsBetween, releaseNote, LANES } from './releases.mjs';
 import { carriesOf } from './deployed.mjs';
 import * as telegram from './telegram.mjs';
@@ -181,17 +181,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const kind = heraldKinds[herald.kind];
         if (!kind?.send) continue;
         const html = Boolean(link);
-        const anchor = link ? `<a href="${escapeHtml(link)}">${escapeHtml(card.key)}</a>` : null;
-        let body = !link ? text
-          : text.startsWith(`${card.key} `) ? `${anchor}${escapeHtml(text.slice(card.key.length))}`
-            : `${anchor} ${escapeHtml(text)}`;
-        // a commit as evidence: its hash is a link into the repository, when the board knows one
-        const ref = verb === 'evidenced' && data?.kind === 'commit' ? String(data.ref ?? '').slice(0, 12) : '';
-        if (ref && html && body.includes(escapeHtml(ref))) {
-          const repo = (await store.github.get(item.project))?.repo ?? board?.repo ?? null;
-          const url = github.commitUrl(repo, data.ref);
-          if (url) body = body.replace(escapeHtml(ref), `<a href="${escapeHtml(url)}">${escapeHtml(ref)}</a>`);
-        }
+        // every key and every hash in the text is a link — the card's, the commit's (heralds.mjs, linkify)
+        const repo = (await store.github.get(item.project))?.repo ?? board?.repo ?? null;
+        const body = html ? linkify(escapeHtml(text), { origin, repo }) : text;
         const result = await kind.send(
           { token: keyOf(herald), chat: herald.chat }, body,
           { html, preview: card.visibility === 'public' },
@@ -222,7 +214,8 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const visibility = filter.visibility ?? 'internal';
         const text = releaseNote(release, cards, { visibility, language: filter.language ?? board?.language ?? 'en', origin });
         if (!text) continue;
-        const result = await kind.send({ token: keyOf(herald), chat: herald.chat }, escapeHtml(text), { html: true, preview: false });
+        const repo = (await store.github.get(projectKey))?.repo ?? board?.repo ?? null;
+        const result = await kind.send({ token: keyOf(herald), chat: herald.chat }, linkify(escapeHtml(text), { origin: visibility === 'public' ? origin : origin, repo: visibility === 'public' ? null : repo }), { html: true, preview: false });
         sent.push({ herald: herald.id, name: herald.name, ...result });
       }
       live?.announce(projectKey, { verb: 'released', card: null, actor: 'system', data: { lane: release.lane, id: release.id } });

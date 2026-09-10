@@ -187,6 +187,15 @@ const deployedLine = (deployed) => `deployed: dev ${clockOf(deployed?.at?.develo
  * workspaces say which packages exist; the last part of their path is the
  * module id, because `packages/native/hand` is `hand` and not `native`.
  */
+/** A card's title from a commit subject: whole when it fits the door's 140, else cut at a word with an ellipsis — never mid-word. */
+function titleOf(subject) {
+  const clean = String(subject ?? '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= 140) return clean;
+  const cut = clean.slice(0, 139);
+  const space = cut.lastIndexOf(' ');
+  return `${space > 80 ? cut.slice(0, space) : cut}…`;
+}
+
 function vocabularyOf(root = process.cwd()) {
   const pkgPath = join(root, 'package.json');
   if (!existsSync(pkgPath)) stop(`No package.json in ${root} — there is no vocabulary to read here.`);
@@ -552,7 +561,7 @@ switch (command) {
         // adopted already — by an earlier push, another machine, a hand? then it is that card's evidence
         const known = await call(`/api/v1/evidence/${orphan.hash.trim().slice(0, 12)}`).catch(() => ({ cards: [] }));
         if (known.cards?.length) { for (const key of known.cards) add(key, orphan.hash, orphan.title, orphan.author, orphan.email, orphan.files); continue; }
-        const made = await call('/api/v1/cards', { method: 'POST', body: { kind: 'task', title: orphan.title.slice(0, 140), text: `Born from a commit that found no board when it was made (${orphan.hash.trim().slice(0, 12)}).${orphan.body ? `\n\n${orphan.body.slice(0, 2000)}` : ''}` } });
+        const made = await call('/api/v1/cards', { method: 'POST', body: { kind: 'task', title: titleOf(orphan.title), text: `Born from a commit that found no board when it was made (${orphan.hash.trim().slice(0, 12)}).${orphan.body ? `\n\n${orphan.body.slice(0, 2000)}` : ''}` } });
         await call(`/api/v1/cards/${made.key}/start`, { method: 'POST', body: {} }).catch(() => {});
         add(made.key, orphan.hash, orphan.title, orphan.author, orphan.email, orphan.files);
         console.log(`${made.key} adopted  ${orphan.title.slice(0, 52)}`);

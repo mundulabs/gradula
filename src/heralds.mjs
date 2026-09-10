@@ -29,7 +29,7 @@
  * no time — the sending stands in `src/telegram.mjs`.
  */
 
-import { word } from './spec.mjs';
+import { word, LADDER } from './spec.mjs';
 
 /**
  * THE OUTWARD LANGUAGE IS NOT THE DEVELOPER'S.
@@ -55,6 +55,7 @@ export const VOICES = ['plain', 'human'];
 // the same words drifts eventually, and then the herald filters on something
 // a card cannot be at all.
 export { VISIBILITIES } from './spec.mjs';
+
 
 /**
  * Templates are NOT a second kind — they are filled-in filters. That is why
@@ -148,28 +149,40 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
   const isPublic = visibility === 'public';
   const title = short(card.title, 140);   /* a card's own cap — a title is never cut here */
   const mark = project ? `${card.key ?? project}` : card.key ?? '';
+  const ladder = LADDER[card.state] ?? '';
+
+  /*
+   * THREE LINES, THE SAME EVERY TIME — the eye finds each thing where it was
+   * last time:
+   *   MDLA-3 ■■▩□□ moved → review          the key (a link), where it stands, what happened
+   *   The title of the card [docs tools]  what it is
+   *   dokploy · seen on dev (e81d7c6)      whose hand, and why
+   * A commit as evidence puts the commit on the first line (its hash a link)
+   * and the commit's own sentence on the second — not the card's title again.
+   * The human voice says the second line first, as a sentence, and keeps the
+   * rest; the public voice drops the hand, the reason and the labels.
+   */
+  const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? String(data.ref).slice(0, 12) : null;
+  const what = commit ? `← ${commit}`
+    : verb === 'moved' ? `moved → ${card.state ?? 'moving'}`   /* plain: the state is an identifier, not a word */
+      : verb;
+  const labels = labelsOf(card);
+  const second = commit ? short(data.comment ?? '', 140) || title : title;
+  const tail = [!isPublic && actor ? actor : '', !isPublic && data.reason ? short(data.reason, 200) : ''].filter(Boolean);
 
   if (voice === 'human') {
     const head = HEADS[language]?.[verb] ?? HEADS.en[verb] ?? verb;
     const kopf = verb === 'moved'
       ? (card.state === 'done' ? head.done : `${head.now} ${word(card.state ?? 'moving', language)}`)
       : head;
+    const first = [mark, ladder, kopf].filter(Boolean).join(' ');
     const reason = !isPublic && data.reason ? ` — ${short(data.reason, 160)}` : '';
-    return `${kopf}: ${title}${reason}`;
+    return `${first}\n${second}${reason}`;
   }
 
-  const labels = labelsOf(card);
-  // a commit as evidence is its own sentence: the hash and the commit's line, not the card's title again
-  const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? `${String(data.ref).slice(0, 12)} ${short(data.comment ?? '', 140)}`.trim() : null;
-  const parts = [
-    mark,
-    commit ? '←' : verb,
-    commit ?? title,
-    labels.length && !isPublic ? `[${labels.join(' ')}]` : '',
-  ].filter(Boolean);
-  // who, and why, on a line of their own: the hand is long ("Name (Claude Code · machine)"), and a sentence that ends in it is hard to read
-  const tail = [!isPublic && actor ? actor : '', !isPublic && data.reason ? short(data.reason, 200) : ''].filter(Boolean);
-  return parts.join(' ') + (tail.length ? `\n${tail.join(' · ')}` : '');
+  const first = [mark, ladder, what].filter(Boolean).join(' ');
+  const body = `${second}${labels.length && !isPublic ? ` [${labels.join(' ')}]` : ''}`;
+  return `${first}\n${body}${tail.length ? `\n${tail.join(' · ')}` : ''}`;
 }
 
 /**
@@ -195,5 +208,20 @@ export function messages(heralds, moment, { language = 'en' } = {}) {
       }),
     });
   }
+  return out;
+}
+
+/**
+ * EVERYTHING WITH AN ADDRESS IS A LINK. A card key anywhere in a sentence —
+ * at the head, in a reason, in a release note — leads to the card; a commit
+ * hash anywhere leads to the commit. Applied to the ESCAPED text, once, at
+ * the end: no line has to know where it will be linked. Without an origin
+ * no card links; without a repository no commit links — never a guess.
+ */
+export function linkify(escaped, { origin = null, repo = null } = {}) {
+  let out = String(escaped ?? '');
+  if (origin) out = out.replace(/\b([A-Z]{2,8}-[0-9]{1,7})\b/g, (key) => `<a href="${origin.replace(/\/+$/, '')}/${key}">${key}</a>`);
+  // a hash: 7–40 hex characters standing alone — not inside a word, not part of a key, not a number like 2026
+  if (repo) out = out.replace(/(^|[^A-Za-z0-9/"#-])([0-9a-f]{7,40})(?![A-Za-z0-9-])/g, (m, before, sha) => (/[a-f]/.test(sha) ? `${before}<a href="https://github.com/${repo}/commit/${sha}">${sha}</a>` : m));
   return out;
 }
