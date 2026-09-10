@@ -42,6 +42,9 @@ services:
       # purpose: a self-hosted instance reports nothing to us.
       SENTRY_DSN: ${SENTRY_DSN:-}
       GRADULA_ENV: ${GRADULA_ENV:-production}
+      # The house bot: a herald may take this key instead of carrying one (src/gradula.mjs, HOUSE_KEY).
+      # Without it the form offers no house key and everything else runs as before.
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     depends_on:
       db:
         condition: service_healthy
