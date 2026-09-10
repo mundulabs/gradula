@@ -1699,7 +1699,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      */
     async arrived(key, environment, sha) {
       const item = await findItem(key);
-      const reason = `seen on ${environment} (${String(sha).slice(0, 12)})`;
+      const reason = `seen on ${environment} (${String(sha).slice(0, 7)})`;
       if (environment === 'development' && ['ideas', 'ready', 'making'].includes(item.state)) {
         await this.moveItem(key, 'review', 'dokploy', reason);
         return 'review';

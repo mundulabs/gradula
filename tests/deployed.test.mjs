@@ -266,7 +266,7 @@ test('the whole picture: the head names a card, the notes are written once, and 
   assert.equal((await gradula.getItem(proven.key)).state, 'done');
   const moved = (await gradula.getItem(named.key)).history.filter((e) => e.verb === 'moved').pop();
   assert.equal(moved.actor, 'dokploy');
-  assert.match(moved.data.reason, /^seen on production \(aaaaaaaaaaaa\)/, 'the chronicle says who moved it and why');
+  assert.match(moved.data.reason, /^seen on production \(aaaaaaa\)/, 'the chronicle says who moved it and why');
   assert.equal((await gradula.getItem(ahead.key)).state, 'making', 'ahead of the head: not seen, not moved');
   assert.equal((await gradula.getItem(ahead.key)).history.filter((e) => e.verb === 'deployed').length, 0, 'ahead of the head: not seen, not noted');
 
@@ -324,7 +324,7 @@ test('seen on development a card goes to review; seen on production a gated card
   assert.equal((await gradula.getItem(onDev.key)).state, 'review', 'it can be looked at on dev now');
   const held = await gradula.getItem(gated.key);
   assert.equal(held.state, 'review', 'out on production, but the gate has not spoken — not done');
-  assert.match(held.history.filter((e) => e.verb === 'moved').pop().data.reason, /^seen on production \(aaaaaaaaaaaa\) — The gate has not run yet/);
+  assert.match(held.history.filter((e) => e.verb === 'moved').pop().data.reason, /^seen on production \(aaaaaaa\) — The gate has not run yet/);
 });
 
 test('a webhook deployment names only its sha: the sha is taken as is, and the message behind it says what it carries', async () => {

@@ -155,7 +155,7 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
    * THREE LINES, THE SAME EVERY TIME — the eye finds each thing where it was
    * last time:
    *   MDLA-3 ■■▩□□ moved → review          the key (a link), where it stands, what happened
- *   MDLA-3 ■■▩□□ commit d2de57062b76     a commit as evidence: the hash (a link) — an arrow said the same and nobody read it
+ *   MDLA-3 ■■▩□□ commit d2de570          a commit as evidence: the hash (a link) — an arrow said the same and nobody read it
    *   The title of the card [docs tools]  what it is
    *   dokploy · seen on dev (e81d7c6)      whose hand, and why
    * A commit as evidence puts the commit on the first line (its hash a link)
@@ -163,7 +163,7 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
    * The human voice says the second line first, as a sentence, and keeps the
    * rest; the public voice drops the hand, the reason and the labels.
    */
-  const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? String(data.ref).slice(0, 12) : null;
+  const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? String(data.ref).slice(0, 7) : null;   /* seven: git's own abbreviation */
   const what = commit ? `commit ${commit}`
     : verb === 'moved' ? `moved → ${card.state ?? 'moving'}`   /* plain: the state is an identifier, not a word */
       : verb;
