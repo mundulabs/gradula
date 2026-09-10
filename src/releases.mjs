@@ -24,6 +24,8 @@
  * releases come out, and gradula.mjs remembers and speaks.
  */
 
+import { LADDER } from './spec.mjs';
+
 /** The lanes an app release may take — a build's platform, or the update channel. */
 export const LANES = ['web', 'ios', 'android', 'ota'];
 
@@ -98,7 +100,8 @@ export function releaseNote(release, cards = [], { visibility = 'internal', lang
   const title = release.title ? (String(release.title).length > 120 ? `${String(release.title).slice(0, 119)}…` : String(release.title)) : null;
   // the head is one line; the deployment's own title, when shown, stands beneath it — the head must read at a glance
   const head = `${lane}${version}${where} — ${w.released}${!isPublic && title ? `\n${title}` : ''}`;
-  const lines = shown.map((c) => (isPublic ? `• ${c.title}` : `• ${c.key} ${c.title}`));
+  // inside the house every card line has the same head as everywhere else: key, ladder, state — then the title
+  const lines = shown.map((c) => (isPublic ? `• ${c.title}` : `• ${c.key} ${LADDER[c.state] ?? ''} ${c.state ?? ''}`.replace(/\s+/g, ' ').trim() + `\n  ${c.title}`));
   const body = lines.length ? lines.join('\n') : w.nothing;
   return `${head}\n${body}${release.url && !isPublic ? `\n${release.url}` : ''}`;
 }

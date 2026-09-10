@@ -47,7 +47,7 @@ test('a public channel gets ONLY what was released — and it hears releases, no
   const outward = releaseNote(release, cards, { visibility: 'public' });
   assert.equal(outward, 'iOS 0.0.1 · 3 · TestFlight — released\n• Public thing', 'titles of public cards only; no key, no build title, no link');
   const inside = releaseNote(release, cards, { visibility: 'internal' });
-  assert.match(inside, /• P-1 Public thing\n• P-2 Secret thing\nhttps:\/\/expo\.dev\/b\/x$/);
+  assert.match(inside, /• P-1\n  Public thing\n• P-2\n  Secret thing\nhttps:\/\/expo\.dev\/b\/x$/, 'inside: key (ladder and state when known), the title beneath');
   assert.equal(releaseNote(release, [cards[1]], { visibility: 'public' }), null, 'nothing public: a public channel hears nothing');
 });
 
