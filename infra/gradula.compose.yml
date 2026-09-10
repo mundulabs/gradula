@@ -1,0 +1,227 @@
+# grd — the planning board (Gradula), its own Dokploy PROJECT in the same organisation.
+#
+# The house naming rule: <abbreviation>-<task>, like mdla-web. The abbreviation is
+# the project key under which Gradula tracks itself: GRD.
+#
+# The warnings from the neighbouring house apply here just the same (infra/mundula/README.md):
+#
+# 1. NEVER attach a Dokploy "mount" to this service. With a mount, Dokploy passes
+#    `--project-directory`, `build.context` slips one level up, and the build
+#    breaks without a git diff showing anything.
+# 2. isolatedDeployment=false and randomize=false are mandatory — otherwise
+#    Dokploy renames the networks, the container is not attached to dokploy-network,
+#    and Traefik answers 502 even though the label below says dokploy-network.
+# 3. Domains as hand-written Traefik labels, not via Dokploy's domain.create:
+#    that way the routing is versioned together with this file.
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3200"
+      GRADULA_DB_URL: postgres://dream:${GRADULA_DB_PASSWORD:?GRADULA_DB_PASSWORD is required}@db:5432/dream
+      # Without this secret there is no admin door (projects, keys).
+      GRADULA_ADMIN_TOKEN: ${GRADULA_ADMIN_TOKEN:?GRADULA_ADMIN_TOKEN is required (32+ chars)}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://grad.mundula.app}
+      # Sign-in for people — the same Zitadel instance as Mundula, with its own
+      # app inside it. OIDC_AUDIENCE is the PROJECT id, not the client id.
+      # Without these four values the service keeps running, but only for machines.
+      OIDC_ISSUER: ${OIDC_ISSUER:-https://auth.mundula.app}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      # Where the roles live in the token. There is no standard for this, so it
+      # is a value and not a line of code: Keycloak realm_access.roles,
+      # Authentik/Entra groups, a custom https://firma.de/roles.
+      OIDC_ROLLEN_CLAIM: ${OIDC_ROLLEN_CLAIM:-urn:zitadel:iam:org:project:roles}
+      GRADULA_ROLE: ${GRADULA_ROLE:-dev}
+      GRADULA_SESSION_SECRET: ${GRADULA_SESSION_SECRET:-}
+      # Its own crash reporter. Without a DSN nothing happens, and that is on
+      # purpose: a self-hosted instance reports nothing to us.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      GRADULA_ENV: ${GRADULA_ENV:-production}
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # Its own name.
+      - traefik.http.routers.grd-http.rule=Host(`${GRADULA_HOST:-grad.mundula.app}`)
+      # PRIORITY, EXPLICITLY. Traefik derives it from the LENGTH of the rule,
+      # and `Host(...)` is short. A foreign HostRegexp sink in the same
+      # network outranks it by simply being wordier — that is exactly how
+      # dev.mundula.app was taken next door, and on 09.09. grad.mundula.app
+      # answered with somebody else's Next.js 404 page for a minute.
+      - traefik.http.routers.grd-http.priority=1000
+      - traefik.http.routers.grd-http.entrypoints=web
+      - traefik.http.routers.grd-http.middlewares=grd-https
+      - traefik.http.middlewares.grd-https.redirectscheme.scheme=https
+      - traefik.http.middlewares.grd-https.redirectscheme.permanent=true
+      - traefik.http.routers.grd.rule=Host(`${GRADULA_HOST:-grad.mundula.app}`)
+      - traefik.http.routers.grd.priority=1000
+      - traefik.http.routers.grd.entrypoints=websecure
+      - traefik.http.routers.grd.tls=true
+      - traefik.http.routers.grd.tls.certresolver=letsencrypt
+      - traefik.http.routers.grd.service=grd
+      # The developer area next to the workbook: mundula.app/dev/plan points at
+      # THIS service.
+      #
+      # MEASURED ON 08.09.2026, and the assumption before that was wrong: Traefik's
+      # default priority is the LENGTH OF THE RULE, and the neighbour's is a
+      # chain of five hosts — longer than "one host and one path". Without an
+      # explicitly high priority mdla-web wins, and /dev/plan answers with its
+      # 404 ("Diese Seite gibt es nicht.").
+      - traefik.http.routers.grd-dev.rule=Host(`mundula.app`) && PathPrefix(`/dev/plan`)
+      - traefik.http.routers.grd-dev.priority=1000
+      # And the service does not know its neighbourhood: it listens on /api/…, not
+      # on /dev/plan/api/…. The prefix is stripped before it arrives.
+      - traefik.http.middlewares.grd-strip.stripprefix.prefixes=/dev/plan
+      - traefik.http.routers.grd-dev.entrypoints=websecure
+      - traefik.http.routers.grd-dev.tls=true
+      - traefik.http.routers.grd-dev.tls.certresolver=letsencrypt
+      - traefik.http.routers.grd-dev.service=grd
+      - traefik.http.services.grd.loadbalancer.server.port=3200
+      - traefik.http.middlewares.grd-compress.compress=true
+      # SSE MUST NOT BE COMPRESSED. A compressor needs a block before it emits
+      # anything — the connection opens, the `hello` still gets through, and
+      # after that everything stands still. Measured on 09.09.: the channel
+      # looked healthy and carried nothing. `X-Accel-Buffering` does not help
+      # against this, that only applies to nginx.
+      - traefik.http.middlewares.grd-compress.compress.excludedContentTypes=text/event-stream
+      - traefik.http.routers.grd.middlewares=grd-compress
+      - traefik.http.routers.grd-dev.middlewares=grd-strip,grd-compress
+    networks: [internal, dokploy-network]
+
+  # The only state of this project. As a COMPOSE volume, not as a Dokploy mount
+  # (see warning 1), and without any address from outside.
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      # THE DATABASE NAME AND THE ROLE KEEP THE OLD WORD, like the volume above.
+      # Postgres IGNORES both once the data directory exists — rename them and
+      # the service connects as a user that was never created. That is exactly
+      # what happened on 09.09.: the rename set them to `gradula`, the web
+      # container crash-looped, and the data was fine the whole time.
+      POSTGRES_DB: dream
+      POSTGRES_USER: dream
+      POSTGRES_PASSWORD: ${GRADULA_DB_PASSWORD:?GRADULA_DB_PASSWORD is required}
+    volumes:
+      - dream-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dream -d dream"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks: [internal]
+
+  # The backup. Two services, each does ONE thing — both are official images,
+  # so there is nothing to build and nothing to maintain here.
+  #
+  # WHY TWO TIERS: the dump in its own volume protects against the common case
+  # (broken migration, accidental deletion) and is available immediately. It does
+  # NOT protect against losing the machine — that is what the second tier is for,
+  # and that one is optional: whoever sets no S3 values gets tier one and a line
+  # in the log, instead of a service that fails every hour.
+  sicherung:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${GRADULA_DB_PASSWORD:?GRADULA_DB_PASSWORD is required}
+      # How many dumps are kept. Seven days are long enough to notice a
+      # mistake, and short enough that nobody counts storage.
+      TAGE: ${GRADULA_SICHERUNG_TAGE:-7}
+    volumes:
+      - dream-sicherungen:/sicherungen
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "[sicherung] daily, $$TAGE copies in /sicherungen"
+        while true; do
+          name="/sicherungen/gradula-$$(date -u +%Y-%m-%dT%H%M).dump"
+          if pg_dump -h db -U dream -d dream -Fc -f "$$name.teil" 2>/tmp/fehler; then
+            mv "$$name.teil" "$$name"
+            echo "[sicherung] $$name ($$(wc -c < "$$name") bytes)"
+          else
+            echo "[sicherung] FAILED: $$(tail -1 /tmp/fehler)"
+            rm -f "$$name.teil"
+          fi
+          # Clean up only after a SUCCESSFUL dump: otherwise a broken run
+          # deletes the last good copy.
+          ls -1t /sicherungen/*.dump 2>/dev/null | tail -n +$$((TAGE + 1)) | xargs -r rm -f
+          sleep 86400
+        done
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks: [internal]
+
+  # Tier two: the same files off-site. Without S3 values this service does
+  # nothing and says so once — a service that fails in a loop without
+  # configuration spoils every log.
+  auslagern:
+    image: minio/mc:latest
+    restart: unless-stopped
+    environment:
+      S3_ENDPOINT: ${GRADULA_S3_ENDPOINT:-}
+      S3_ACCESS_KEY: ${GRADULA_S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${GRADULA_S3_SECRET_KEY:-}
+      S3_BUCKET: ${GRADULA_S3_BUCKET:-mundula-backups}
+    volumes:
+      - dream-sicherungen:/sicherungen:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        if [ -z "$$S3_ACCESS_KEY" ]; then
+          echo "[auslagern] no S3 values — the backup stays on this machine."
+          while true; do sleep 86400; done
+        fi
+        mc alias set ziel "$$S3_ENDPOINT" "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" >/dev/null
+        while true; do
+          mc mirror --overwrite --remove /sicherungen "ziel/$$S3_BUCKET/gradula" && echo "[auslagern] mirrored to $$S3_BUCKET/gradula"
+          sleep 86400
+        done
+    depends_on: [sicherung]
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    networks: [internal, dokploy-network]
+
+networks:
+  internal:
+    internal: true
+  dokploy-network:
+    external: true
+
+volumes:
+  # The dumps. Their own volume, so that a destroyed data volume does not take
+  # its own backups with it.
+  dream-sicherungen:
+  # THESE TWO KEYS KEEP THE OLD NAME, and they always will.
+  #
+  # A persistent volume key is not a label, it is the ADDRESS OF THE DATA. Rename
+  # it and Docker creates an EMPTY volume, the service starts, nothing is logged,
+  # and every board is gone — still on disk, unreachable.
+  #
+  # This very comment was overwritten once, on 09.09., by a blind rename that
+  # turned `dream-db` into `gradula-db` and left the warning claiming the new
+  # name was the old one. It was caught before deploying. That is the whole
+  # reason it is written this loudly.
+  dream-db:

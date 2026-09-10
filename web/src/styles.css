@@ -1,0 +1,776 @@
+/*
+ * GRADULA IS GREY UNTIL SOMETHING HAS A STATE.
+ *
+ * Mundula has a law: the orange means state, never decoration. Gradula takes
+ * it further — here EVERY colour means a state, and there are no others. No
+ * accent, no brand in a hue, no gradient. What is coloured says something:
+ * what is running, what is waiting, what is done, what is only proposed.
+ *
+ * That is at the same time the own appearance Gradula needs as its own
+ * product: it does not borrow Mundula's orange, it simply has none.
+ */
+
+:root {
+  --ground: #0b0d10;
+  --surface: #14171c;
+  --surface-high: #1b1f26;
+  --line: #262b33;
+  --line-light: #333a45;
+  --ink: #e9e7e2;
+  --faint: #8b929c;
+  --muted: #5a616b;
+
+  /* States — the only colours in the house. */
+  --running: #ff7a2f;
+  --done-color: #4ec98a;
+  --waiting: #e0a53a;
+  --proposal: #63b8e8;
+
+  --font: 'Archivo', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    --ground: #f2f1ee;
+    --surface: #ffffff;
+    --surface-high: #fbfaf8;
+    --line: #dedbd4;
+    --line-light: #c3bfb6;
+    --ink: #16181c;
+    --faint: #5b616a;
+    --muted: #8b929c;
+    --running: #d1500f;
+    --done-color: #1d8a58;
+    --waiting: #a5711a;
+    --proposal: #1a6f9e;
+  }
+}
+
+* { box-sizing: border-box; }
+
+/*
+ * THE PAGE DOES NOT SCROLL — THE COLUMNS DO.
+ *
+ * That was the law from the first day and it was not kept: the board's height
+ * was `100svh - var(--head-height, 64px)`, and nothing ever set that variable.
+ * So the board was as tall as a guessed head, the page took the overflow, and
+ * a long column ran off the bottom of the window while its heading scrolled
+ * away with it. Measured on the live board with 21 cards in Ready.
+ *
+ * A magic number is not needed at all: the page is a column of exactly the
+ * viewport, the head takes what it takes, and the board takes the rest.
+ * `min-height: 0` is the part everyone forgets — without it a flex child
+ * refuses to be smaller than its content and overflows anyway.
+ */
+html, body { height: 100%; }
+body {
+  margin: 0;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--ground);
+  color: var(--ink);
+  font: 15px/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+#root { display: contents; }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid var(--line-light);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+button:hover { border-color: var(--ink); }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------- Head ---- */
+.head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* A narrow window shrinks the row before it clips it — the two filter
+     selects and the "+ Card" button are the first to give up their space. */
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.head .who { color: var(--faint); font-size: 13px; margin-left: auto; }
+.head .project-name { margin-right: 4px; }
+.head select {
+  font: inherit; color: inherit; background: var(--surface-high);
+  border: 1px solid var(--line-light); border-radius: 6px; padding: 0 8px;
+}
+/*
+ * ONE HEIGHT FOR EVERY CONTROL IN THIS ROW.
+ *
+ * A select at 5px/8px padding, an input at 8px/10px, and a bordered button at
+ * 6px/12px each compute their own height from their own padding — three
+ * numbers nobody chose to differ, and a header where nothing lines up.
+ * `box-sizing: border-box` on a fixed height makes the border part of that
+ * height instead of adding to it, so a 1px-bordered button and a 1px-bordered
+ * select land on the same baseline.
+ */
+.head button, .head select, .head input, .head .views, .head .languages {
+  height: 32px;
+  box-sizing: border-box;
+}
+.head .views .view, .head .languages .language {
+  height: 100%;
+  box-sizing: border-box;
+}
+/* Inside the wrapper, "push right" only makes sense in a row — the mobile
+   panel below stacks everything in a column instead. */
+.head-extra { display: contents; }
+.head-toggle { display: none; }
+
+/* --------------------------------------------------------------- Board ---- */
+.board {
+  display: flex; gap: 14px; align-items: stretch;
+  padding: 16px 18px 0;
+  overflow-x: auto;
+  /* The board takes whatever the head leaves over — no guessed number. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/*
+ * Every column scrolls for itself. A board that scrolls as a whole loses its
+ * headings as soon as one column grows long — and then, while scrolling, you
+ * no longer know which one you are reading in.
+ */
+.column {
+  flex: 0 0 268px;
+  display: flex; flex-direction: column; gap: 8px;
+  min-height: 0;
+}
+.column > header {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--ground);
+}
+.column-inside {
+  overflow-y: auto; overflow-x: hidden;
+  display: flex; flex-direction: column; gap: 10px;
+  padding-right: 4px;
+  /* Room for the beam that wraps the card and is a touch larger than it. */
+  padding-left: 8px; margin-left: -8px;
+  scrollbar-width: thin; scrollbar-color: var(--line-light) transparent;
+}
+.column-inside::-webkit-scrollbar { width: 8px; }
+.column-inside::-webkit-scrollbar-thumb { background: var(--line-light); border-radius: 4px; }
+.column > header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0 2px 6px; border-bottom: 1px solid var(--line);
+}
+.column h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.column .number { font: 11px var(--mono); color: var(--muted); }
+
+/*
+ * A CARD IS AN <a> NOW, NOT A <button> — cmd/ctrl/middle-click and "open in
+ * new tab" only exist for something with a real href. The three resets
+ * below undo what a browser gives an anchor by default (blue, underlined,
+ * a visited colour of its own); everything else is unchanged from the button.
+ */
+.card, .card:visited, .card:hover, .card:active {
+  color: inherit; text-decoration: none;
+}
+.card {
+  display: flex; flex-direction: column; gap: 7px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 7px;
+  padding: 9px 10px; text-align: left; width: 100%;
+  cursor: pointer;
+}
+.card:hover { border-color: var(--line-light); }
+.card.busy { border-color: var(--running); box-shadow: inset 2px 0 0 var(--running); }
+.card .key { font: 10.5px var(--mono); color: var(--muted); letter-spacing: 0.05em; }
+.card .title { font-size: 13.5px; line-height: 1.35; font-weight: 500; }
+.card .foot { display: flex; align-items: center; gap: 8px; font: 10.5px var(--mono); color: var(--muted); }
+
+.labels { display: flex; flex-wrap: wrap; gap: 4px; }
+.label {
+  font: 10px var(--mono); border: 1px solid var(--line-light); color: var(--faint);
+  border-radius: 3px; padding: 1px 5px;
+}
+.label.module { border-color: var(--proposal); color: var(--proposal); }
+.label.guessed { border-style: dashed; }
+
+.waiting { color: var(--waiting); }
+.done { color: var(--done-color); }
+
+/* ---------------------------------------------------------------- Blatt ---- */
+/*
+ * A SHEET LIES OVER EVERYTHING, OR IT IS NOT A SHEET.
+ *
+ * It had no z-index. A column's heading is `position: sticky; z-index: 1`, and
+ * a positioned element with a z-index paints above a fixed one without — so
+ * "Done 3" and "Ice" were drawn ON TOP of the open sheet, and the board showed
+ * through its own scrim. Seen in a screenshot, not in a test, because nothing
+ * here was wrong enough to throw.
+ *
+ * The scrim is darker too. Half black over a board this dark left the columns
+ * legible behind the form, and a form you can read the board through is one
+ * you fill in while looking at something else.
+ */
+.sheet {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex; justify-content: flex-end;
+}
+.sheet > div,
+.sheet > form {
+  width: min(520px, 100%); background: var(--surface); border-left: 1px solid var(--line);
+  padding: 20px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
+}
+.sheet h2 { font-size: 18px; margin: 0; line-height: 1.25; }
+.sheet .line { display: flex; gap: 10px; font: 12px var(--mono); color: var(--faint); flex-wrap: wrap; }
+.sheet .text { white-space: pre-wrap; color: var(--faint); font-size: 14px; }
+.sheet .history { display: flex; flex-direction: column; gap: 4px; font: 11.5px var(--mono); color: var(--muted); }
+.sheet .move { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.empty { padding: 40px 18px; color: var(--muted); }
+.error { padding: 14px 18px; color: var(--waiting); font: 13px var(--mono); }
+a { color: var(--proposal); }
+
+/* --------------------------------------------------------- New card ---- */
+.sheet form {
+  width: min(520px, 100%); background: var(--surface); border-left: 1px solid var(--line);
+  padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
+}
+input, textarea, select {
+  font: inherit; color: inherit; background: var(--surface-high);
+  border: 1px solid var(--line-light); border-radius: 6px; padding: 8px 10px;
+}
+textarea { font: 13.5px/1.5 var(--font); resize: vertical; }
+input:focus, textarea:focus, select:focus { outline: none; border-color: var(--proposal); }
+.head .search { flex: 1 1 140px; min-width: 90px; max-width: 240px; }
+button[disabled] { opacity: 0.45; cursor: default; }
+
+/* ---------------------------------------------------------------- Door ---- */
+/*
+ * The screen before signing in. The mark stands here and only here.
+ *
+ * It does not move. By the law in src/motion.ts motion means state, and a door
+ * has none — until you press, and the browser walks to the provider. That is a
+ * state, and it is the only thing on this page that is allowed to animate.
+ *
+ * No state colour either: signing in is an action. The button carries contrast,
+ * not colour.
+ */
+.door {
+  min-height: 100svh;
+  display: grid;
+  place-items: center;
+  padding: 28px 20px;
+}
+.card-door {
+  width: min(92vw, 400px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 34px 32px 28px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.mark {
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+/* The columns as rungs. It reads as a ladder, and it is the actual board. */
+.ladder {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 3px;
+}
+.ladder li {
+  position: relative;
+  font: 11px var(--mono);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--muted);
+  padding-left: 26px;
+  line-height: 1.7;
+}
+.ladder li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 18px;
+  height: 1px;
+  background: var(--line);
+}
+/* column-reverse puts the first child at the BOTTOM, so the ladder climbs.
+   The rung a card is trying to reach sits on top — and is the brightest. */
+.ladder li:last-child { color: var(--faint); }
+.ladder li:last-child::before { background: var(--faint); }
+
+.claim { margin: 6px 0 0; color: var(--faint); font-size: 14.5px; line-height: 1.45; }
+
+.card-door .button {
+  margin-top: 8px;
+  text-align: center;
+  text-decoration: none;
+  color: var(--ground);
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  padding: 11px 16px;
+  font-weight: 600;
+  transition: filter 120ms ease, opacity 120ms ease;
+}
+.card-door .button:hover { filter: brightness(0.92); }
+.card-door .button:focus-visible { outline: 2px solid var(--faint); outline-offset: 2px; }
+
+/* Walking to the provider: the one state this page has. */
+.card-door .button.walking {
+  opacity: 0.75;
+  background: linear-gradient(100deg, var(--ink) 30%, var(--faint) 50%, var(--ink) 70%);
+  background-size: 300% 100%;
+  animation: walking 1.1s linear infinite;
+}
+@keyframes walking { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .card-door .button.walking { animation: none; }
+}
+
+.card-door .small { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+.card-door code { font: 11.5px var(--mono); color: var(--faint); }
+
+/* ----------------------------------------------------------- Edit ---- */
+.change { display: flex; flex-direction: column; gap: 10px; }
+.gate-field, .person-field { display: flex; flex-direction: column; gap: 8px; }
+
+/* ------------------------------------------------------------- Timeline ---- */
+.sheet .history span { display: block; }
+.sheet .history b { color: var(--faint); font-weight: 500; }
+.sheet .history .inside { color: var(--faint); font: 12.5px/1.5 var(--font); display: block; padding: 2px 0 6px 0; }
+.sheet .history .decision { border-left: 2px solid var(--done-color); padding-left: 8px; margin: 4px 0; }
+.sheet .history .decision b { color: var(--done-color); }
+.talk { display: flex; flex-direction: column; gap: 8px; }
+
+/* --- Settings: heralds and reports ------------------------------------- */
+.herald { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .8rem; margin: .5rem 0; }
+.herald header { display: flex; gap: .5rem; align-items: baseline; }
+.row { display: flex; gap: .4rem; flex-wrap: wrap; margin-top: .4rem; }
+.draft label { display: block; margin: .4rem 0; }
+.draft label input, .draft label select { display: block; width: 100%; margin-top: .2rem; }
+.report {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  padding: .8rem; overflow-x: auto; white-space: pre-wrap; font-size: .85rem; line-height: 1.5;
+}
+
+/* Motion means state, never decoration — see src/motion.ts.
+ *
+ * A beam WRAPS its card, so a signalling card sits one div deeper than a quiet
+ * one. Without this the wrapper shrinks to its content and the column goes
+ * ragged — two cards side by side, one of them narrower for no reason a reader
+ * can name. */
+.card { position: relative; }
+/*
+ * The wrapper is the BEAM's, and only the beam's.
+ *
+ * It said `.column > div:has(> .card)`, which also matches `.column-inside` —
+ * the column's own body, which holds cards. Setting it to `display: block`
+ * killed its flex gap, and every card in a column sat flush against the next.
+ * Measured: 0 pixels between six cards in a row, while the stylesheet said 10.
+ *
+ * So the selector names the beam's wrapper and nothing else.
+ */
+.column-inside > [class*='border-beam'],
+.column-inside > div:has(> .card),
+.group > [class*='border-beam'],
+.group > div:has(> .card) { width: 100%; display: block; }
+.readerOnly {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+
+/* --- The settings sheet ------------------------------------------------- */
+/*
+ * Same chamber as the card sheet: the outer frame is the veil, the inner one
+ * the paper. The settings sheet has a head beside its sections, so it needs
+ * its own header rule — the card sheet has none.
+ */
+.sheet > div > header {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
+}
+.sheet > div > header button {
+  background: none; border: none; color: var(--muted);
+  font-size: 20px; line-height: 1; padding: 2px 6px; cursor: pointer;
+}
+.sheet > div > header button:hover { color: var(--ink); }
+.sheet section { display: flex; flex-direction: column; gap: 8px; }
+.sheet section h3 {
+  margin: 8px 0 0; font-size: 13px; font-weight: 600;
+  color: var(--faint); letter-spacing: 0.01em;
+}
+.sheet section > .row { margin-top: 2px; }
+.sheet ul { margin: 4px 0 0; padding-left: 18px; }
+.sheet ul li { padding: 2px 0; }
+.sheet ul li button { margin-left: 8px; }
+
+/* --- A bond: cards that belong together flow into one silhouette --------- */
+/*
+ * The melt IS the information (bonds.ts, motion.ts). A shared file is a
+ * collision waiting to happen; two cards under one venture are one piece of
+ * work in two hands. A gooey edge for its own sake would be the decoration our
+ * own law forbids — so a group of one gets no liquid at all.
+ */
+.group { display: block; }
+/* Cards need air between them, inside a bond as much as outside it. Four
+   pixels made a group read as one dark block rather than as cards that belong
+   together — the melt already says they belong together. */
+.group > div { display: flex; flex-direction: column; gap: 8px; }
+.group .card { border-color: transparent; background: transparent; }
+.group .card:hover { border-color: var(--line-light); }
+/* The bond's reason shows in the rim, not in a badge: a badge would be a
+   second thing to read, and the shape already said it. */
+.group-file > div { --group: var(--waiting); }
+.group-venture > div { --group: var(--proposal); }
+.group { position: relative; }
+.group::before {
+  content: '';
+  position: absolute; left: -7px; top: 6px; bottom: 6px; width: 2px;
+  border-radius: 2px; background: var(--group, var(--line-light)); opacity: 0.55;
+}
+
+/* The orb: a machine is at work on this card at this moment (motion.ts). */
+.card .key { display: flex; align-items: center; gap: 6px; }
+.orb { display: inline-flex; width: 20px; height: 20px; flex: 0 0 20px; }
+@media (prefers-reduced-motion: reduce) { .orb { display: none; } }
+
+/* The standing: where things have arrived. One word, in the header, because it
+   is the answer to a question you ask once a day — not a dashboard. */
+.standing {
+  font: 10.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line-light); color: var(--muted);
+}
+.stand-live { color: var(--done); border-color: var(--done); }
+.stand-deploying { color: var(--running); border-color: var(--running); }
+.stand-failed { color: var(--waiting); border-color: var(--waiting); }
+
+/* --- The map: where the work went --------------------------------------- */
+/*
+ * Angle is the area, radius is time — the centre is the beginning, the rim is
+ * now. SVG, so it stays sharp, stays keyboard-reachable and every dot can
+ * carry a real label. There is no third dimension because we measure nothing
+ * that would honestly be one (see Map.tsx).
+ */
+.map-face { padding: 18px 22px 28px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.map-face svg { width: min(92vw, 760px); height: auto; overflow: visible; }
+.map-ring { fill: none; stroke: var(--line); stroke-width: 1; }
+.map-spoke { stroke: var(--line); stroke-width: 1; opacity: 0.5; }
+.map-sector { fill: var(--muted); font: 10.5px var(--mono); letter-spacing: 0.04em; }
+.dot { cursor: pointer; stroke: var(--ground); stroke-width: 1.5; transition: r 120ms ease; }
+.dot:hover, .dot:focus-visible { r: 8; outline: none; }
+/*
+ * `var(--done)` does not exist — the token is `--done-color`. An unknown
+ * custom property makes the whole declaration invalid, and SVG's default fill
+ * is black, so twenty-six of forty-three dots were drawn in the one colour
+ * this palette does not contain. Nothing was red; the map just looked wrong
+ * in a way that is easy to blame on the data.
+ */
+.dot-ideas { fill: var(--muted); }
+.dot-ready { fill: var(--faint); }
+.dot-making { fill: var(--running); filter: drop-shadow(0 0 4px var(--running)); }
+.dot-review { fill: var(--waiting); }
+.dot-done { fill: var(--done-color); opacity: 0.5; }
+.dot-ice { fill: var(--line-light); opacity: 0.4; }
+/* Dimmed rather than hidden: a filter that removes the rest also removes the
+ * only thing that made the picture a picture — its proportions. */
+.map-pale { opacity: 0.12; }
+.map-hint {
+  display: flex; flex-direction: column; gap: 2px; text-align: center;
+  font-size: 13px; min-height: 34px;
+}
+
+/* The map, second pass: readable at a glance (see Map.tsx). */
+.map-foot { display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.map-time { fill: var(--muted); font: 9.5px var(--mono); opacity: 0.7; }
+.map-sector { cursor: pointer; }
+.map-sector:hover { fill: var(--ink); }
+.map-sector-number { fill: var(--muted); font: 9.5px var(--mono); }
+.map-sector-pale { opacity: 0.28; }
+.map-legend {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 12px;
+  font: 10.5px var(--mono); color: var(--muted);
+}
+.map-legend li { display: flex; align-items: center; gap: 5px; }
+.map-legend span {
+  width: 9px; height: 9px; border-radius: 50%; display: inline-block;
+  border: 1px solid var(--ground);
+}
+
+/* The language switch. Two letters, and the chosen one is not a colour but a
+   weight — colour means state in this house, and a language is not a state. */
+.languages { display: inline-flex; gap: 2px; margin-left: 4px; }
+.language {
+  padding: 3px 7px; font-size: 11.5px; font-family: var(--mono); letter-spacing: 0.04em;
+  color: var(--muted); background: none; border: var(--line-light); border-radius: 5px; cursor: pointer;
+}
+.language:hover { color: var(--ink); }
+.language.on { color: var(--ink); border-color: var(--line); font-weight: 600; }
+
+/* On the door the switch stands under the note, quiet and centred. */
+.card-door .languages { margin: 14px auto 0; }
+
+/*
+ * A bond says why, in words, above the cards it holds.
+ *
+ * It stood in a `title` — a tooltip nobody hovers. What one saw was a darker
+ * block of packed cards, and the only honest reading of that is "something is
+ * wrong with these". A shape alone does not say a reason.
+ */
+.group .bond {
+  display: block; padding: 0 2px 5px;
+  font: 11px var(--mono); color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.group-file .bond { color: var(--waiting); }
+.group-venture .bond { color: var(--proposal); }
+
+/* A bond too wide to melt keeps its sentence and its rim, and lets the cards
+   stay cards. */
+.group.wide { display: flex; flex-direction: column; gap: 10px; }
+.group.wide .card { border-color: var(--line-light); background: var(--surface); }
+
+/* What kind of thing a card is, when it is not the usual one. No colour — a
+   kind is not a state, and colour in this house means state. */
+.card .kind {
+  margin-left: auto; padding: 1px 5px;
+  font: 10px var(--mono); letter-spacing: 0.04em;
+  color: var(--muted); border: var(--line-light); border-radius: 4px;
+}
+
+/* ── The pulse ───────────────────────────────────────────────────────────────
+ *
+ * A grid of panels that scrolls as one page — unlike the board, where each
+ * column scrolls for itself. The board is many lists side by side; the pulse
+ * is one answer, and an answer whose parts scroll apart is harder to read,
+ * not easier.
+ *
+ * The bars carry no colour. A share of measured moves is not a state, and the
+ * house has exactly one warm colour, which means "someone is working here".
+ * Only `behind` earns it: it is the one line on this screen to act on.
+ */
+.pulse {
+  flex: 1 1 auto; min-height: 0;
+  overflow-y: auto;
+  padding: 16px 18px 24px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px; align-content: start;
+}
+.pulse .period { grid-column: 1 / -1; margin: 0; color: var(--faint); font-family: var(--mono); font-size: 12px; }
+.pulse .panel {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; min-width: 0;
+}
+.pulse .panel.wide { grid-column: 1 / -1; }
+.pulse h3 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--faint); }
+.pulse h4 { margin: 0 0 6px; font-size: 12px; color: var(--faint); font-weight: 500; }
+.pulse p { margin: 0 0 6px; font-size: 13px; }
+.pulse .quiet { color: var(--faint); font-size: 12px; }
+.pulse .pulse-wait { padding: 24px; }
+
+.pulse .row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px; }
+.pulse .row-name { color: var(--faint); font-size: 12px; min-width: 84px; }
+/* A COUNT, not the first word of the sentence. Without the chip "1 cards in
+ * making with no runner" reads as broken grammar instead of as a column. */
+.pulse .row-number {
+  font-family: var(--mono); font-size: 11px; color: var(--faint);
+  min-width: 22px; text-align: center; margin-right: 4px;
+  background: var(--surface-high); border-radius: 4px; padding: 1px 4px;
+}
+.pulse .key {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--surface-high); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 5px; padding: 1px 5px; cursor: pointer;
+}
+.pulse .key:hover { border-color: var(--line-light); }
+
+.pulse .goal { padding: 6px 0; border-top: 1px solid var(--line); }
+.pulse .goal:first-of-type { border-top: 0; }
+.pulse .goal-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.pulse .goal-title { flex: 1 1 auto; min-width: 0; }
+.pulse .verdict {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--faint); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px;
+}
+.pulse .verdict.ahead { color: var(--done-color); border-color: var(--done-color); }
+.pulse .verdict.tight { color: var(--waiting); border-color: var(--waiting); }
+.pulse .verdict.behind { color: var(--running); border-color: var(--running); }
+
+.pulse .flows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.pulse .flow { min-width: 0; }
+.pulse .bar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pulse .bar-name { flex: 0 0 84px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pulse .bar-rail { flex: 1 1 auto; height: 6px; background: var(--surface-high); border-radius: 3px; overflow: hidden; }
+.pulse .bar-fill { display: block; height: 100%; background: var(--line-light); }
+.pulse .bar-number { flex: 0 0 auto; font-family: var(--mono); font-size: 11px; color: var(--faint); }
+/* The share nobody can attribute is drawn hollow, not hidden. */
+.pulse .bar.nowhere .bar-name { color: var(--muted); font-style: italic; }
+.pulse .bar.nowhere .bar-fill { background: repeating-linear-gradient(135deg, var(--line-light) 0 3px, transparent 3px 6px); }
+
+/* The three views sit together, so the current one can be shown rather than named. */
+.views { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.views .view { border: 0; border-radius: 0; background: transparent; }
+.views .view.here { background: var(--surface-high); color: var(--ink); }
+
+/* ── Age, and the legend ─────────────────────────────────────────────────────
+ *
+ * Age is not a state, so it gets no warm colour: `overdue` is a fact about a
+ * promise and stands out by weight, `idle` is a fact about attention and
+ * whispers. The one warm colour in this house still means "you are needed".
+ */
+.card .overdue { color: var(--waiting); font-variant-numeric: tabular-nums; }
+.card .idle { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The bond line becomes the handle above the cap — press it, the parts fold. */
+.bond.fold {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  display: flex; align-items: baseline; gap: 4px;
+  font: inherit; color: inherit; text-align: left;
+}
+.bond.fold .chevron { color: var(--faint); font-size: 10px; }
+.bond.fold:hover { color: var(--ink); }
+
+.legend { max-width: 640px; }
+.legend h3 { margin: 16px 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--faint); }
+.legend .quiet { color: var(--faint); font-size: 12px; margin: 0 0 10px; }
+.legend-row { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.legend-card {
+  flex: 0 0 auto; min-width: 148px;
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--surface-high); border: 1px solid var(--line); border-radius: 8px;
+  padding: 7px 10px; font-size: 12px;
+}
+.legend-why { flex: 1 1 240px; min-width: 0; font-size: 12px; color: var(--faint); }
+.legend .orb-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--running); display: inline-block; }
+/* The group sample shows the SHAPE, so it carries no text of its own. */
+.legend .group-sample { min-height: 30px; border-style: dashed; border-color: var(--group, var(--line-light)); }
+
+/* The map's legend is also its filter, so it has to look pressable. */
+.map-key {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  padding: 2px 6px; font: inherit; color: var(--faint); cursor: pointer;
+}
+.map-key:hover { color: var(--ink); }
+.map-key.here { border-color: var(--line-light); color: var(--ink); background: var(--surface-high); }
+.map-key-number { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+
+/*
+ * Review has two answers, and they are a decision, not a filing cabinet.
+ * Neither is warm: the one warm colour in this house means "you are needed",
+ * and standing in front of these buttons you already are.
+ */
+.verdict-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.verdict-row .approve { border-color: var(--done-color); color: var(--done-color); }
+.verdict-row .reject { border-color: var(--line-light); }
+.verdict-row .quiet { color: var(--faint); font-size: 12px; }
+
+/*
+ * HOW BAD IT WAS — Sentry's own measurement, on its own small scale.
+ *
+ * This is the one place where a second warm colour is allowed, and it is
+ * allowed because it is NOT a state: moving the card does not change what the
+ * crash weighed. The beam still says "you are needed" in exactly one colour;
+ * this says how hard it hit, in the language the measurement came in.
+ */
+.level {
+  font: 10px var(--mono); letter-spacing: 0.04em; text-transform: uppercase;
+  border: 1px solid currentColor; border-radius: 4px; padding: 0 4px;
+  color: var(--faint);
+}
+.level-fatal { color: #e2564a; }
+.level-error { color: var(--running); }
+.level-warning { color: var(--waiting); }
+.level-info, .level-debug { color: var(--muted); }
+@media (prefers-color-scheme: light) { :root:not([data-theme='dark']) .level-fatal { color: #b3261e; } }
+
+/* A card key inside a sentence is a link — it means exactly one card. */
+.key.link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-family: var(--mono); color: var(--proposal);
+}
+.key.link:hover { text-decoration: underline; }
+
+/* The filing cabinet folds away; the two decisions stay in front. */
+.by-hand { color: var(--faint); }
+
+/*
+ * A field that does not say where its value comes from is a question nobody
+ * outside this room can answer. The hint sits under the field, quiet, and is
+ * part of the field — not a paragraph that happens to be nearby.
+ */
+.hint { margin: -4px 0 6px; font-size: 12px; line-height: 1.45; color: var(--faint); }
+.draft .row .hint { margin: 0; flex: 1 1 200px; }
+
+/* A machine asking to register, and a soft "deny" beside the firm "approve". */
+.row.pending { align-items: baseline; }
+.row.pending b { color: var(--ink); }
+button.ghost { background: transparent; border-color: var(--line); color: var(--muted); }
+
+/* ------------------------------------------------------------- Phone ---- */
+/*
+ * BELOW 720PX THE HEAD STOPS FITTING AS A ROW.
+ *
+ * Project, search, three views, "+ Card", two filters, legend, settings,
+ * language, standing, who — eleven controls. Wrapped they still cover a third
+ * of a phone screen in permanent chrome; unwrapped they ran off the edge
+ * where a page with `overflow: hidden` on <body> means gone, not scrollable —
+ * David could not reach the view switch or "+ Card" at all. Even trimmed to
+ * "the row keeps what gets you somewhere", three views plus a labelled
+ * "+ Card" button still would not fit beside a usable search field at 375px
+ * — measured, not guessed, in the Browser pane.
+ *
+ * So below this width the row keeps only the project and a search field —
+ * finding and opening a card is how most visits on a phone start. Board /
+ * Map / Pulse, "+ Card", the two filters, legend, settings, language, the
+ * standing badge and your name fold into one panel behind a single "☰",
+ * open beneath the head instead of all across it, and it closes itself the
+ * moment you pick a view or start a card.
+ */
+@media (max-width: 720px) {
+  .head { flex-wrap: nowrap; gap: 8px; padding: 8px 12px; position: relative; }
+  .head .search { flex: 1 1 auto; min-width: 0; max-width: none; }
+  .head .project-switch { flex: 0 1 auto; max-width: 30vw; }
+  .head-toggle {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; padding: 0; flex: 0 0 auto;
+  }
+  .head-extra {
+    display: none;
+    position: absolute; top: 100%; left: 0; right: 0;
+    flex-direction: column; align-items: stretch; gap: 8px;
+    padding: 12px; background: var(--surface); border-bottom: 1px solid var(--line);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
+    max-height: calc(100vh - 56px); overflow-y: auto;
+  }
+  .head-extra.open { display: flex; }
+  .head-extra select, .head-extra input { width: 100%; }
+  .head-extra .views { width: 100%; height: auto; }
+  .head-extra .views .view { flex: 1 1 0; height: 36px; }
+  .head-extra > button { width: 100%; }
+  .head-extra .who { margin-left: 0; }
+  .head-extra .languages { align-self: flex-start; }
+}

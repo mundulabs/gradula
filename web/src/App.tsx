@@ -1,0 +1,1232 @@
+/**
+ * The board — what is to be done.
+ *
+ * Deliberately little: six columns, cards, a sheet beside them. No dragging
+ * with the mouse in this round, but buttons that say where a card goes. A drag
+ * that does not work on a phone and is imprecise on a desktop would be the
+ * wrong first gesture; the right one comes when somebody misses it.
+ *
+ * Settings sit in their own sheet and hold only what LEAVES the house —
+ * heralds and reports. A settings screen that also carries the board's own
+ * preferences is a screen where nobody finds the one switch that matters.
+ */
+import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
+import { BorderBeam } from 'border-beam';
+import { ThinkingOrb } from 'thinking-orbs';
+import { signalOf, beamFor, changedBetween, isRunning, IMPULSE_MS, BEAM_STATIC, LEVEL_CLASS, type Signal } from './motion';
+import { Liquid } from 'liquid-gooey';
+import { group, parentsFrom, type Group } from './bonds';
+import { chosenLanguage, keepLanguage, words, LANGUAGES, type Language } from './words';
+import { KINDS, GATE_KINDS } from './vocabulary';
+import AreaMap from './Map';
+import PulseView from './Pulse';
+import Legend from './Legend';
+import { ageOf, shortAge } from './age';
+import Prose from './Prose';
+import {
+  signInPath, me as readMe, projects as readProjects, cards as readCards,
+  card as readCard, move, start, create, change, confirm, say, decide,
+  vocabulary as readVocabulary, links as readLinks, live as liveLine,
+  standing as readStanding, NotSignedIn,
+  heralds as heraldsRead, myKeys, mintKey, revokeKey, type OwnKey, pendingDevices, approveDevice, denyDevice, type Device, templates as templatesRead, saveHerald, dropHerald,
+  probeHerald, heraldChats, chatsForKey, report as reportRead, sendReport,
+  type Me, type Card, type Project, type State, type Herald, type Template, type Report, type Link,
+  type Standing,
+} from './api';
+
+/** Written out, one by one — see the note where it is used. */
+const STAND_CLASS: Record<string, string> = {
+  live: 'standing stand-live',
+  deploying: 'standing stand-deploying',
+  failed: 'standing stand-failed',
+  idle: 'standing',
+};
+
+/*
+ * A CARD HAS AN ADDRESS, EVEN INSIDE THE APP.
+ *
+ * The board is served under two mounts (grad.mundula.app and
+ * mundula.app/dev/plan), so "where a card lives" is whatever the path was
+ * BEFORE the card — never a hard-coded slash. Both `open()` and every card's
+ * own `href` read it the same way, so a right-click "open in new tab" or
+ * "copy link" on a card lands exactly where clicking it would take you —
+ * before, a card was a `<button>` with nothing under the pointer to copy.
+ */
+function mountPath(): string {
+  return window.location.pathname.replace(/\/[A-Z]{2,8}-\d{1,7}$/, '').replace(/\/$/, '');
+}
+function cardHref(key: string): string {
+  return `${mountPath()}/${key}`;
+}
+
+/**
+ * The language of the surface, decided once per load. A switch writes it and
+ * reloads: everything on this page is a word, and half a page in two languages
+ * is worse than either.
+ */
+const language: Language = chosenLanguage();
+const t = words(language);
+
+// The column NAMES come from the service's vocabulary (src/spec.mjs) — the
+// states themselves are identifiers and never translated.
+const COLUMNS: State[] = [
+  'ideas', 'ready', 'making', 'review', 'done',
+  // Ice is a column, not a rung: what lies on ice is not on its way up. That
+  // is exactly why it is a column and not a flag — see src/spec.mjs.
+  'ice',
+];
+const COLUMN_NAMES: { state: State; name: string }[] = COLUMNS.map((state) => ({ state, name: t(state) }));
+
+
+function Labels({ card }: { card: Card }) {
+  const guessed = new Set([...(card.suggestions?.module ?? []), ...(card.suggestions?.stack ?? [])]);
+  const all = [...new Set([...card.module, ...card.stack, ...guessed])];
+  if (!all.length) return null;
+  return (
+    <div className="labels">
+      {all.map((e) => (
+        <span key={e} className={`label${card.module.includes(e) ? ' module' : ''}${guessed.has(e) ? ' guessed' : ''}`}>{e}</span>
+      ))}
+    </div>
+  );
+}
+
+function CardButton({ card, open, signal }: { card: Card; open: () => void; signal: Signal | null }) {
+  const beam = beamFor(signal);
+  const age = ageOf(card);
+  /*
+   * A LEFT CLICK STAYS INSIDE THE APP; EVERY OTHER CLICK IS THE BROWSER'S.
+   * That distinction is the whole reason this is an <a> and not a <button>:
+   * cmd/ctrl/middle-click, and "open in new tab" from the context menu, only
+   * exist for an element with a real href — a button has nothing to open.
+   */
+  const click = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    open();
+  };
+  const buttonNode = (
+    <a className={`card${card.state === 'making' ? ' busy' : ''}`} href={cardHref(card.key)} onClick={click}
+      aria-describedby={signal ? `sig-${card.key}` : undefined}>
+      {signal ? (
+        // The motion is the message for the eye. This is the same message for a
+        // screen reader, which sees no beam at all.
+        <span id={`sig-${card.key}`} className="readerOnly">
+          {signal === 'working' ? 'being worked on' : signal === 'attention' ? 'needs a hand' : 'just changed'}
+        </span>
+      ) : null}
+      <span className="key">
+        {card.key}{card.source === 'sentry' ? ' · incident' : ''}
+        {/*
+          WHAT KIND OF THING THIS IS, when it is not the usual one.
+          A milestone held eighteen cards and looked exactly like the tasks it
+          held. The kind is not a state, so it gets no colour — it gets a word,
+          and only where the word says something: `task` on twenty-nine of
+          thirty-five cards would be noise, not information.
+        */}
+        {card.kind !== 'task' ? <span className="kind">{t(card.kind)}</span> : null}
+        {/*
+          HOW BAD SENTRY THOUGHT IT WAS. Not a state and not the beam: the
+          beam says "you are needed", and this says how loud the thing was
+          when it happened. Its own small scale, and only on cards that
+          carry one — which is only incidents.
+        */}
+        {card.level ? <span className={LEVEL_CLASS[card.level] ?? 'level'}>{t(`level.${card.level}`, card.level)}</span> : null}
+        {isRunning(card) ? (
+          // A machine is at work on this card AT THIS MOMENT — not a state
+          // somebody left it in, a lease that is being renewed right now.
+          <span className="orb" title="a runner is working on this right now">
+            <ThinkingOrb state="working" size={20} />
+            <span className="readerOnly">{t('card.running')}</span>
+          </span>
+        ) : null}
+      </span>
+      <span className="title">{card.title}</span>
+      <Labels card={card} />
+      <span className="foot">
+        {card.person ? <span>{card.person}</span> : null}
+        {card.count ? <span>{card.count}×</span> : null}
+        {card.gate ? <span className="done">{t('card.gate')}</span> : null}
+        {card.blockedBy.length ? <span className="waiting">{t('card.waits')} {card.blockedBy.join(' ')}</span> : null}
+        {/*
+          HOW LONG THIS HAS BEEN LYING HERE — and only past the threshold. A
+          number on every card is a number nobody reads; a number on three of
+          forty is the three you were looking for. A date that has passed
+          outranks it: overdue is a fact about a promise, idle only about
+          attention.
+        */}
+        {age.overdue ? <span className="overdue" title={t('card.overdueWhy')}>{t('card.overdue')}</span>
+          : age.idle ? <span className="idle" title={t('card.idleWhy')}>{shortAge(age.days)}</span> : null}
+      </span>
+    </a>
+  );
+  return beam
+    ? <BorderBeam size={beam.size} duration={beam.duration} colorVariant={beam.color} staticColors={BEAM_STATIC} theme="dark">{buttonNode}</BorderBeam>
+    : buttonNode;
+}
+
+/**
+ * The gate as a form. Two fields are enough: WHAT is called and WHAT must
+ * come out of it. Whoever asks for more gets one less often — and a card
+ * without a gate is one somebody maintains by hand forever.
+ */
+/**
+ * The gate as a form. Two fields are enough: WHAT is called and WHAT must come
+ * out of it.
+ *
+ * The call field offers what the board ALREADY KNOWS — every path a card has
+ * named, every path in the module vocabulary. Not a file browser: this runs in
+ * a browser and has no repository. But a list of the paths this project
+ * actually works in beats an empty box that wants `packages/…/x.ts` typed
+ * without a typo, and since `gradula sync` records the files of every commit,
+ * the list fills itself.
+ */
+const NEW_PERSON = '__new__';
+function PersonField({ value, people, onChange }: { value: string; people: string[]; onChange: (who: string) => void }) {
+  const known = people.includes(value);
+  const [typing, setTyping] = useState(!known && Boolean(value));
+  return (
+    <div className="person-field">
+      <select value={typing ? NEW_PERSON : (known ? value : '')} onChange={(e) => {
+        if (e.target.value === NEW_PERSON) { setTyping(true); onChange(''); return; }
+        setTyping(false); onChange(e.target.value);
+      }}>
+        <option value="">{t('card.nobody')}</option>
+        {people.map((who) => <option key={who} value={who}>{who}</option>)}
+        <option value={NEW_PERSON}>{t('card.newPerson')}</option>
+      </select>
+      {typing ? <input autoFocus placeholder={t('card.personName')} value={value} onChange={(e) => onChange(e.target.value)} /> : null}
+    </div>
+  );
+}
+
+/*
+ * A source path is one that lives in this repository. The list the board
+ * gathers is wider than that: a Sentry trace names /app/src/api.mjs (the
+ * container's path), a card mentions .gitignore, the vocabulary lists bare
+ * module names — none of them is a file one can put a gate on.
+ */
+const SOURCE_PATH = /^(packages|apps|tools|tests|src|web|bin)\/[^\s]+\.(ts|tsx|mjs|cjs|js|json|md)$/;
+const OTHER_PATH = '__other__';
+
+function GateField({ gate, setGate, known = [] }: { gate: Card['gate']; setGate: (t: Card['gate']) => void; known?: string[] }) {
+  const kind = gate?.kind ?? 'test';
+  const sources = known.filter((path) => SOURCE_PATH.test(path));
+  return (
+    <div className="gate-field">
+      <select value={gate ? kind : ''} onChange={(e) => setGate(e.target.value ? { kind: e.target.value, call: gate?.call ?? '', expect: gate?.expect ?? null } : null)}>
+        {/* The kinds come from the service (GATE_KINDS). They stood here as a
+            second list, and after the move to English it still offered
+            `befehl`, `datei` and `adresse` — three of four choices the service
+            refuses with a 400. Nothing was red; the board simply could not set
+            a gate. */}
+        <option value="">{t('card.gateNone')}</option>
+        {GATE_KINDS.map((one) => <option key={one} value={one}>{t(one)}</option>)}
+      </select>
+      {gate ? (
+        <>
+          {/* These compared against `adresse` and `datei` long after the
+              gate kinds had moved to English — so every gate but `test` got
+              the wrong example, and nothing was red about it. */}
+          {kind === 'file' && sources.length ? (
+            <>
+              <select value={sources.includes(gate.call) ? gate.call : (gate.call ? OTHER_PATH : '')}
+                      onChange={(e) => setGate({ ...gate, call: e.target.value === OTHER_PATH ? ' ' : e.target.value })}>
+                <option value="">{t('card.pickFile')}</option>
+                {sources.map((path) => <option key={path} value={path}>{path}</option>)}
+                <option value={OTHER_PATH}>{t('card.otherFile')}</option>
+              </select>
+              {gate.call && !sources.includes(gate.call) ? (
+                <input autoFocus placeholder={t('card.pathExample')} value={gate.call.trim()} onChange={(e) => setGate({ ...gate, call: e.target.value })} />
+              ) : null}
+            </>
+          ) : (
+            <input placeholder={kind === 'url' ? 'https://…/api/health' : kind === 'file' ? 'packages/…/x.ts' : 'npm test -- x'}
+                   value={gate.call} onChange={(e) => setGate({ ...gate, call: e.target.value })} />
+          )}
+          <input placeholder={t('card.gateExpect')}
+                 value={gate.expect ?? ''} onChange={(e) => setGate({ ...gate, expect: e.target.value || null })} />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [] }: {
+  project: string; cardKey: string; close: () => void; changed: () => void;
+  people?: string[]; knownPaths?: string[];
+}) {
+  const [card, setCard] = useState<Card | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [byHand, setByHand] = useState(false);
+  const [draft, setDraft] = useState<{ title: string; text: string; person: string; gate: Card['gate'] } | null>(null);
+  const [word, setWord] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => { readCard(project, cardKey).then(setCard).catch((e) => setError(String(e.message ?? e))); }, [project, cardKey]);
+
+  const run = async (fn: () => Promise<Card>) => {
+    try { setCard(await fn()); changed(); } catch (e) { setError(String((e as Error).message ?? e)); }
+  };
+
+  const openToChange = () => {
+    if (!card) return;
+    setDraft({ title: card.title, text: card.text, person: card.person ?? '', gate: card.gate });
+    setEditing(true);
+  };
+
+  const keep = async () => {
+    if (!draft || !card) return;
+    // Send only what really changed: a PATCH that sends everything writes
+    // back what somebody else has changed in the meantime, too.
+    //
+    const fields: Record<string, unknown> = {};
+    if (draft.title !== card.title) fields.title = draft.title;
+    if (draft.text !== card.text) fields.text = draft.text;
+    if ((draft.person || null) !== card.person) fields.person = draft.person || null;
+    if (JSON.stringify(draft.gate) !== JSON.stringify(card.gate)) fields.gate = draft.gate;
+    if (!Object.keys(fields).length) { setEditing(false); return; }
+    try { setCard(await change(project, card.key, fields)); setEditing(false); changed(); }
+    catch (e) { setError(String((e as Error).message ?? e)); }
+  };
+
+  return (
+    <div className="sheet" onClick={close}>
+      <div onClick={(e) => e.stopPropagation()}>
+        {error ? <p className="error">{error}</p> : null}
+        {!card ? <p className="empty">…</p> : (
+          <>
+            <span className="key" style={{ font: '11px var(--mono)', color: 'var(--muted)' }}>{card.key}</span>
+            <h2>{card.title}</h2>
+            <div className="line">
+              <span>{card.kind}</span><span>·</span><span>{card.state}</span>
+              {card.person ? <><span>·</span><span>{card.person}</span></> : null}
+              {card.source !== 'human' ? <><span>·</span><span>{card.source}</span></> : null}
+              {card.level ? <><span>·</span><span className={LEVEL_CLASS[card.level] ?? 'level'}>{t(`level.${card.level}`, card.level)}</span></> : null}
+              {card.count && card.count > 1 ? <><span>·</span><span>{card.count}×</span></> : null}
+            </div>
+            <Labels card={card} />
+            {(card.suggestions?.module?.length || card.suggestions?.stack?.length) ? (
+              <div className="line">
+                <span>{t('card.suggested')}</span>
+                <button onClick={() => run(() => confirm(project, card.key))}>{t('card.confirm')}</button>
+              </div>
+            ) : null}
+            {card.gate ? <div className="line"><span className="done">{t('card.gate')}</span><span>{card.gate.kind}</span><span>{card.gate.call}</span></div>
+              : ['making', 'review'].includes(card.state)
+                ? <div className="line waiting">{t('card.gateMissing')}</div>
+                : null}
+            {card.blockedBy.length ? <div className="line waiting">{t('card.waits')} {card.blockedBy.join(', ')}</div> : null}
+            {card.permalink ? <a href={card.permalink} target="_blank" rel="noreferrer">{t('card.sentry')}</a> : null}
+            {card.text ? <Prose text={card.text} open={open} /> : null}
+
+            {editing && draft ? (
+              <div className="change">
+                <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+                <textarea rows={7} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+                {/*
+                  The people this board already knows, by the name the chronicle
+                  uses. A free field is right — somebody who has not touched a
+                  card yet has to be typeable — but typing a name that already
+                  exists, differently, is how one person becomes two.
+                */}
+                {/*
+                  A real choice, not a free field wearing a hint. The names the
+                  board knows are the options; "somebody new" is a deliberate
+                  choice that opens a field — so a person who exists already is
+                  never typed a second time, differently.
+                */}
+                <PersonField value={draft.person} people={people} onChange={(person) => setDraft({ ...draft, person })} />
+                <GateField gate={draft.gate} setGate={(gate) => setDraft({ ...draft, gate })} known={knownPaths} />
+                <div className="move">
+                  <button onClick={keep}>{t('card.save')}</button>
+                  <button onClick={() => setEditing(false)}>{t('card.discard')}</button>
+                </div>
+              </div>
+            ) : null}
+
+            {/*
+              REVIEW HAS TWO ANSWERS, AND THEY ARE NOT COLUMNS.
+              "What am I supposed to do here" was a fair question: the sheet
+              offered five equal arrows, and the two that mean something —
+              yes and not yet — were hidden among them. They are the same two
+              moves underneath; a column list is a filing cabinet, and this is
+              a decision.
+            */}
+            {card.state === 'review' ? (
+              <div className="verdict-row">
+                <button className="approve" onClick={() => run(() => move(project, card.key, 'done', t('card.approvedReason')))}>
+                  {t('card.approve')}
+                </button>
+                <button className="reject" onClick={() => {
+                  const why = window.prompt(t('card.sendBackWhy'));
+                  if (why === null) return;
+                  run(() => move(project, card.key, 'making', why || t('card.sendBackReason')));
+                }}>
+                  {t('card.sendBack')}
+                </button>
+                {card.gate ? <span className="quiet">{t('card.gateProves')}</span> : <span className="waiting">{t('card.gateMissing')}</span>}
+              </div>
+            ) : null}
+
+            {/*
+              SIX ARROWS ARE NOT SIX DECISIONS.
+              A card climbs by itself: a gate turns green and it is done, a
+              runner's lease puts it in making and takes it back out, a day
+              without a sign puts it back on ready. The arrows are the hand
+              for when that fails — an escape hatch, not the main road, and
+              standing open they made the board look like a filing cabinet
+              you have to operate.
+            */}
+            <div className="move">
+              {!editing ? <button onClick={openToChange}>{t('card.editing')}</button> : null}
+              {/*
+                THE DOOR SAYS THE SAME THING THE BUTTON SAYS.
+                Start refuses an idea, a card on ice and a card that waits —
+                so the button does not offer what the door will refuse. An
+                idea gets the one move that means yes; a waiting card asks
+                for the reason the door will want, and the reason lands in
+                the chronicle beside the start.
+              */}
+              {card.state === 'ideas' || card.state === 'ice' ? (
+                <button onClick={() => run(() => move(project, card.key, 'ready'))}>{t('card.toReady')}</button>
+              ) : card.state !== 'making' && card.blockedBy.length ? (
+                <button onClick={() => {
+                  const why = window.prompt(t('card.anywayWhy').replace('…', card.blockedBy.join(', ')));
+                  if (why === null || !why.trim()) return;
+                  run(() => start(project, card.key, why.trim()));
+                }}>
+                  {t('card.startAnyway')}
+                </button>
+              ) : card.state !== 'making' ? (
+                <button onClick={() => run(() => start(project, card.key))}>{t('card.start')}</button>
+              ) : null}
+              <button className="by-hand" aria-expanded={byHand} onClick={() => setByHand(!byHand)}>
+                {t('card.byHand')} {byHand ? '▾' : '▸'}
+              </button>
+            </div>
+            {byHand ? (
+              <div className="move">
+                {COLUMN_NAMES.filter((s) => s.state !== card.state).map((s) => (
+                  <button key={s.state} onClick={() => run(() => move(project, card.key, s.state))}>→ {s.name}</button>
+                ))}
+              </div>
+            ) : null}
+
+            {card.history?.length ? (
+              <div className="history">
+                {card.history.map((e, i) => {
+                  const d = (e.data ?? {}) as Record<string, string>;
+                  // What was said and what was decided belong IN the timeline —
+                  // otherwise it reads "said" and nobody knows what.
+                  //
+                  // Every verb and every field here is the API's own name. They
+                  // were German once, and after the move this whole block matched
+                  // nothing: the chronicle showed a verb and an actor and never
+                  // once what had actually been said. Nothing was red, because a
+                  // comparison that finds nothing is a comparison that works.
+                  const inside = e.verb === 'said' ? d.line
+                    : e.verb === 'decided' ? `${d.result} — ${d.reason}`
+                    : e.verb === 'evidenced' ? `${d.ref}${d.comment ? ` · ${d.comment}` : ''}`
+                    : '';
+                  return (
+                    <span key={i} className={e.verb === 'decided' ? 'decision' : undefined}>
+                      {e.at.slice(0, 16).replace('T', ' ')}  <b>{e.verb}</b>  {e.actor}
+                      {inside ? <><br /><span className="inside">{inside}</span></> : null}
+                    </span>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            <div className="talk">
+              <textarea rows={2} placeholder={t('card.say')} value={word} onChange={(e) => setWord(e.target.value)} />
+              <div className="move">
+                <button disabled={!word.trim()} onClick={() => { const t = word.trim(); setWord(''); run(() => say(project, card.key, t)); }}>{t('card.say2')}</button>
+                {card.kind === 'decision' ? (
+                  <button disabled={!word.trim()} onClick={() => {
+                    const reason = word.trim();
+                    const outcome = window.prompt(t('card.decided'));
+                    if (!outcome) return;
+                    setWord('');
+                    run(() => decide(project, card.key, outcome, reason));
+                  }}>{t('card.decide')}</button>
+                ) : null}
+              </div>
+            </div>
+            <button onClick={close}>{t('card.close')}</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Create a card. Deliberately three fields — title, kind, text. Everything
+ * else (labels, links) Gradula sets itself; a form that asks for everything
+ * is a form nobody fills in.
+ */
+function NewCard({ project, done, cancel }: { project: string; done: () => void; cancel: () => void }) {
+  const [title, setTitle] = useState('');
+  const [kind, setKind] = useState('idea');
+  const [text, setText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || busy) return;
+    setBusy(true);
+    try { await create(project, { title: title.trim(), kind, text: text.trim() }); done(); }
+    catch (err) { setError(String((err as Error).message ?? err)); setBusy(false); }
+  };
+
+  return (
+    <div className="sheet" onClick={cancel}>
+      <form onClick={(e) => e.stopPropagation()} onSubmit={submit}>
+        <h2>{t('card.new')}</h2>
+        {error ? <p className="error">{error}</p> : null}
+        <input autoFocus placeholder={t('card.title')} value={title} onChange={(e) => setTitle(e.target.value)} />
+        {/* The kinds come from the service's vocabulary — a second list here
+            would be a second truth, and one of them would be in one language. */}
+        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+          {KINDS.map((one) => <option key={one} value={one}>{t(one)}</option>)}
+        </select>
+        <textarea rows={6} placeholder={t('card.text')} value={text} onChange={(e) => setText(e.target.value)} />
+        <div className="move">
+          <button type="submit" disabled={!title.trim() || busy}>{t('card.create')}</button>
+          <button type="button" onClick={cancel}>{t('card.cancel')}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+
+/**
+ * Settings — heralds and reports.
+ *
+ * Everything that leaves the house is configured here, and nothing else is:
+ * a settings screen that also holds the board's preferences is a screen where
+ * nobody finds the one switch that matters.
+ */
+/**
+ * A PERSON'S OWN KEYS. Minted here, shown ONCE, revoked here — never handed
+ * over. Felix's key lay in a file on David's disk for a day, waiting to be
+ * carried across; a key that has to be carried is a key that gets emailed.
+ * The lines below the token are the whole set-up: the key speaks as the
+ * person who minted it, so no actor line is needed.
+ */
+function KeySection({ project }: { project: string }) {
+  const [keys, setKeys] = useState<OwnKey[]>([]);
+  const [pending, setPending] = useState<Device[]>([]);
+  const [machine, setMachine] = useState('');
+  const [fresh, setFresh] = useState<{ token: string; name: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const reload = useCallback(() => {
+    myKeys(project).then(setKeys).catch((e) => setError(String(e.message ?? e)));
+    pendingDevices(project).then(setPending).catch(() => setPending([]));
+  }, [project]);
+  useEffect(() => { reload(); }, [reload]);
+  // A machine running `gradula login` is waiting: poll while the panel is open.
+  useEffect(() => {
+    const clock = setInterval(() => { pendingDevices(project).then(setPending).catch(() => {}); }, 3000);
+    return () => clearInterval(clock);
+  }, [project]);
+
+  const approve = async (id: string) => { setError(null); try { await approveDevice(project, id); reload(); } catch (e) { setError(String((e as Error).message ?? e)); } };
+  const deny = async (id: string) => { setError(null); try { await denyDevice(project, id); reload(); } catch (e) { setError(String((e as Error).message ?? e)); } };
+
+  const mint = async () => {
+    const name = machine.trim();
+    if (!name) return;
+    setError(null);
+    try {
+      const out = await mintKey(project, name);
+      setFresh({ token: out.token, name });
+      setMachine('');
+      reload();
+    } catch (e) { setError(String((e as Error).message ?? e)); }
+  };
+  const revoke = async (id: string) => {
+    setError(null);
+    try { await revokeKey(project, id); if (fresh && keys.find((k) => k.id === id)?.name === fresh.name) setFresh(null); reload(); }
+    catch (e) { setError(String((e as Error).message ?? e)); }
+  };
+  const lines = fresh ? `GRADULA_URL=${window.location.origin}\nGRADULA_TOKEN=${fresh.token}` : '';
+  const copy = () => {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(lines).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
+
+  return (
+    <section>
+      <h3>{t('keys.head')}</h3>
+      {error ? <p className="error">{error}</p> : null}
+      {pending.map((d) => (
+        <div className="row pending" key={d.id}>
+          <b>{d.machine}</b>
+          <span className="small">{t('keys.pending')} · {t('keys.code')} {d.code}</span>
+          <button onClick={() => approve(d.id)}>{t('keys.approve')}</button>
+          <button className="ghost" onClick={() => deny(d.id)}>{t('keys.deny')}</button>
+        </div>
+      ))}
+      <p className="hint">{t('keys.login')}</p>
+      {!keys.length && !pending.length ? <p className="small">{t('keys.none')}</p> : null}
+      {keys.map((k) => (
+        <div className="row" key={k.id}>
+          <b>{k.name}</b>
+          <span className="small">{t('keys.used')} {k.usedAt ? k.usedAt.slice(0, 16).replace('T', ' ') : t('keys.never')}</span>
+          <button onClick={() => revoke(k.id)}>{t('keys.revoke')}</button>
+        </div>
+      ))}
+      <div className="row">
+        <input value={machine} onChange={(e) => setMachine(e.target.value)} placeholder={t('keys.machine')} onKeyDown={(e) => { if (e.key === 'Enter') mint(); }} />
+        <button onClick={mint} disabled={!machine.trim()}>{t('keys.mint')}</button>
+      </div>
+      {fresh ? (
+        <>
+          <p className="small">{t('keys.once')}</p>
+          <pre className="report">{lines}</pre>
+          <div className="row"><button onClick={copy}>{copied ? t('keys.copied') : t('keys.copy')}</button></div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function Settings({ project, close }: { project: string; close: () => void }) {
+  const [heralds, setHeralds] = useState<Herald[]>([]);
+  const [templates, setTemplates] = useState<Record<string, Template>>({});
+  const [draft, setDraft] = useState<(Partial<Herald> & { template?: string; token?: string }) | null>(null);
+  const [chats, setChats] = useState<Record<string, { id: string; kind: string; name: string }[]>>({});
+  const [draftChats, setDraftChats] = useState<{ id: string; kind: string; name: string }[]>([]);
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<Report | null>(null);
+  const [period, setPeriod] = useState('this week');
+  const [voice, setVoice] = useState<'plain' | 'human'>('human');
+
+  const reload = useCallback(() => {
+    heraldsRead(project).then(setHeralds).catch((e) => setError(String(e.message ?? e)));
+  }, [project]);
+
+  useEffect(() => { reload(); templatesRead(project).then(setTemplates).catch(() => setTemplates({})); }, [project, reload]);
+
+  const save = async () => {
+    if (!draft) return;
+    try {
+      await saveHerald(project, draft);
+      setDraft(null); setNote(t('report.saved')); reload();
+    } catch (e) { setError(String((e as Error).message ?? e)); }
+  };
+
+  const probe = async (id: string) => {
+    setNote(null); setError(null);
+    const out = await probeHerald(project, id)
+      .catch((e) => ({ sent: false, bot: undefined, reason: String(e.message ?? e) }) as Awaited<ReturnType<typeof probeHerald>>);
+    if (out.sent) setNote(`Delivered${out.bot ? ` as @${out.bot}` : ''}.`);
+    else setError(`Not delivered — ${out.reason ?? 'unknown'}`);
+  };
+
+  const findChats = async (id: string) => {
+    const out = await heraldChats(project, id)
+      .catch((e) => ({ ok: false, chats: [], reason: String(e.message ?? e) }) as Awaited<ReturnType<typeof heraldChats>>);
+    if (out.ok) setChats((c) => ({ ...c, [id]: out.chats ?? [] }));
+    else setError(out.reason ?? 'no answer');
+  };
+
+  const build = async () => {
+    setError(null);
+    try { setPreview(await reportRead(project, { period, voice })); }
+    catch (e) { setError(String((e as Error).message ?? e)); }
+  };
+
+  const deliver = async (id: string) => {
+    if (!preview) return;
+    const out = await sendReport(project, id, preview.html)
+      .catch((e) => ({ sent: false, reason: String(e.message ?? e) }));
+    setNote(out.sent ? t('report.sent') : null);
+    if (!out.sent) setError(out.reason ?? 'not delivered');
+  };
+
+  return (
+    <div className="sheet" role="dialog" aria-label={t('nav.settings')} onClick={close}>
+      <div onClick={(e) => e.stopPropagation()}>
+      <header>
+        <h2>{t('nav.settings')}</h2>
+        <button onClick={close} aria-label={t('card.close')}>×</button>
+      </header>
+
+      {error ? <p className="error">{error}</p> : null}
+      {note ? <p className="small">{note}</p> : null}
+
+      <KeySection project={project} />
+
+      <section>
+        <h3>{t('herald.head')}</h3>
+        {!heralds.length ? <p className="small">{t('herald.none')}</p> : null}
+        {heralds.map((h) => (
+          <article className="herald" key={h.id}>
+            <header>
+              <b>{h.name}</b> <span className="small">{h.kind} → {h.chat ?? '—'}</span>
+              {h.token ? null : <span className="error"> no key</span>}
+            </header>
+            <p className="small">
+              {(h.filter.verbs ?? ['everything']).join(' ')} · {h.filter.voice ?? 'plain'} · {h.filter.visibility ?? 'internal'}
+              {h.filter.labels?.length ? ` · @${h.filter.labels.join(',')}` : ''}
+            </p>
+            <div className="row">
+              <button onClick={() => setDraft({ ...h, token: '' })}>{t('card.edit')}</button>
+              <button onClick={() => probe(h.id)}>{t('herald.probe')}</button>
+              <button onClick={() => findChats(h.id)}>{t('herald.chats')}</button>
+              <button onClick={() => dropHerald(project, h.id).then(reload)}>{t('herald.remove')}</button>
+            </div>
+            {chats[h.id] ? (
+              <ul className="small">
+                {chats[h.id].length
+                  ? chats[h.id].map((c) => (
+                      <li key={c.id}>
+                        <code>{c.id}</code> {c.kind} {c.name}
+                        <button onClick={() => saveHerald(project, { id: h.id, chat: c.id }).then(reload)}>{t('card.use')}</button>
+                      </li>
+                    ))
+                  : <li>{t('herald.noChats')}</li>}
+              </ul>
+            ) : null}
+          </article>
+        ))}
+        <button onClick={() => setDraft({ kind: 'telegram', template: 'workshop' })}>+ Herald</button>
+      </section>
+
+      {draft ? (
+        <section className="draft">
+          <h3>{t(draft.id ? 'herald.edit' : 'herald.new')}</h3>
+          {/*
+            EVERY FIELD SAYS WHAT IT IS AND WHERE ITS VALUE COMES FROM.
+            Three boxes called Name, Chat and Key are three questions nobody
+            outside this room can answer — the second one wanted a number from
+            a place the board never mentioned.
+          */}
+          <label>{t('herald.name')}
+            <input value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              placeholder={t('herald.namePlaceholder')} />
+          </label>
+          <p className="hint">{t('herald.nameWhy')}</p>
+
+          <label>
+            {t('herald.key')}
+            <input type="password" value={draft.token ?? ''}
+              placeholder={draft.id ? t('herald.keyKept') : t('herald.keyPlaceholder')}
+              onChange={(e) => setDraft({ ...draft, token: e.target.value })} />
+          </label>
+          <p className="hint">{t('herald.keyWhy')}</p>
+
+          {/*
+            The channel is a LIST, not a number to look up. The key that is
+            already in the field asks Telegram which channels the bot can see —
+            being invited into the group is enough, and nobody copies a
+            `-100…` out of anywhere.
+          */}
+          <label>{t('chat.head')}
+            {draftChats.length ? (
+              <select value={draft.chat ?? ''} onChange={(e) => setDraft({ ...draft, chat: e.target.value })}>
+                <option value="">— {t('herald.pickChat')} —</option>
+                {draftChats.map((c) => <option key={c.id} value={c.id}>{c.name || c.id} · {c.kind}</option>)}
+              </select>
+            ) : (
+              <input value={draft.chat ?? ''} onChange={(e) => setDraft({ ...draft, chat: e.target.value })} placeholder={t('herald.chatId')} />
+            )}
+          </label>
+          <div className="row">
+            <button disabled={!draft.token} onClick={() => {
+              chatsForKey(project, String(draft.token))
+                .then((out) => setDraftChats(out.ok ? out.chats ?? [] : []))
+                .catch(() => setDraftChats([]));
+            }}>{t('herald.chats')}</button>
+            <span className="hint">{t('herald.chatWhy')}</span>
+          </div>
+
+          <label>
+            {t('herald.template')}
+            <select value={draft.template ?? ''} onChange={(e) => setDraft({ ...draft, template: e.target.value || undefined })}>
+              <option value="">— {t('herald.keepFilter')} —</option>
+              {Object.entries(templates).map(([id, t2]) => <option key={id} value={id}>{t2.name} — {t2.line}</option>)}
+            </select>
+          </label>
+          <p className="hint">{t('herald.templateWhy')}</p>
+          {/*
+            WHEN IT SPEAKS BY ITSELF. A report you have to trigger is, after two
+            weeks, one nobody triggers — so a herald can carry its own cadence:
+            a workshop channel daily, a client channel weekly, both on the same
+            board. `off` means it only ever speaks when a hand presses send.
+          */}
+          <label>{t('herald.cadence')}
+            <div className="row">
+              <select
+                value={draft.schedule?.cadence ?? 'off'}
+                onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, cadence: e.target.value as 'daily' | 'weekly' | 'off' } })}
+              >
+                <option value="off">{t('herald.cadenceOff')}</option>
+                <option value="daily">{t('herald.daily')}</option>
+                <option value="weekly">{t('herald.weekly')}</option>
+              </select>
+              {draft.schedule?.cadence && draft.schedule.cadence !== 'off' ? (
+                <span className="small">{t('herald.atHour')}
+                  <input
+                    type="number" min={0} max={23} style={{ width: '3.5rem', marginLeft: '.4rem' }}
+                    value={draft.schedule?.hour ?? 8}
+                    onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, hour: Math.max(0, Math.min(23, Number(e.target.value) || 0)) } })}
+                  /> UTC
+                </span>
+              ) : null}
+            </div>
+          </label>
+          <div className="row">
+            <button onClick={save}>{t('card.save')}</button>
+            <button onClick={() => setDraft(null)}>{t('card.cancel')}</button>
+          </div>
+        </section>
+      ) : null}
+
+      <section>
+        <h3>{t('report.head')}</h3>
+        <div className="row">
+          <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder={t('report.period')} />
+          <select value={voice} onChange={(e) => setVoice(e.target.value as 'plain' | 'human')}>
+            <option value="human">{t('herald.voiceHuman')}</option>
+            <option value="plain">{t('herald.voicePlain')}</option>
+          </select>
+          <button onClick={build}>{t('build.head')}</button>
+        </div>
+        {preview ? (
+          <>
+            <p className="small">
+              {preview.counts.done} done · {preview.counts.decided} decided · {preview.counts.incidents} incidents
+            </p>
+            <pre className="report">{voice === 'plain' ? preview.plain : preview.human}</pre>
+            <div className="row">
+              {heralds.filter((h) => h.chat).map((h) => (
+                <button key={h.id} onClick={() => deliver(h.id)}>Send to {h.name}</button>
+              ))}
+            </div>
+          </>
+        ) : <p className="small">{t('herald.quiet')}</p>}
+      </section>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * The door.
+ *
+ * The mark shows what the product is instead of claiming it: the six columns
+ * ARE the rungs, and `gradus` is the rung. A tagline can be argued with; a
+ * ladder cannot.
+ *
+ * No motion on the mark — by our own law, motion means state, and a door has
+ * none. But pressing the button IS a state: the browser is walking to the
+ * identity provider, which takes a moment on a cold connection. That is when
+ * something may move, and only then.
+ */
+/**
+ * The language switch. It reloads, and that is the honest thing: the language
+ * is read once at the top of the module, and half a page in two languages is
+ * worse than either.
+ *
+ * It stands on the DOOR as well as in the head. Whoever is not signed in sees
+ * only the door, and a switch you reach after signing in is one that arrives
+ * too late for the person who needed it.
+ *
+ * Two letters, not a globe: the choice is between exactly these two, and the
+ * chosen one is a weight — colour means state in this house.
+ */
+function LanguageSwitch() {
+  return (
+    <span className="languages" role="group" aria-label="Sprache · language">
+      {LANGUAGES.map((one) => (
+        <button
+          key={one}
+          className={one === language ? 'language on' : 'language'}
+          aria-pressed={one === language}
+          onClick={() => { if (one !== language) { keepLanguage(one); location.reload(); } }}
+        >{one.toUpperCase()}</button>
+      ))}
+    </span>
+  );
+}
+
+function Door() {
+  const [walking, setWalking] = useState(false);
+  const rungs = COLUMN_NAMES.filter((c) => c.state !== 'ice').map((c) => c.name);
+  return (
+    <main className="door">
+      <div className="card-door">
+        <span className="mark">Gradula</span>
+        <ol className="ladder" aria-label={t('door.ladder')}>
+          {rungs.map((name) => <li key={name}>{name}</li>)}
+        </ol>
+        <p className="claim">{t('sign.claim')}</p>
+        <a
+          className={`button${walking ? ' walking' : ''}`}
+          href={signInPath()}
+          onClick={() => setWalking(true)}
+          aria-busy={walking}
+        >
+          {t(walking ? 'sign.walking' : 'sign.in')}
+        </a>
+        <p className="small">{t('sign.note')}</p>
+        <LanguageSwitch />
+      </div>
+    </main>
+  );
+}
+
+/**
+ * A bond. Cards that belong together flow into one silhouette — the melt IS
+ * the information: a shared file is a collision waiting to happen, and two
+ * cards under one venture are one piece of work in two hands.
+ *
+ * A group of one gets no liquid at all. Drawing a bond around a single card
+ * would say something untrue, and it would cost a filter for nothing.
+ */
+/** How many cards a melt can hold before it is a wall rather than a bond. */
+const MELT_AT_MOST = 4;
+
+function Bond({ group, open, justChanged }: {
+  group: Group;
+  open: (key: string) => void;
+  justChanged: Set<string>;
+}) {
+  const [folded, setFolded] = useState(false);
+  const cards = group.cards.map((k) => (
+    <CardButton key={k.key} card={k} open={() => open(k.key)}
+      signal={signalOf(k, justChanged.has(k.key))} />
+  ));
+  if (!group.bond) return <>{cards}</>;
+  const why = `${t(group.bond.reason === 'file' ? 'bond.file' : 'bond.venture')} ${group.bond.detail}`;
+  /*
+   * A GROUP OF EIGHTEEN IS NOT A GROUP.
+   *
+   * The melt says "one piece of work in two hands" — it reads at two or three
+   * cards and stops meaning anything at four or five. On the live board one
+   * venture held eighteen of a column's twenty-six, and the melt drew a wall.
+   * A shape that covers most of what you can see says nothing about it.
+   *
+   * Above the cap the bond keeps its SENTENCE and loses its shape: the cards
+   * stay cards, and the line above them still says what they are part of.
+   */
+  /*
+   * AND A GROUP OF EIGHTEEN CAN BE FOLDED AWAY.
+   *
+   * Above the cap the line is the only thing that still reads, so it becomes
+   * the handle: press it and the parts go, press it again and they come back.
+   * Deliberately NOT remembered across a reload — a board that opens with
+   * three columns silently folded is a board that lies about what is on it.
+   */
+  if (group.cards.length > MELT_AT_MOST) return (
+    <div className={group.bond.reason === 'file' ? 'group wide group-file' : 'group wide group-venture'}>
+      <button className="bond fold" aria-expanded={!folded} onClick={() => setFolded(!folded)}>
+        <span className="chevron" aria-hidden="true">{folded ? '▸' : '▾'}</span>
+        {why} · {group.cards.length}
+      </button>
+      {folded ? null : cards}
+    </div>
+  );
+  return (
+    // Written out, not composed: a class name you cannot grep is one no test
+    // finds either — and that is exactly how rules are orphaned. That was the
+    // cause three times last night.
+    <div className={group.bond.reason === 'file' ? 'group group-file' : 'group group-venture'}>
+      {/*
+        THE BOND SAYS WHY, ON THE BOARD.
+        It stood in a `title` — a tooltip nobody hovers. What one saw was a
+        darker block of cards packed together, and the only honest reading of
+        that is "something is wrong with these". David asked what it meant,
+        which is the answer: a shape alone does not say a reason.
+      */}
+      <span className="bond">{why}</span>
+      <Liquid blur={7} contrast={20} fill="var(--surface)" waviness={0}>
+        {cards.map((card, i) => <Liquid.Item key={group.cards[i].key} effect="melt">{card}</Liquid.Item>)}
+      </Liquid>
+    </div>
+  );
+}
+
+export default function App() {
+  const [me, setMe] = useState<Me | null>(null);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [project, setProject] = useState<string>(() => localStorage.getItem('gradula.project') ?? '');
+  const [cards, setCards] = useState<Card[]>([]);
+  // What has moved since I last looked. The short impulse ends by itself —
+  // it is a message, not a state.
+  const [justChanged, setJustChanged] = useState<Set<string>>(new Set());
+  const previous = useRef<Card[]>([]);
+  const [bonds, setBonds] = useState<Link[]>([]);
+  const [standing, setStanding] = useState<Standing | null>(null);
+  // Three views of the same facts: the board answers "what is to be done",
+  // the map "where has the work gone", the pulse "how are we doing". Same
+  // cards, three questions — which is why it is a switch and not three tools.
+  const [view, setView] = useState<'board' | 'map' | 'pulse'>('board');
+  /*
+   * THE ADDRESS IS THE STATE, and the address of a card is `/MDLA-2`.
+   *
+   * It was `/?card=MDLA-2`, which is a state smuggled into a query string:
+   * every link that left the house pointed at a bounce, and the crawler had
+   * a second address of its own. One segment, no query, and the same link for
+   * a person and for a preview.
+   *
+   * `?card=` is still read once — links written under the old address are in
+   * chats that nobody can edit — and then quietly replaced.
+   */
+  const [openKey, setOpenKey] = useState<string | null>(() => {
+    const path = window.location.pathname.match(/\/([A-Z]{2,8}-\d{1,7})$/);
+    if (path) return path[1];
+    return new URLSearchParams(window.location.search).get('card');
+  });
+  const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+  const [moduleFilter, setModuleFilter] = useState('');
+  const [modules, setModules] = useState<string[]>([]);
+  /*
+   * The coarse axis above the modules. Thirty-six modules answer "where in
+   * the repository"; "show me the Studio" is a question about one of the four
+   * things that live there. The area of a module comes with the vocabulary —
+   * derived from paths, or declared by the project — and a card's area is
+   * the area of its modules. Nothing is typed.
+   */
+  const [areaFilter, setAreaFilter] = useState('');
+  const [areaOfModule, setAreaOfModule] = useState<Record<string, string>>({});
+  // The second axis. The module says WHERE in the repository, the craft says
+  // WHICH TRADE — and "show me everything about the GPU" is a question the
+  // board could not answer, although every card carried the answer.
+  const [craftFilter, setCraftFilter] = useState('');
+  const [crafts, setCrafts] = useState<string[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [settings, setSettings] = useState(false);
+  const [legend, setLegend] = useState(false);
+  // The header does not fit a phone screen: project, search, three filters,
+  // three views, five more buttons. Board/Map/Pulse and "+ Card" are how you
+  // GET somewhere and stay reachable always; the rest (filters, legend,
+  // settings, language, standing) folds behind one button on a narrow screen.
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  // Opening and closing writes the address along, without reloading the page
+  // — and the browser's back button closes the sheet, as it should.
+  const open = useCallback((key: string | null) => {
+    setOpenKey(key);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('card');
+    url.pathname = key ? cardHref(key) : `${mountPath()}/`;
+    window.history.pushState({ card: key }, '', url);
+  }, []);
+
+  useEffect(() => {
+    const back = () => {
+      const path = window.location.pathname.match(/\/([A-Z]{2,8}-\d{1,7})$/);
+      setOpenKey(path ? path[1] : new URLSearchParams(window.location.search).get('card'));
+    };
+    window.addEventListener('popstate', back);
+    return () => window.removeEventListener('popstate', back);
+  }, []);
+
+  useEffect(() => {
+    readMe()
+      .then((who) => { setMe(who); setSignedIn(true); return readProjects(); })
+      .then((list) => {
+        setProjects(list);
+        setProject((now) => (now && list.some((p) => p.key === now) ? now : list[0]?.key ?? ''));
+      })
+      .catch((e) => (e instanceof NotSignedIn ? setSignedIn(false) : setError(String(e.message ?? e))));
+  }, []);
+
+  const load = useCallback(() => {
+    if (!project) return;
+    localStorage.setItem('gradula.project', project);
+    readCards(project, { q: search || undefined, module: moduleFilter || undefined, stack: craftFilter || undefined, area: areaFilter || undefined })
+      .then((fresh) => {
+        const moved = changedBetween(previous.current, fresh);
+        previous.current = fresh;
+        setCards(fresh);
+        if (moved.size) {
+          setJustChanged(moved);
+          setTimeout(() => setJustChanged(new Set()), IMPULSE_MS);
+        }
+      })
+      .catch((e) => setError(String(e.message ?? e)));
+  }, [project, search, moduleFilter, craftFilter, areaFilter]);
+
+  // While typing, do not ask on every character: a search that starts thirty
+  // times in a row is slower than one that waits once.
+  useEffect(() => {
+    const clock = setTimeout(load, search ? 250 : 0);
+    return () => clearTimeout(clock);
+  }, [load, search]);
+
+  // The long line. It says only THAT something moved; the reading happens
+  // through the door that knows the rights. Bundled, so that ten moves in one
+  // second do not become ten queries.
+  useEffect(() => {
+    if (!project) return;
+    let clock: ReturnType<typeof setTimeout> | null = null;
+    const stop = liveLine(project, () => {
+      if (clock) return;
+      clock = setTimeout(() => { clock = null; load(); }, 400);
+    });
+    return () => { if (clock) clearTimeout(clock); stop(); };
+  }, [project, load]);
+
+  useEffect(() => {
+    if (!project) return;
+    readVocabulary(project)
+      .then((v) => {
+        setModules(v.map((m) => m.id));
+        setAreaOfModule(Object.fromEntries(v.map((m) => [m.id, m.area ?? m.id])));
+      })
+      .catch(() => { setModules([]); setAreaOfModule({}); });
+    setAreaFilter('');
+    readLinks(project).then(setBonds).catch(() => setBonds([]));
+    readStanding(project).then(setStanding).catch(() => setStanding(null));
+    setModuleFilter('');
+    setCraftFilter('');
+  }, [project]);
+
+  /*
+   * The crafts on offer are the crafts in use — the spec knows fifteen and
+   * this board uses six, and a menu of nine empty answers is a menu nobody
+   * opens twice.
+   *
+   * Not while a craft is chosen: the list would shrink to the one thing
+   * already chosen, and then there would be no way back to the others.
+   */
+  useEffect(() => {
+    if (craftFilter) return;
+    setCrafts([...new Set(cards.flatMap((c) => c.stack))].sort());
+  }, [cards, craftFilter]);
+
+  /*
+   * What this board already knows about itself — no extra request, and both
+   * lists grow on their own: every commit `gradula sync` reads adds the files
+   * it touched, and every card somebody is given adds a name.
+   */
+  const people = useMemo(
+    () => [...new Set(cards.map((c) => c.person).filter((n): n is string => Boolean(n)))].sort(),
+    [cards],
+  );
+  const knownPaths = useMemo(
+    () => [...new Set([...cards.flatMap((c) => c.files ?? []), ...modules])].sort().slice(0, 300),
+    [cards, modules],
+  );
+  // The areas on offer, busiest first; and inside a chosen area only its own
+  // modules — a menu of thirty-six where four apply is a menu nobody reads.
+  const areas = useMemo(() => {
+    const count = new Map<string, number>();
+    for (const m of modules) { const a = areaOfModule[m] ?? m; count.set(a, (count.get(a) ?? 0) + 1); }
+    return [...count.entries()].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0])).map(([a]) => a);
+  }, [modules, areaOfModule]);
+  const shownModules = useMemo(
+    () => (areaFilter ? modules.filter((m) => (areaOfModule[m] ?? m) === areaFilter) : modules),
+    [modules, areaOfModule, areaFilter],
+  );
+
+  if (signedIn === false) return <Door />;
+
+  if (signedIn === null) return <main className="door" aria-busy="true" />;
+
+  return (
+    <>
+      <header className="head">
+        {projects.length > 1 ? (
+          <select className="project-switch" value={project} onChange={(e) => setProject(e.target.value)}>
+            {projects.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+          </select>
+        ) : <span className="who project-name">{projects[0]?.name ?? ''}</span>}
+        <input className="search" placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        {/*
+          A PHONE HAS NO ROOM FOR TEN CONTROLS IN A ROW. Finding a card
+          (search, above) is how most visits start, so it stays in the open
+          with the project switcher; everything else — the three views, the
+          filters, adding a card, settings — folds behind one button under
+          720px (`.head-toggle` / `.head-extra`, see styles.css). On a wide
+          screen `.head-extra` is `display: contents`, so this changes
+          nothing there: the children sit in the row exactly as before.
+        */}
+        <button
+          className="head-toggle" aria-label={t('nav.menu')} aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >☰</button>
+        <div className={menuOpen ? 'head-extra open' : 'head-extra'}>
+          <span className="views">
+            {(['board', 'map', 'pulse'] as const).map((one) => (
+              <button key={one} className={view === one ? 'view here' : 'view'} onClick={() => { setView(one); setMenuOpen(false); }}>
+                {t(`nav.${one}`)}
+              </button>
+            ))}
+          </span>
+          <button onClick={() => { setCreating(true); setMenuOpen(false); }}>+ {t('card')}</button>
+          {areas.length > 1 ? (
+            <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+              <option value="">{t('nav.allAreas')}</option>
+              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          ) : null}
+          {modules.length ? (
+            <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}>
+              <option value="">{t('nav.allModules')}</option>
+              {shownModules.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : null}
+          {crafts.length ? (
+            <select value={craftFilter} onChange={(e) => setCraftFilter(e.target.value)}>
+              <option value="">{t('nav.allCrafts')}</option>
+              {crafts.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          ) : null}
+          <button onClick={() => setLegend(true)} aria-label={t('nav.legend')}>{t('nav.legend')}</button>
+          <button onClick={() => setSettings(true)} aria-label={t('nav.settings')}>{t('nav.settings')}</button>
+          <LanguageSwitch />
+          {standing && standing.standing !== 'unknown' ? (
+            // Written out, not composed: a class name you cannot grep is one no
+            // test finds either — and that is exactly how rules are orphaned.
+            // The surface test caught me here.
+            <span className={STAND_CLASS[standing.standing] ?? 'standing'} title={standing.line}>
+              {standing.standing}
+            </span>
+          ) : null}
+          <span className="who">{me?.kind === 'human' ? me.name : ''}</span>
+        </div>
+      </header>
+
+      {error ? <p className="error">{error}</p> : null}
+
+      {view === 'pulse' ? <PulseView project={project} open={open} /> : view === 'map' ? <AreaMap cards={cards} open={open} areaOfModule={areaOfModule} /> : (
+      <div className="board">
+        {COLUMN_NAMES.map((column) => {
+          const inside = cards.filter((k) => k.state === column.state);
+          const groups = group(inside, parentsFrom(bonds));
+          return (
+            <section className="column" key={column.state}>
+              <header><h2>{column.name}</h2><span className="number">{inside.length}</span></header>
+              <div className="column-inside">
+                {groups.map((g) => (
+                  <Bond key={g.cards[0].key} group={g} open={open} justChanged={justChanged} />
+                ))}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      )}
+
+      {openKey ? <Sheet project={project} cardKey={openKey} close={() => open(null)} changed={load} people={people} knownPaths={knownPaths} /> : null}
+      {legend ? <Legend close={() => setLegend(false)} /> : null}
+      {settings ? <Settings project={project} close={() => setSettings(false)} /> : null}
+      {creating ? <NewCard project={project} done={() => { setCreating(false); load(); }} cancel={() => setCreating(false)} /> : null}
+    </>
+  );
+}

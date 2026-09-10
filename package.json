@@ -1,0 +1,31 @@
+{
+  "name": "gradula",
+  "version": "0.1.0",
+  "description": "Gradula — where a wish climbs to true: wish, board, standing. A planning service for several projects, used by people through OIDC and by machines through a project key.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "gradula": "bin/gradula.mjs"
+  },
+  "scripts": {
+    "start": "node src/server.mjs",
+    "dev": "GRADULA_STORE=memory node src/server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "mcp": "node mcp/server.mjs",
+    "docs:check": "node tools/docs-check.mjs"
+  },
+  "dependencies": {
+    "@sentry/node": "^10.73.0",
+    "jose": "^6.2.12",
+    "pg": "^8.13.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mundulabs/gradula.git"
+  },
+  "homepage": "https://grad.mundula.app"
+}

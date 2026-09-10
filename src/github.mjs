@@ -1,0 +1,110 @@
+/**
+ * GitHub — the connection that makes a piece of evidence clickable.
+ *
+ * Until today evidence was a hash: `abc1234`, and nobody got anywhere from
+ * there. Evidence you cannot open is a claim with a checksum attached.
+ *
+ * It keeps the contract from docs/connections.md:
+ *
+ *   verify()   credentials? Reads, changes nothing.
+ *   fetch…()   collect facts: commit, branch, check runs.
+ *   writeBack  EMPTY. Gradula writes into nobody else's repository.
+ *
+ * WHAT IT DOES NOT DO: fetch logs. A check run has one line of truth (green,
+ * red, running) and a link to the real log — whoever rebuilds the log
+ * maintains a worse copy of it forever (manifest, "no second CI").
+ *
+ * And it needs NO write access. A read token is enough; anything more would
+ * be a planning board with rights over the source.
+ */
+
+const API = 'https://api.github.com';
+
+const line = (text) => String(text ?? '').split('\n')[0].replace(/\s+/g, ' ').trim().slice(0, 120);
+
+/** A check run has three states, and a board needs no more than that. */
+const CHECK = { success: 'green', failure: 'red', cancelled: 'red', timed_out: 'red', action_required: 'red' };
+const standingOfRun = (run) => (run.status !== 'completed' ? 'running' : CHECK[run.conclusion] ?? 'idle');
+
+async function ask(path, token, fetchImpl) {
+  const response = await fetchImpl(`${API}${path}`, {
+    headers: {
+      accept: 'application/vnd.github+json',
+      'x-github-api-version': '2022-11-28',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    signal: AbortSignal.timeout(15_000),
+  });
+  return { status: response.status, body: await response.json().catch(() => null) };
+}
+
+/** Do the credentials hold, and do they see the repository? */
+export async function verify({ repo, token }, { fetchImpl = fetch } = {}) {
+  if (!repo) return { ok: false, reason: 'no repository' };
+  try {
+    const { status, body } = await ask(`/repos/${repo}`, token, fetchImpl);
+    if (status === 404) return { ok: false, reason: 'the repository is not visible with this key' };
+    if (status === 401) return { ok: false, reason: 'the key is not valid' };
+    if (!body?.full_name) return { ok: false, reason: `unexpected answer (HTTP ${status})` };
+    return { ok: true, repo: body.full_name, private: Boolean(body.private) };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
+/**
+ * The address of a commit. NO network — a link is a string, and making a
+ * request for one would be waste with a waiting time attached.
+ */
+export const commitUrl = (repo, hash) => (repo && hash ? `https://github.com/${repo}/commit/${hash}` : null);
+export const branchUrl = (repo, branch) => (repo && branch ? `https://github.com/${repo}/tree/${branch}` : null);
+
+/**
+ * What hangs on a branch: the open PR and the standing of its check runs.
+ *
+ * `gradula start --tree` creates `plan/GRD-33` — so the branch knows the
+ * card, and the card can find its branch again here.
+ */
+export async function branchStanding({ repo, token, branch }, { fetchImpl = fetch } = {}) {
+  if (!repo || !branch) return { ok: false, reason: 'not set up' };
+  try {
+    const owner = repo.split('/')[0];
+    const { body: pulls } = await ask(`/repos/${repo}/pulls?head=${owner}:${branch}&state=all&per_page=1`, token, fetchImpl);
+    const pull = Array.isArray(pulls) ? pulls[0] : null;
+
+    const { status, body: head } = await ask(`/repos/${repo}/commits/${encodeURIComponent(branch)}`, token, fetchImpl);
+    if (status === 404) return { ok: true, branch, exists: false, pull: null, checks: [] };
+    const sha = head?.sha ?? null;
+
+    const { body: runs } = sha
+      ? await ask(`/repos/${repo}/commits/${sha}/check-runs?per_page=10`, token, fetchImpl)
+      : { body: null };
+
+    const checks = (runs?.check_runs ?? []).map((run) => ({
+      name: line(run.name),
+      standing: standingOfRun(run),
+      url: run.html_url ?? null,
+    }));
+
+    return {
+      ok: true,
+      branch,
+      exists: true,
+      commit: sha ? { hash: sha.slice(0, 12), title: line(head?.commit?.message), url: commitUrl(repo, sha) } : null,
+      pull: pull ? { number: pull.number, state: pull.merged_at ? 'merged' : pull.state, title: line(pull.title), url: pull.html_url } : null,
+      checks,
+      // ONE line of truth, as in the manifest. Red beats running beats green:
+      // whoever sees only "green" because one of ten checks was green is wrong.
+      standing: checks.some((c) => c.standing === 'red') ? 'red'
+        : checks.some((c) => c.standing === 'running') ? 'running'
+        : checks.length ? 'green' : 'idle',
+    };
+  } catch (error) {
+    return { ok: false, reason: line(error.message) };
+  }
+}
+
+/** A connection never shows its key outward. */
+export const publicConnection = (connection) => (connection
+  ? { repo: connection.repo, token: connection.token ? 'set' : null, setAt: connection.setAt ?? null }
+  : null);
