@@ -127,7 +127,8 @@ export function plainReport(found, { project, period = null } = {}) {
     lines.push('', `${title} (${rows.length})`);
     for (const row of rows) lines.push(`• ${render(row)}`);
   };
-  const one = (card) => `${card.key} ${LADDER[card.state] ?? ''} ${trim(card.title, TITLE)}`.replace(/\s+/g, ' ');
+  // the key and the ladder on their own line, the title beneath — the same two lines a herald's message has
+  const one = (card) => `${card.key} ${LADDER[card.state] ?? ''}`.trim() + `\n  ${trim(card.title, TITLE)}`;
   block('done', found.done, ({ card }) => {
     const labels = labelsOf(card);
     return `${one(card)}${labels.length ? ` [${labels.join(' ')}]` : ''}${card.gate ? ` · gate ${card.gate.kind}` : ''}`;

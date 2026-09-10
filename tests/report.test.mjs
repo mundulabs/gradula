@@ -44,7 +44,7 @@ test('the plain shape carries keys, labels and the missing gate', () => {
   assert.match(text, /PRB-9/);
   assert.match(text, /\[infra backend\]/);
   assert.doesNotMatch(text, /NO GATE/, 'a gate is a choice, not a lack — production decides what is done');
-  assert.match(text, /^• PRB-9 /m, 'a list, one card per line, the key first');
+  assert.match(text, /^• PRB-9\n  A picture and a file/m, 'a list: the key on its line, the title beneath');
 });
 
 test('the human shape names no key, no actor, no module', () => {
