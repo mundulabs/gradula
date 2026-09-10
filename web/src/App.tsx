@@ -413,9 +413,21 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
             */}
             {card.state === 'review' ? (
               <div className="verdict-row">
-                <button className="approve" onClick={() => run(() => move(project, card.key, 'done', t('card.approvedReason')))}>
-                  {t('card.approve')}
-                </button>
+                {/*
+                  A REVIEW THE PIPELINE MADE HAS ONE ANSWER. Seen on dev, the
+                  card is on its way: production will move it to done by
+                  itself, and "approve" would only pretend that a hand did
+                  what the deployment does. What a hand CAN say here is "not
+                  like this" — send it back. A review a person asked for
+                  (the card is not on dev) keeps both answers.
+                */}
+                {card.deployed?.development
+                  ? <span className="quiet">{t('card.onItsWay')}</span>
+                  : (
+                    <button className="approve" onClick={() => run(() => move(project, card.key, 'done', t('card.approvedReason')))}>
+                      {t('card.approve')}
+                    </button>
+                  )}
                 <button className="reject" onClick={() => {
                   const why = window.prompt(t('card.sendBackWhy'));
                   if (why === null) return;
@@ -423,7 +435,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                 }}>
                   {t('card.sendBack')}
                 </button>
-                {card.gate ? <span className="quiet">{t('card.gateProves')}</span> : <span className="waiting">{t('card.gateMissing')}</span>}
+                {card.gate ? <span className="quiet">{t('card.gateProves')}</span> : card.deployed?.development ? null : <span className="quiet">{t('card.gateMissing')}</span>}
               </div>
             ) : null}
 
