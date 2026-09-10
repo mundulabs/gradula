@@ -93,3 +93,12 @@ test('the bar rides in a monospace box, or it makes a ladder', () => {
   assert.match(html, /4\/8/);
   assert.match(humanReport(found, { period: 'this week' }), /^█████░░░░░ {2}4\/8 {2}W2 the third room$/m);
 });
+
+test('a title is not cut; the whole message is clipped at a line and says how much is missing', async () => {
+  const { clip } = await import('../src/report.mjs');
+  const long = Array.from({ length: 200 }, (_, i) => `• card ${i}: a sentence long enough to count`).join('\n');
+  const out = clip(long, 800);
+  assert.ok(out.length <= 830, 'within the limit');
+  assert.match(out, /\n… \d+ more on the board$/, 'ends at a line, and counts what is missing');
+  assert.equal(clip('short'), 'short');
+});

@@ -43,10 +43,27 @@ export function bar(share, cells = 10) {
 export const escapeHtml = (text) => String(text ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+/*
+ * A TITLE IS NOT CUT. Titles were once short German phrases and 60 characters
+ * held them; since cards are born from commit subjects a title is a sentence,
+ * and a sentence cut at 60 read as a fault ("the ring k…"). A card's title is
+ * capped at 140 at the door — that is the one limit, and the report keeps it.
+ * The whole message is bounded by Telegram, not by the lines: see clip().
+ */
+const TITLE = 140;
 const trim = (text, n) => {
   const clean = String(text ?? '').replace(/\s+/g, ' ').trim();
   return clean.length > n ? `${clean.slice(0, n - 1)}…` : clean;
 };
+/** Telegram takes 4096 characters; a message is clipped at the last line that fits, and says how much is missing. */
+export function clip(text, limit = 3900) {
+  const whole = String(text ?? '');
+  if (whole.length <= limit) return whole;
+  const cut = whole.lastIndexOf('\n', limit - 40);
+  const kept = whole.slice(0, cut > 0 ? cut : limit - 40);
+  const missing = whole.slice(kept.length).split('\n').filter((l) => l.trim().startsWith('•')).length;
+  return `${kept}\n… ${missing ? `${missing} more` : 'more'} on the board`;
+}
 
 /**
  * What the period contains. `entries` is the project history (newest first is
@@ -106,13 +123,13 @@ export function plainReport(found, { project, period = null } = {}) {
   block('done', found.done, ({ card }) => {
     const labels = labelsOf(card);
     const gate = card.gate ? ` · gate ${card.gate.kind}` : ' · NO GATE';
-    return `${card.key.padEnd(9)} ${trim(card.title, 60)}${labels.length ? `  [${labels.join(' ')}]` : ''}${gate}`;
+    return `${card.key.padEnd(9)} ${trim(card.title, TITLE)}${labels.length ? `  [${labels.join(' ')}]` : ''}${gate}`;
   });
   block('decided', found.decided, ({ card, entry }) =>
-    `${card.key.padEnd(9)} ${trim(card.title, 60)}${entry.data?.reason ? ` — ${trim(entry.data.reason, 70)}` : ''}`);
+    `${card.key.padEnd(9)} ${trim(card.title, TITLE)}${entry.data?.reason ? ` — ${trim(entry.data.reason, 200)}` : ''}`);
   block('incidents', found.incidents, ({ card }) =>
-    `${card.key.padEnd(9)} ${trim(card.title, 60)}${card.count ? ` ×${card.count}` : ''}`);
-  block('started', found.started, ({ card }) => `${card.key.padEnd(9)} ${trim(card.title, 60)}`);
+    `${card.key.padEnd(9)} ${trim(card.title, TITLE)}${card.count ? ` ×${card.count}` : ''}`);
+  block('started', found.started, ({ card }) => `${card.key.padEnd(9)} ${trim(card.title, TITLE)}`);
 
   lines.push('', `${found.touched} cards touched · ${found.actors.length} actors`);
   return lines.join('\n');
@@ -129,29 +146,29 @@ export function humanReport(found, { period = null } = {}) {
 
   if (found.released.length) {
     parts.push('', 'Shipped:');
-    for (const { card } of found.released) parts.push(`• ${trim(card.title, 90)}`);
+    for (const { card } of found.released) parts.push(`• ${trim(card.title, TITLE)}`);
   }
   const rest = found.done.filter((r) => r.card.target !== 'release');
   if (rest.length) {
     parts.push('', 'Finished:');
-    for (const { card } of rest) parts.push(`• ${trim(card.title, 90)}`);
+    for (const { card } of rest) parts.push(`• ${trim(card.title, TITLE)}`);
   }
   if (found.decided.length) {
     parts.push('', 'Decided:');
     for (const { card, entry } of found.decided) {
-      parts.push(`• ${trim(card.title, 90)}`);
-      if (entry.data?.reason) parts.push(`  ${trim(entry.data.reason, 140)}`);
+      parts.push(`• ${trim(card.title, TITLE)}`);
+      if (entry.data?.reason) parts.push(`  ${trim(entry.data.reason, 300)}`);
     }
   }
   if (found.incidents.length) {
     parts.push('', 'Crashes that came in:');
-    for (const { card } of found.incidents) parts.push(`• ${trim(card.title, 90)}`);
+    for (const { card } of found.incidents) parts.push(`• ${trim(card.title, TITLE)}`);
   }
   // Where there IS a whole: a bundle's parts, and how many of them are settled.
   if (found.goals?.length) {
     parts.push('', 'Where we are going:');
     for (const goal of found.goals) {
-      parts.push(`${bar(goal.share)}  ${goal.done + goal.dropped}/${goal.total}  ${trim(goal.title, 60)}`);
+      parts.push(`${bar(goal.share)}  ${goal.done + goal.dropped}/${goal.total}  ${trim(goal.title, TITLE)}`);
     }
   }
   if (parts.length === 1) parts.push('', 'Nothing moved.');

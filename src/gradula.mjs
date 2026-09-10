@@ -28,7 +28,7 @@ import * as github from './github.mjs';
 import * as eas from './eas.mjs';
 import { gatherSystem, boardPicture, FRESH_MS } from './system.mjs';
 import { candidatesOf, evidenceOf, deployedOf, foreignIdOf, unknownDeployed } from './deployed.mjs';
-import { gather, plainReport, humanReport, htmlReport, escapeHtml } from './report.mjs';
+import { gather, plainReport, humanReport, htmlReport, escapeHtml, clip } from './report.mjs';
 import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
@@ -625,7 +625,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!herald) throw missing('No such herald.');
       const kind = heraldKinds[herald.kind];
       if (!kind?.send) return { sent: false, reason: `${herald.kind} cannot send` };
-      return kind.send({ token: keyOf(herald), chat: herald.chat }, String(text).slice(0, 3900), { html: true });
+      return kind.send({ token: keyOf(herald), chat: herald.chat }, clip(String(text)), { html: true });
     },
 
     async probeHerald(projectKey, id) {
