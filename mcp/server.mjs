@@ -27,7 +27,11 @@ const base = (env.GRADULA_URL ?? 'http://127.0.0.1:3200').replace(/\/+$/, '');
 const { token, actor } = handOf(env, { machine: true });
 
 /** A card with its ladder — five marks a session can put beside a link. */
-const laddered = (card) => (card && typeof card === 'object' && 'state' in card ? { ...card, ladder: ladderOf(card.state) } : card);
+let ladderStyle = 'squares';
+// the board's own glyphs, read once when the first tool asks — a board that does not answer keeps the squares
+let styleAsked = false;
+async function styled() { if (!styleAsked && token) { styleAsked = true; try { const p = await api('/api/v1/project'); if (p?.ladder) ladderStyle = p.ladder; } catch { /* squares */ } } }
+const laddered = (card) => (card && typeof card === 'object' && 'state' in card ? { ...card, ladder: ladderOf(card.state, ladderStyle) } : card);
 
 async function api(path, { method = 'GET', body } = {}) {
   if (!token) throw new Error('GRADULA_TOKEN is missing — without a project key there is nothing to do here.');
@@ -211,6 +215,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
       } else if (method === 'tools/call') {
         const tool = byName.get(params?.name);
         if (!tool) { fail(id, -32601, `There is no tool ${params?.name}.`); continue; }
+        await styled();
         const result = await tool.run(params.arguments ?? {});
         answer(id, { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] });
       } else if (method === 'ping') {

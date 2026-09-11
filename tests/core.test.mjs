@@ -336,3 +336,18 @@ test('the files say the craft too: a commit in the hooks is tooling, one in the 
   assert.deepEqual(labelsFor({ title: 'A ring', files: ['apps/mundula-web/server/docs-page/page.js', 'docs/skills.json'] }).stack, ['backend', 'web', 'docs'], 'the docs page is served by the server and is a web page');
   assert.deepEqual(labelsFor({ title: 'The store notes', files: ['tools/release/Fastfile', 'apps/mundula/eas.json'] }).stack, ['ios', 'tooling']);
 });
+
+test('three ladder styles, one meaning: behind, now, ahead — and ice no rung', async () => {
+  const { laddersOf, ladderOf, LADDER_STYLE_NAMES } = await import('../src/spec.mjs');
+  assert.deepEqual(LADDER_STYLE_NAMES, ['squares', 'circles', 'diamonds']);
+  assert.deepEqual(laddersOf('squares'), { ideas: '▩□□□□', ready: '■▩□□□', making: '■■▩□□', review: '■■■▩□', done: '■■■■■', ice: '·····' }, 'the old marks, unchanged');
+  assert.deepEqual(laddersOf('circles'), { ideas: '◐○○○○', ready: '●◐○○○', making: '●●◐○○', review: '●●●◐○', done: '●●●●●', ice: '·····' });
+  assert.deepEqual(laddersOf('diamonds'), { ideas: '◈◇◇◇◇', ready: '◆◈◇◇◇', making: '◆◆◈◇◇', review: '◆◆◆◈◇', done: '◆◆◆◆◆', ice: '·····' });
+  assert.equal(ladderOf('making', 'circles'), '●●◐○○');
+  assert.equal(ladderOf('making'), '■■▩□□', 'without a style, squares');
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  assert.equal((await gradula.patchProject('PRB', { ladder: 'circles' }, 'david')).ladder, 'circles');
+  await assert.rejects(gradula.patchProject('PRB', { ladder: 'stars' }, 'david'), (e) => e.code === 'ladder');
+});

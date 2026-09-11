@@ -232,3 +232,16 @@ test('the workshop hears incidents as they come in and when they come back, with
   assert.equal(lineFor({ verb: 'moved', actor: 'dokploy', data: { reason: 'seen on production (abc1234)' }, card: { ...crash, state: 'done' } }, { voice: 'plain' }).split('\n')[0], 'GRD-40 ■■■■■ done · moved · fatal', 'the fix: the card done, and it still says how loud it was');
   assert.equal(lineFor({ verb: 'ingested', actor: 'sentry', data: {}, card: crash }, { voice: 'human' }).split('\n')[0], 'GRD-40 ■▩□□□ Crash · fatal');
 });
+
+test('a board with circles speaks in circles', async () => {
+  const { createGradula } = await import('../src/gradula.mjs');
+  const { createMemoryStore } = await import('../src/store.mjs');
+  const said = [];
+  const gradula = createGradula(createMemoryStore(), { heraldKinds: { probe: { async send(_c, text) { said.push(text); return { sent: true }; } } } });
+  await gradula.createProject({ key: 'PRB', name: 'Probe' });
+  await gradula.patchProject('PRB', { ladder: 'circles' }, 'david');
+  await gradula.setHerald('PRB', { kind: 'probe', name: 'Plain', chat: 'a', token: 'x', template: 'workshop' }, 'david');
+  await gradula.addItem('PRB', { title: 'Round', kind: 'task' }, 'david');
+  await gradula.settle();
+  assert.match(said[0], /^PRB-1 ●◐○○○ ready · created\n/);
+});

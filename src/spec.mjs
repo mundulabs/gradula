@@ -161,8 +161,29 @@ export const bornIn = (kind) => (kind === 'idea' ? 'ideas' : 'ready');
  * server sends it along, so that a session writing "built (MDLA-71)" can put
  * the standing beside the link without asking a second time.
  */
-export const LADDER = { ideas: '▩□□□□', ready: '■▩□□□', making: '■■▩□□', review: '■■■▩□', done: '■■■■■', ice: '·····' };
-export const ladderOf = (state) => LADDER[state] ?? '□□□□□';
+/*
+ * THREE STYLES, ONE MEANING. Behind, now, ahead — and ice, which is no rung.
+ * A board picks its style (`project.ladder`): squares are the old marks,
+ * circles the round ones that match a mark like Mundula's, diamonds the
+ * sharp ones. The glyphs differ, the reading never does.
+ */
+export const LADDER_STYLES = {
+  squares: { behind: '■', now: '▩', ahead: '□', ice: '·' },
+  circles: { behind: '●', now: '◐', ahead: '○', ice: '·' },
+  diamonds: { behind: '◆', now: '◈', ahead: '◇', ice: '·' },
+};
+export const LADDER_STYLE_NAMES = Object.keys(LADDER_STYLES);
+const RUNGS = ['ideas', 'ready', 'making', 'review', 'done'];
+export function laddersOf(style = 'squares') {
+  const g = LADDER_STYLES[style] ?? LADDER_STYLES.squares;
+  const out = {};
+  RUNGS.forEach((state, i) => { out[state] = g.behind.repeat(i) + (state === 'done' ? g.behind : g.now) + g.ahead.repeat(RUNGS.length - 1 - i); });
+  out.ice = g.ice.repeat(RUNGS.length);
+  return out;
+}
+/** The default style's ladders — where no project is at hand (a test, a sentence in a comment). */
+export const LADDER = laddersOf('squares');
+export const ladderOf = (state, style = 'squares') => laddersOf(style)[state] ?? LADDER_STYLES[style]?.ahead.repeat(5) ?? '□□□□□';
 
 /**
  * What can stand in the history. `said` is a word, `decided` is a resolution —

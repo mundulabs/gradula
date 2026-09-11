@@ -29,7 +29,7 @@
  * no time — the sending stands in `src/telegram.mjs`.
  */
 
-import { word, LADDER } from './spec.mjs';
+import { word, ladderOf } from './spec.mjs';
 
 /**
  * THE OUTWARD LANGUAGE IS NOT THE DEVELOPER'S.
@@ -171,12 +171,12 @@ const short = (text, n) => {
  * title. The text is where somebody has written an address, a customer's
  * name or half a key.
  */
-export function lineFor(moment, { voice = 'plain', visibility = 'internal', project = null, language = 'en' } = {}) {
+export function lineFor(moment, { voice = 'plain', visibility = 'internal', project = null, language = 'en', style = 'squares' } = {}) {
   const { card = {}, verb, actor, data = {} } = moment;
   const isPublic = visibility === 'public';
   const title = short(card.title, 140);   /* a card's own cap — a title is never cut here */
   const mark = project ? `${card.key ?? project}` : card.key ?? '';
-  const ladder = LADDER[card.state] ?? '';
+  const ladder = card.state ? ladderOf(card.state, style) : '';
 
   /*
    * THREE LINES, THE SAME EVERY TIME — the eye finds each thing where it was
@@ -218,7 +218,7 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
  * For one move: which channels get it, and with which sentence?
  * A disabled herald gets nothing — not even "just as a test".
  */
-export function messages(heralds, moment, { language = 'en' } = {}) {
+export function messages(heralds, moment, { language = 'en', style = 'squares' } = {}) {
   const out = [];
   for (const herald of heralds ?? []) {
     if (herald.active === false) continue;
@@ -234,6 +234,7 @@ export function messages(heralds, moment, { language = 'en' } = {}) {
         // a herald set up for clients keeps its choice, and one that was never
         // asked speaks the language the cards are written in.
         language: filter.language ?? language,
+        style,
       }),
     });
   }

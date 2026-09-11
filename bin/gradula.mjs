@@ -23,7 +23,7 @@ import { join, dirname, basename } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { allGates, gateLine } from '../src/gates.mjs';
-import { KINDS, ladderOf, agentKeyName } from '../src/spec.mjs';
+import { KINDS, ladderOf, agentKeyName, LADDER_STYLE_NAMES, laddersOf } from '../src/spec.mjs';
 import { config, handOf, mergeEnv } from '../src/hand.mjs';
 import { cardOfBranch } from '../src/ids.mjs';
 
@@ -50,6 +50,7 @@ const HELP = `gradula — wish, board, standing
   gradula herald probe|drop <id>
   gradula publish|unpublish <CARD> what may leave the house
   gradula publishing hand|done     the rule: by hand, or everything that reaches production (incidents excepted)
+  gradula style [squares|circles|diamonds]   the ladder's glyphs for this board (without a word: show them)
   gradula releases                 what left the house, per lane: web, ios, android, ota — with the cards each carried
   gradula next [--lane ios] [--all] the note for the release about to go: what reached production since the last one on that lane
   gradula notes --lane ios --version 1.2.0 [--stage beta] --file notes.md   file the reviewed notes — the store's text; Release · public hears production, Beta · testers hears beta
@@ -150,10 +151,12 @@ const link = (text, url) => (process.stdout.isTTY && url
 /** Where a card lives for a person: the board, with the card open. */
 const onBoard = (key) => `${base}/${key}`;
 
+/* the board's ladder style, read once per run — every ladder printed here is the project's own */
+let ladderStyle = 'squares';
 const dot = (item) => {
   // The ladder instead of one mark: five rungs say where a card stands, and
   // a session can copy them beside a link — "[MDLA-71](…) ■■▩□□".
-  const mark = ladderOf(item.state);
+  const mark = ladderOf(item.state, ladderStyle);
   // Module and stack are TWO AXES and must not go into one bracket. Measured
   // on 09.09.: because both stood together I took `infra` for a module and
   // the cartographer for broken — it was right, the display lied. Modules in
@@ -269,6 +272,11 @@ function vocabularyOf(root = process.cwd()) {
 
 const [command, ...rest] = process.argv.slice(2);
 const { flags, words } = args(rest);
+
+// the ladder's glyphs are the board's choice: read once, for the commands that print cards (a board that does not answer keeps the squares)
+if (['cards', 'show', 'start', 'wave', 'health', 'sync', 'gates', 'releases'].includes(command) && hand.token) {
+  try { const p = await call('/api/v1/project'); if (p?.ladder) ladderStyle = p.ladder; } catch { /* squares */ }
+}
 
 switch (command) {
   case undefined:
@@ -889,6 +897,17 @@ switch (command) {
     const list = await call('/api/v1/releases');
     if (!list.length) { console.log('No release seen yet.'); break; }
     for (const r of list.slice(0, 20)) console.log(`${String(r.at).slice(0, 16).replace('T', ' ')}  ${r.lane.padEnd(7)} ${(r.version ?? (r.commit ?? '').slice(0, 7)).padEnd(14)} ${r.cards.length} cards${r.title ? `  ${r.title.slice(0, 60)}` : ''}`);
+    break;
+  }
+
+  case 'style': {
+    // gradula style squares|circles|diamonds — the ladder's glyphs, for this board
+    const chosen = String(words[0] ?? '');
+    if (!chosen) { const p = await call('/api/v1/project'); const l = laddersOf(p.ladder ?? 'squares'); console.log(`${p.key}: ${p.ladder ?? 'squares'}   ${l.ideas} ideas · ${l.ready} ready · ${l.making} making · ${l.review} review · ${l.done} done · ${l.ice} ice`); for (const name of LADDER_STYLE_NAMES) { const x = laddersOf(name); console.log(`  ${name.padEnd(9)} ${x.ideas} ${x.ready} ${x.making} ${x.review} ${x.done} ${x.ice}`); } break; }
+    if (!LADDER_STYLE_NAMES.includes(chosen)) stop(`gradula style ${LADDER_STYLE_NAMES.join('|')}`);
+    const project = await call('/api/v1/project', { method: 'PATCH', body: { ladder: chosen } });
+    const l = laddersOf(project.ladder);
+    console.log(`${project.key}: ${project.ladder} — ${l.ideas} ${l.ready} ${l.making} ${l.review} ${l.done} ${l.ice}`);
     break;
   }
 

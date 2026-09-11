@@ -35,7 +35,7 @@ import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
 import { dueHeralds, CADENCES } from './schedule.mjs';
-import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName } from './spec.mjs';
+import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, LADDER_STYLE_NAMES } from './spec.mjs';
 import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
 import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
@@ -171,7 +171,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (verb === 'started' && card.created && Date.now() - Date.parse(card.created) < 60_000) return sent;
       // Read only when somebody is actually listening — no herald, no query.
       const board = await store.projects.get(item.project);
-      for (const { herald, text } of messages(heralds, { card, verb, actor, data: data ?? {} }, { language: board?.language ?? 'en' })) {
+      for (const { herald, text } of messages(heralds, { card, verb, actor, data: data ?? {} }, { language: board?.language ?? 'en', style: board?.ladder ?? 'squares' })) {
       // The link leads to the card, and it IS the key at the head of the line —
       // not a second key beneath it. The PREVIEW stays off as long as the card
       // is internal: Telegram's crawler fetches the address itself and
@@ -213,7 +213,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const kind = heraldKinds[herald.kind];
         if (!kind?.send) continue;
         const visibility = filter.visibility ?? 'internal';
-        const text = releaseNote(release, cards, { visibility, language: filter.language ?? board?.language ?? 'en', origin });
+        const text = releaseNote(release, cards, { visibility, language: filter.language ?? board?.language ?? 'en', origin, style: board?.ladder ?? 'squares' });
         if (!text) continue;
         const repo = (await store.github.get(projectKey))?.repo ?? board?.repo ?? null;
         const result = await kind.send({ token: keyOf(herald), chat: herald.chat }, linkify(escapeHtml(text), { origin: visibility === 'public' ? origin : origin, repo: visibility === 'public' ? null : repo }), { html: true, preview: false });
@@ -540,6 +540,12 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
        * the outside). One rule per board, chosen in the open; the Outside
        * herald then needs no tap per card.
        */
+      // THE LADDER'S STYLE: squares, circles or diamonds — the glyphs, never the meaning.
+      if (changes.ladder !== undefined) {
+        if (changes.ladder === null) next.ladder = null;
+        else if (!LADDER_STYLE_NAMES.includes(String(changes.ladder))) throw bad('ladder', `ladder: ${LADDER_STYLE_NAMES.join(', ')}.`);
+        else next.ladder = String(changes.ladder);
+      }
       if (changes.publish !== undefined) {
         if (changes.publish === null || changes.publish === 'hand') next.publish = null;
         else if (changes.publish !== 'done') throw bad('publish', 'publish: hand or done.');
@@ -759,7 +765,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         counts: { done: found.done.length, decided: found.decided.length, incidents: found.incidents.length, touched: found.touched },
         plain: plainReport(found, { project: project.key, period }),
         human: humanReport(found, { period }),
-        html: htmlReport(found, { project: project.key, period, voice }),
+        html: htmlReport(found, { project: project.key, period, voice, style: project.ladder ?? 'squares' }),
       };
     },
 

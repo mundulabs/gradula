@@ -24,7 +24,7 @@
  * releases come out, and gradula.mjs remembers and speaks.
  */
 
-import { LADDER } from './spec.mjs';
+import { ladderOf } from './spec.mjs';
 
 /** The lanes an app release may take — a build's platform, or the update channel. */
 export const LANES = ['web', 'ios', 'android', 'ota'];
@@ -99,7 +99,7 @@ const shortSha = (sha) => (sha ? String(sha).slice(0, 7) : null);
  * the public cards' titles and nothing else; an internal one gets every card
  * with its key. Returns null when a public channel would have nothing to say.
  */
-export function releaseNote(release, cards = [], { visibility = 'internal', language = 'en', origin = null } = {}) {
+export function releaseNote(release, cards = [], { visibility = 'internal', language = 'en', origin = null, style = 'squares' } = {}) {
   const isPublic = visibility === 'public';
   const w = WORDS[language] ?? WORDS.en;
   const lane = (LANE_NAMES[language] ?? LANE_NAMES.en)[release.lane] ?? release.lane;
@@ -111,7 +111,7 @@ export function releaseNote(release, cards = [], { visibility = 'internal', lang
   // the head is one line; the deployment's own title, when shown, stands beneath it — the head must read at a glance
   const head = `${lane}${version}${where} — ${w.released}${!isPublic && title ? `\n${title}` : ''}`;
   // inside the house every card line has the same head as everywhere else: key, ladder, state — then the title
-  const lines = shown.map((c) => (isPublic ? `• ${c.title}` : `• ${c.key} ${LADDER[c.state] ?? ''} ${c.state ?? ''}`.replace(/\s+/g, ' ').trim() + `\n  ${c.title}`));
+  const lines = shown.map((c) => (isPublic ? `• ${c.title}` : `• ${c.key} ${c.state ? ladderOf(c.state, style) : ''} ${c.state ?? ''}`.replace(/\s+/g, ' ').trim() + `\n  ${c.title}`));
   const body = lines.length ? lines.join('\n') : w.nothing;
   return `${head}\n${body}${release.url && !isPublic ? `\n${release.url}` : ''}`;
 }

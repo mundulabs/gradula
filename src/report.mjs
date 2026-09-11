@@ -17,7 +17,7 @@
  *
  * Pure: history and cards in, text out. No store, no clock, no network.
  */
-import { LADDER } from './spec.mjs';
+import { ladderOf } from './spec.mjs';
 
 const BY_LENGTH = (a, b) => b.length - a.length;
 
@@ -120,7 +120,7 @@ const labelsOf = (card) => [...new Set([...(card.module ?? []), ...(card.stack ?
  * every card: since production decides what is done, a gate is a choice,
  * not a lack.
  */
-export function plainReport(found, { project, period = null } = {}) {
+export function plainReport(found, { project, period = null, style = 'squares' } = {}) {
   const lines = [`${project} · report${period ? ` · ${period}` : ''}`];
   const block = (title, rows, render) => {
     if (!rows.length) return;
@@ -128,7 +128,7 @@ export function plainReport(found, { project, period = null } = {}) {
     for (const row of rows) lines.push(`• ${render(row)}`);
   };
   // the key and the ladder on their own line, the title beneath — the same two lines a herald's message has
-  const one = (card) => `${card.key} ${LADDER[card.state] ?? ''} ${card.state ?? ''}`.replace(/\s+/g, ' ').trim() + `\n  ${trim(card.title, TITLE)}`;
+  const one = (card) => `${card.key} ${card.state ? ladderOf(card.state, style) : ''} ${card.state ?? ''}`.replace(/\s+/g, ' ').trim() + `\n  ${trim(card.title, TITLE)}`;
   block('done', found.done, ({ card }) => {
     const labels = labelsOf(card);
     return `${one(card)}${labels.length ? ` [${labels.join(' ')}]` : ''}${card.gate ? ` · gate ${card.gate.kind}` : ''}`;
@@ -185,10 +185,10 @@ export function humanReport(found, { period = null } = {}) {
  * The same report for Telegram. `<pre>` for the plain one, because a table
  * that reflows is not a table; light emphasis for the human one.
  */
-export function htmlReport(found, { project, period = null, voice = 'human' } = {}) {
+export function htmlReport(found, { project, period = null, voice = 'human', style = 'squares' } = {}) {
   if (voice === 'plain') {
     // a list, not a block: the block was a table that only lined up on a desktop; the keys become links when it is sent (linkify)
-    const [head, ...rest] = plainReport(found, { project, period }).split('\n');
+    const [head, ...rest] = plainReport(found, { project, period, style }).split('\n');
     return [`<b>${escapeHtml(head)}</b>`, ...rest.map((line) => (/^[a-z]+ \(\d+\)$/.test(line) ? `<b>${escapeHtml(line)}</b>` : escapeHtml(line)))].join('\n');
   }
   const text = humanReport(found, { period });
