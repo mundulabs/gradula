@@ -172,9 +172,17 @@ export const LADDER_STYLES = {
   circles: { behind: '●', now: '◐', ahead: '○', ice: '·' },
   diamonds: { behind: '◆', now: '◈', ahead: '◇', ice: '·' },
 };
-export const LADDER_STYLE_NAMES = Object.keys(LADDER_STYLES);
+/*
+ * THE MOON: one glyph instead of five. The phase is the standing — new ○,
+ * a quarter ◔, half ◐, three quarters ◕, full ● — and ice is the dot again.
+ * It reads in a breath and takes one character; the five rungs say the
+ * same with more room to see it. A board picks.
+ */
+export const MOON = { ideas: '○', ready: '◔', making: '◐', review: '◕', done: '●', ice: '·' };
+export const LADDER_STYLE_NAMES = [...Object.keys(LADDER_STYLES), 'moon'];
 const RUNGS = ['ideas', 'ready', 'making', 'review', 'done'];
 export function laddersOf(style = 'squares') {
+  if (style === 'moon') return { ...MOON };
   const g = LADDER_STYLES[style] ?? LADDER_STYLES.squares;
   const out = {};
   RUNGS.forEach((state, i) => { out[state] = g.behind.repeat(i) + (state === 'done' ? g.behind : g.now) + g.ahead.repeat(RUNGS.length - 1 - i); });
@@ -183,7 +191,7 @@ export function laddersOf(style = 'squares') {
 }
 /** The default style's ladders — where no project is at hand (a test, a sentence in a comment). */
 export const LADDER = laddersOf('squares');
-export const ladderOf = (state, style = 'squares') => laddersOf(style)[state] ?? LADDER_STYLES[style]?.ahead.repeat(5) ?? '□□□□□';
+export const ladderOf = (state, style = 'squares') => laddersOf(style)[state] ?? (style === 'moon' ? '○' : (LADDER_STYLES[style]?.ahead ?? '□').repeat(5));
 
 /**
  * What can stand in the history. `said` is a word, `decided` is a resolution —

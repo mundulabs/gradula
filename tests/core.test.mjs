@@ -339,7 +339,8 @@ test('the files say the craft too: a commit in the hooks is tooling, one in the 
 
 test('three ladder styles, one meaning: behind, now, ahead — and ice no rung', async () => {
   const { laddersOf, ladderOf, LADDER_STYLE_NAMES } = await import('../src/spec.mjs');
-  assert.deepEqual(LADDER_STYLE_NAMES, ['squares', 'circles', 'diamonds']);
+  assert.deepEqual(LADDER_STYLE_NAMES, ['squares', 'circles', 'diamonds', 'moon']);
+  assert.deepEqual(laddersOf('moon'), { ideas: '○', ready: '◔', making: '◐', review: '◕', done: '●', ice: '·' }, 'one glyph: the phase is the standing');
   assert.deepEqual(laddersOf('squares'), { ideas: '▩□□□□', ready: '■▩□□□', making: '■■▩□□', review: '■■■▩□', done: '■■■■■', ice: '·····' }, 'the old marks, unchanged');
   assert.deepEqual(laddersOf('circles'), { ideas: '◐○○○○', ready: '●◐○○○', making: '●●◐○○', review: '●●●◐○', done: '●●●●●', ice: '·····' });
   assert.deepEqual(laddersOf('diamonds'), { ideas: '◈◇◇◇◇', ready: '◆◈◇◇◇', making: '◆◆◈◇◇', review: '◆◆◆◈◇', done: '◆◆◆◆◆', ice: '·····' });

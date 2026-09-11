@@ -50,7 +50,7 @@ const HELP = `gradula — wish, board, standing
   gradula herald probe|drop <id>
   gradula publish|unpublish <CARD> what may leave the house
   gradula publishing hand|done     the rule: by hand, or everything that reaches production (incidents excepted)
-  gradula style [squares|circles|diamonds]   the ladder's glyphs for this board (without a word: show them)
+  gradula style [squares|circles|diamonds|moon]   the ladder's glyphs for this board (without a word: show them)
   gradula releases                 what left the house, per lane: web, ios, android, ota — with the cards each carried
   gradula next [--lane ios] [--all] the note for the release about to go: what reached production since the last one on that lane
   gradula notes --lane ios --version 1.2.0 [--stage beta] --file notes.md   file the reviewed notes — the store's text; Release · public hears production, Beta · testers hears beta
