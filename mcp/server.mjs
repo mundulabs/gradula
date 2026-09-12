@@ -17,8 +17,8 @@
  */
 
 import { createInterface } from 'node:readline';
-import { config, handOf } from '../src/hand.mjs';
-import { ladderOf } from '../src/spec.mjs';
+import { config, handOf, coderOf } from '../src/hand.mjs';
+import { ladderOf, CARD_STYLE } from '../src/spec.mjs';
 
 // The same reader the CLI uses (src/hand.mjs) — and this server is a
 // machine's door by definition, so it takes the agent key when there is one.
@@ -27,10 +27,7 @@ const base = (env.GRADULA_URL ?? 'http://127.0.0.1:3200').replace(/\/+$/, '');
 const { token, actor } = handOf(env, { machine: true });
 
 /** A card with its ladder — five marks a session can put beside a link. */
-let ladderStyle = 'squares';
-// the board's own glyphs, read once when the first tool asks — a board that does not answer keeps the squares
-let styleAsked = false;
-async function styled() { if (!styleAsked && token) { styleAsked = true; try { const p = await api('/api/v1/project'); if (p?.ladder) ladderStyle = p.ladder; } catch { /* squares */ } } }
+const ladderStyle = CARD_STYLE;
 const laddered = (card) => (card && typeof card === 'object' && 'state' in card ? { ...card, ladder: ladderOf(card.state, ladderStyle) } : card);
 
 async function api(path, { method = 'GET', body } = {}) {
@@ -40,6 +37,7 @@ async function api(path, { method = 'GET', body } = {}) {
     headers: {
       Authorization: `Bearer ${token}`,
       ...(actor ? { 'X-Gradula-Actor': actor } : {}),
+      ...(coderOf(env) ? { 'X-Gradula-Coder': coderOf(env) } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -215,7 +213,6 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
       } else if (method === 'tools/call') {
         const tool = byName.get(params?.name);
         if (!tool) { fail(id, -32601, `There is no tool ${params?.name}.`); continue; }
-        await styled();
         const result = await tool.run(params.arguments ?? {});
         answer(id, { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] });
       } else if (method === 'ping') {

@@ -15,6 +15,7 @@
  * synchronously writes a caller that breaks on Postgres.
  */
 
+import { isDeepStrictEqual } from 'node:util';
 import { mintId, itemKey } from './ids.mjs';
 import { bornIn } from './spec.mjs';
 import { createHash, randomBytes } from 'node:crypto';
@@ -78,6 +79,7 @@ export function createMemoryStore() {
   const tokens = new Map();
   const sentry = new Map();
   const heralds = new Map();
+  const heraldDeliveries = new Map();
   const releases = new Map();
   const dokploy = new Map();
   const github = new Map();
@@ -244,10 +246,11 @@ export function createMemoryStore() {
         return clone(row);
       },
 
-      async patch(key, changes) {
+      async patch(key, changes, { expected = {} } = {}) {
         const id = byKey.get(key);
         if (!id) return null;
         const row = items.get(id);
+        if (Object.entries(expected).some(([field, value]) => !isDeepStrictEqual(row[field], value))) return null;
         Object.assign(row, clone(changes), { changed: now() });
         return shapeItem(clone(row));
       },
@@ -424,6 +427,13 @@ export function createMemoryStore() {
         return clone(row);
       },
     },
+    heraldDeliveries: {
+      async get(herald, key) { return clone(heraldDeliveries.get(JSON.stringify([herald, key])) ?? null); },
+      async set(herald, key, data) {
+        if (!heralds.has(herald)) throw new Error('No such herald.');
+        heraldDeliveries.set(JSON.stringify([herald, key]), clone(data));
+      },
+    },
     heralds: {
       async list(projectKey, { raw = false } = {}) {
         const out = [...heralds.values()].filter((b) => b.project === projectKey);
@@ -434,6 +444,7 @@ export function createMemoryStore() {
         project(projectKey);
         const id = herald.id ?? mintId();
         const alt = heralds.get(id);
+        if (alt && alt.project !== projectKey) throw new Error('No such herald.');
         const row = {
           ...(alt ?? { created: now() }),
           ...clone(herald),
@@ -447,7 +458,10 @@ export function createMemoryStore() {
         heralds.set(id, row);
         return { ...clone(row), token: row.token ? 'set' : null };
       },
-      async remove(id) { return heralds.delete(String(id)); },
+      async remove(id) {
+        for (const key of heraldDeliveries.keys()) if (JSON.parse(key)[0] === String(id)) heraldDeliveries.delete(key);
+        return heralds.delete(String(id));
+      },
     },
 
     tokens: {

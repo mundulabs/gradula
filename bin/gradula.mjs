@@ -23,8 +23,8 @@ import { join, dirname, basename } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { allGates, gateLine } from '../src/gates.mjs';
-import { KINDS, ladderOf, agentKeyName, LADDER_STYLE_NAMES, laddersOf } from '../src/spec.mjs';
-import { config, handOf, mergeEnv } from '../src/hand.mjs';
+import { KINDS, ladderOf, agentKeyName, CARD_STYLE, laddersOf } from '../src/spec.mjs';
+import { config, handOf, mergeEnv, coderOf } from '../src/hand.mjs';
 import { cardOfBranch } from '../src/ids.mjs';
 
 const HELP = `gradula — wish, board, standing
@@ -50,7 +50,7 @@ const HELP = `gradula — wish, board, standing
   gradula herald probe|drop <id>
   gradula publish|unpublish <CARD> what may leave the house
   gradula publishing hand|done     the rule: by hand, or everything that reaches production (incidents excepted)
-  gradula style [squares|circles|diamonds|moon]   the ladder's glyphs for this board (without a word: show them)
+  gradula style                  show the fixed card progress marks
   gradula releases                 what left the house, per lane: web, ios, android, ota — with the cards each carried
   gradula next [--lane ios] [--all] the note for the release about to go: what reached production since the last one on that lane
   gradula notes --lane ios --version 1.2.0 [--stage beta] --file notes.md   file the reviewed notes — the store's text; Release · public hears production, Beta · testers hears beta
@@ -88,7 +88,7 @@ const HELP = `gradula — wish, board, standing
 
 Environment: GRADULA_URL, GRADULA_TOKEN, GRADULA_ACTOR (or .gradula.env — gradula login writes it)
              GRADULA_AGENT_TOKEN  the key AI sessions take — same person, its own hand in the
-                                  chronicle ("Claude Code · <machine>"); gradula login writes it too
+                                  chronicle ("<coder> · <machine>"); gradula login writes it too
              GRADULA_HAND=agent|person  say which hand this is, if the environment does not`;
 
 const env = config();
@@ -104,6 +104,7 @@ async function call(path, { method = 'GET', body } = {}) {
     headers: {
       Authorization: `Bearer ${hand.token}`,
       ...(hand.actor ? { 'X-Gradula-Actor': hand.actor } : {}),
+      ...(coderOf(env) ? { 'X-Gradula-Coder': coderOf(env) } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -152,7 +153,7 @@ const link = (text, url) => (process.stdout.isTTY && url
 const onBoard = (key) => `${base}/${key}`;
 
 /* the board's ladder style, read once per run — every ladder printed here is the project's own */
-let ladderStyle = 'squares';
+const ladderStyle = CARD_STYLE;
 const dot = (item) => {
   // The ladder instead of one mark: five rungs say where a card stands, and
   // a session can copy them beside a link — "[MDLA-71](…) ■■▩□□".
@@ -272,11 +273,6 @@ function vocabularyOf(root = process.cwd()) {
 
 const [command, ...rest] = process.argv.slice(2);
 const { flags, words } = args(rest);
-
-// the ladder's glyphs are the board's choice: read once, for the commands that print cards (a board that does not answer keeps the squares)
-if (['cards', 'show', 'start', 'wave', 'health', 'sync', 'gates', 'releases'].includes(command) && hand.token) {
-  try { const p = await call('/api/v1/project'); if (p?.ladder) ladderStyle = p.ladder; } catch { /* squares */ }
-}
 
 switch (command) {
   case undefined:
@@ -901,13 +897,10 @@ switch (command) {
   }
 
   case 'style': {
-    // gradula style squares|circles|diamonds — the ladder's glyphs, for this board
-    const chosen = String(words[0] ?? '');
-    if (!chosen) { const p = await call('/api/v1/project'); const l = laddersOf(p.ladder ?? 'squares'); console.log(`${p.key}: ${p.ladder ?? 'squares'}   ${l.ideas} ideas · ${l.ready} ready · ${l.making} making · ${l.review} review · ${l.done} done · ${l.ice} ice`); for (const name of LADDER_STYLE_NAMES) { const x = laddersOf(name); console.log(`  ${name.padEnd(9)} ${x.ideas} ${x.ready} ${x.making} ${x.review} ${x.done} ${x.ice}`); } break; }
-    if (!LADDER_STYLE_NAMES.includes(chosen)) stop(`gradula style ${LADDER_STYLE_NAMES.join('|')}`);
-    const project = await call('/api/v1/project', { method: 'PATCH', body: { ladder: chosen } });
-    const l = laddersOf(project.ladder);
-    console.log(`${project.key}: ${project.ladder} — ${l.ideas} ${l.ready} ${l.making} ${l.review} ${l.done} ${l.ice}`);
+    if (words[0] && words[0] !== CARD_STYLE) stop('Cards use circles; pipeline steps use squares. Their shapes are fixed.');
+    const l = laddersOf(CARD_STYLE);
+    console.log(`Cards: ${l.ideas} ideas · ${l.ready} ready · ${l.making} making · ${l.review} review · ${l.done} done · ${l.ice} ice`);
+
     break;
   }
 

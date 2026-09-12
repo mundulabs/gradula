@@ -9,7 +9,7 @@ COPY web/ ./
 # surface. So the build needs that one file beside it, and the working
 # directory is one level deeper so the relative path still holds. A copy in
 # web/ would drift, and a gate in tests/surface.test.mjs refuses one.
-COPY src/spec.mjs /board/src/spec.mjs
+COPY src/spec.mjs src/heralds.mjs /board/src/
 RUN npm run build
 
 FROM node:22-alpine

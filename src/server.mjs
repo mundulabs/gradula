@@ -15,6 +15,7 @@ import { createAuth } from './auth.mjs';
 import { createStatic } from './static.mjs';
 import { createLive } from './live.mjs';
 import { createSystemPoll } from './system.mjs';
+import { withoutKey as telegramError } from './telegram.mjs';
 import { watch } from './watch.mjs';
 
 const port = Number(process.env.PORT ?? 3200);
@@ -111,6 +112,26 @@ const tick = setInterval(async () => {
   }
 }, TICK_MS);
 tick.unref?.();
+
+// Pipeline subscriptions remain live even when nobody has the board open.
+// Each pass finishes before the next starts; unchanged progress is silent.
+let pipelineBusy = false;
+const pipelineTick = async () => {
+  if (pipelineBusy) return;
+  pipelineBusy = true;
+  try {
+    for (const project of await store.projects.list()) {
+      try {
+        const results = await gradula.pollPipelines(project.key);
+        for (const result of results) if (!result.sent) console.warn(`[gradula] pipeline ${project.key}: ${result.reason ?? 'not delivered'}`);
+      } catch (error) { console.warn(`[gradula] pipeline ${project.key}: ${telegramError(error.message)}`); }
+    }
+  } catch (error) { console.warn(`[gradula] pipeline: ${telegramError(error.message)}`); }
+  finally { pipelineBusy = false; }
+};
+const pipelineClock = setInterval(pipelineTick, 60_000);
+pipelineClock.unref?.();
+void pipelineTick().catch((error) => console.warn(`[gradula] pipeline: ${telegramError(error.message)}`));
 
 const handle = createApi(gradula, { adminToken, auth, staticFiles, live, watcher: sentry, origin: process.env.PUBLIC_ORIGIN ?? null });
 

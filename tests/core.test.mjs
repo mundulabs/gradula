@@ -352,3 +352,59 @@ test('three ladder styles, one meaning: behind, now, ahead — and ice no rung',
   assert.equal((await gradula.patchProject('PRB', { ladder: 'circles' }, 'david')).ladder, 'circles');
   await assert.rejects(gradula.patchProject('PRB', { ladder: 'stars' }, 'david'), (e) => e.code === 'ladder');
 });
+
+
+test('the active coder is session metadata, not a permanently named shared key', async () => {
+  const { coderOf } = await import('../src/hand.mjs');
+  const { sessionKeyName, agentKeyName } = await import('../src/spec.mjs');
+  assert.equal(coderOf({ CODEX_THREAD_ID: 'thread' }), 'Codex');
+  assert.equal(coderOf({ CLAUDECODE: '1', CODEX_HOME: '/installed' }), 'Claude Code');
+  assert.equal(coderOf({ CODEX_THREAD_ID: 'thread', CLAUDECODE: '1' }), 'Codex');
+  assert.equal(coderOf({ CODEX_HOME: '/installed' }), null);
+  assert.equal(coderOf({ CODEX_THREAD_ID: 'thread', GRADULA_HAND: 'person' }), null);
+  assert.equal(agentKeyName('mac'), 'AI sessions · mac');
+  const old = { kind: 'agent', name: 'Claude Code · mac' };
+  assert.equal(sessionKeyName(old, 'Codex'), 'Codex · mac');
+  assert.equal(sessionKeyName(old, 'Claude Code'), old.name);
+  assert.equal(sessionKeyName(old, 'invented'), old.name);
+  assert.equal(sessionKeyName(old, undefined), old.name);
+  assert.equal(sessionKeyName({ kind: 'human', name: 'mac' }, 'Codex'), 'mac');
+  assert.equal(sessionKeyName({ kind: 'system', name: 'deploy' }, 'Codex'), 'deploy');
+});
+
+test('editing checks the original field atomically and records no rejected change', async () => {
+  const gradula = createGradula(createMemoryStore());
+  await gradula.createProject({ key: 'EDT', name: 'Editing' });
+  const card = await gradula.addItem('EDT', { kind: 'task', title: 'Original' }, 'first');
+  await gradula.patchItem(card.key, { title: 'New title' }, 'other');
+  const before = await gradula.getItem(card.key);
+  await assert.rejects(gradula.patchItem(card.key, { title: 'Overwrite', expected: { title: 'Original' } }, 'first'), { code: 'edit-conflict' });
+  assert.deepEqual(await gradula.getItem(card.key), before);
+  assert.equal((await gradula.patchItem(card.key, { text: 'Independent edit', expected: { text: '' } }, 'first')).title, 'New title');
+});
+
+test('starting work cannot silently reopen review or completed cards', async () => {
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'STA', name: 'Start' });
+  const card = await gradula.addItem('STA', { kind: 'task', title: 'Review me' }, 'first');
+  for (const state of ['review', 'done']) {
+    await store.items.patch(card.key, { state });
+    await assert.rejects(gradula.startItem(card.key, {}, 'first'), { code: 'not-ready' });
+    assert.equal((await gradula.getItem(card.key)).state, state);
+  }
+});
+
+test('agent configuration folders belong to tooling, including old stored areas', async () => {
+  for (const folder of ['.claude', '.codex', '.agents']) {
+    const [module] = normalizeVocabulary([{ id: 'agent-docs', paths: [`${folder}/skills`] }]);
+    assert.equal(module.area, 'tooling');
+    assert.ok(labelsFor({ files: [`${folder}/skills/task/SKILL.md`] }).stack.includes('tooling'));
+  }
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'AREA', name: 'Areas' });
+  await store.vocab.set('AREA', [{ id: 'agent-docs', paths: ['.claude/skills'], area: '.claude' }]);
+  assert.equal((await gradula.getVocabulary('AREA'))[0].area, 'tooling');
+  assert.equal(normalizeVocabulary([{ id: 'ci', paths: ['.github/workflows'] }])[0].area, 'infra');
+});

@@ -1,10 +1,8 @@
 /**
  * Telegram — the first herald, and therefore the template for every other.
  *
- * It can do exactly two things: introduce itself and say something. That is
- * the whole contract of a herald, and it is deliberately smaller than a
- * connection's: a herald fetches nothing, reads nothing and writes back
- * nowhere.
+ * It introduces itself, sends messages, and edits its recorded progress
+ * messages. It never deletes a message or edits one it did not send.
  *
  * FOUR DECISIONS:
  *
@@ -81,15 +79,16 @@ export async function verify({ token, chat = null }, { fetchImpl = fetch } = {})
 }
 
 /**
- * Say something. A herald can do no more, and should be able to do no more.
+ * Send a message, or update a recorded progress message.
  *
  * Telegram's limit is 4096 characters; we cut at 3900 and put a mark behind
  * it rather than collecting a 400.
  */
-export async function send({ token, chat }, text, { fetchImpl = fetch, html = false, preview = false } = {}) {
+export async function send({ token, chat }, text, { fetchImpl = fetch, html = false, preview = false, messageId = null } = {}) {
   if (!token || !chat) return { sent: false, reason: 'not set up' };
   const payload = {
     chat_id: chat,
+    ...(messageId ? { message_id: messageId } : {}),
     text: String(text).slice(0, 3900),
     disable_web_page_preview: !preview,
     // HTML, not MarkdownV2. Markdown wants a dozen characters escaped,
@@ -100,8 +99,10 @@ export async function send({ token, chat }, text, { fetchImpl = fetch, html = fa
     ...(html ? { parse_mode: 'HTML' } : {}),
   };
   try {
-    const { status, body } = await call(token, 'sendMessage', payload, fetchImpl);
-    if (body?.ok) return { sent: true };
+    const { status, body } = await call(token, messageId ? 'editMessageText' : 'sendMessage', payload, fetchImpl);
+    if (body?.ok) return { sent: true, ...(body.result?.message_id || messageId ? { messageId: body.result?.message_id ?? messageId } : {}) };
+    if (messageId && status === 400 && /message is not modified/i.test(body?.description ?? '')) return { sent: true, messageId };
+    if (messageId && status === 400 && /message to edit not found/i.test(body?.description ?? '')) return { sent: false, missing: true, reason: 'message to edit not found' };
     // 429 is not an error, it is a request. We do NOT retry — a herald that
     // pushes again by itself clogs the channel it serves.
     if (status === 429) {
@@ -112,3 +113,6 @@ export async function send({ token, chat }, text, { fetchImpl = fetch, html = fa
     return { sent: false, reason: withoutKey(error.message) };
   }
 }
+
+/** Edit only a progress message whose id Gradula recorded itself. */
+export const edit = (connection, messageId, text, options = {}) => send(connection, text, { ...options, messageId });

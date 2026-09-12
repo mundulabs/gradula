@@ -67,16 +67,24 @@ export default function PulseView({ project, open }: { project: string; open: (k
   const [beat, setBeat] = useState<Beat | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
-    let alive = true;
-    readPulse(project)
-      .then((got) => { if (alive) setBeat(got); })
-      .catch((e) => { if (alive) setError(String(e.message ?? e)); });
-    return () => { alive = false; };
-  }, [project]);
+    let alive = true; let reading = false; setBeat(null); setError(null);
+    const refresh = () => {
+      if (reading) return;
+      reading = true;
+      readPulse(project)
+        .then((got) => { if (alive) { setBeat(got); setError(null); } })
+        .catch((e) => { if (alive) setError(String(e.message ?? e)); })
+        .finally(() => { reading = false; });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 30000);
+    return () => { alive = false; window.clearInterval(timer); };
+  }, [project, retry]);
 
-  if (error) return <p className="error">{error}</p>;
-  if (!beat) return <p className="quiet pulse-wait">…</p>;
+  if (error) return <div className="error" role="alert">{error} <button onClick={() => setRetry((n) => n + 1)}>{t('ui.retry')}</button></div>;
+  if (!beat) return <p className="quiet pulse-wait" role="status">{t('ui.loading')}</p>;
 
   const key = (k: string) => (
     <button className="key" key={k} onClick={() => open(k)}>{k}</button>

@@ -41,7 +41,7 @@ export const STACK_PATHS = {
   design: [/^packages\/brand\//, /(^|\/)brand\//, /\.(svg|afdesign|sketch|fig)$/],
   speech: [/^packages\/(word|lingo)\//, /^packages\/control\/src\/(speech|ear)/],
   model: [/^packages\/ai\//],
-  tooling: [/^\.githooks\//, /^tools\//, /^tests\//, /^scripts\//, /(^|\/)package\.json$/, /(^|\/)package-lock\.json$/, /^\.claude\//, /^\.mcp\.json$/, /^GEMINI\.md$/, /^AGENTS\.md$/, /^CLAUDE\.md$/],
+  tooling: [/^\.githooks\//, /^tools\//, /^tests\//, /^scripts\//, /(^|\/)package\.json$/, /(^|\/)package-lock\.json$/, /^\.(?:claude|codex|agents)\//, /^\.mcp\.json$/, /^GEMINI\.md$/, /^AGENTS\.md$/, /^CLAUDE\.md$/],
 };
 
 export const STACK_WORDS = {
@@ -132,6 +132,7 @@ export function areaOf(paths = []) {
   const first = String(paths[0] ?? '').replace(/^\/+/, '');
   if (!first) return null;
   const [head, second] = first.split('/');
+  if (head.startsWith('.')) return head === '.github' ? 'infra' : 'tooling';
   if (head === 'apps' && second) return second.toLowerCase();
   return head.toLowerCase();
 }

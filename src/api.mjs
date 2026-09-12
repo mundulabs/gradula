@@ -20,6 +20,7 @@
  * that stands open when unconfigured is the mistake you make once.
  */
 
+import { sessionKeyName } from './spec.mjs';
 import { LIVE_HEADERS } from './live.mjs';
 import { Refusal } from './gradula.mjs';
 import { signatureOk } from './sentry.mjs';
@@ -141,7 +142,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     // A key a person minted for themselves IS that person: the name was
     // checked when the key was made, so no header is read — a claim cannot
     // improve on a check.
-    if (token?.owner && token.ownerName) return `${token.ownerName} (${token.name})`;
+    const handName = sessionKeyName(token, req.headers['x-gradula-coder']);
+    if (token?.owner && token.ownerName) return `${token.ownerName} (${handName})`;
     const claimed = String(req.headers['x-gradula-actor'] ?? req.headers['x-gradula-akteur'] ?? '').trim().slice(0, 80);
     // The name, then the hand in brackets — `david (Davids Rechner)`. It read
     // `david (via key "Davids Rechner")` for two days, and the person whose
@@ -149,7 +151,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     // and a key is the only thing a machine can bring. Old lines stay as they
     // are and are read by the same rule (src/people.mjs).
     const machine = token ? `key "${token.name}"` : 'unknown';
-    return claimed ? `${claimed} (${token ? token.name : 'unknown'})` : machine;
+    return claimed ? `${claimed} (${token ? handName : 'unknown'})` : machine;
   };
 
   const routes = [
@@ -471,8 +473,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['POST', /^\/api\/v1\/heralds\/([0-9A-Z]{26})\/probe$/, async (_req, m, ctx) => ({
       status: 200, body: await gradula.probeHerald(ctx.project, m[1]),
     })],
-    ['DELETE', /^\/api\/v1\/heralds\/([0-9A-Z]{26})$/, async (_req, m) => ({
-      status: 200, body: await gradula.removeHerald(m[1]),
+    ['DELETE', /^\/api\/v1\/heralds\/([0-9A-Z]{26})$/, async (_req, m, ctx) => ({
+      status: 200, body: await gradula.removeHerald(ctx.project, m[1]),
     })],
 
     // Run the label rules over the cards that already exist. It PROPOSES —

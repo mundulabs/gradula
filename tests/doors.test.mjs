@@ -1152,11 +1152,11 @@ test('gradula login: a machine asks, a person approves the code, the key is hand
   // minted by hand, and a new developer's sessions had none at all).
   const ok = await call(`/api/v1/device/${started.body.id}/approve?project=PRB`, { method: 'POST', cookie: 'felix' });
   assert.equal(ok.status, 200);
-  assert.deepEqual(ok.body, { approved: true, machine: "Felix' MacBook", agent: "Claude Code · Felix' MacBook" });
+  assert.deepEqual(ok.body, { approved: true, machine: "Felix' MacBook", agent: "AI sessions · Felix' MacBook" });
   const minted = (await store.tokens.list('PRB')).filter((k) => k.owner === 'z-felix');
   assert.deepEqual(
     minted.map((k) => [k.name, k.kind, k.ownerName]).sort(),
-    [["Claude Code · Felix' MacBook", 'agent', 'Felix'], ["Felix' MacBook", 'human', 'Felix']],
+    [["AI sessions · Felix' MacBook", 'agent', 'Felix'], ["Felix' MacBook", 'human', 'Felix']],
     'two keys, one owner, two hands',
   );
 
@@ -1177,11 +1177,32 @@ test('gradula login: a machine asks, a person approves the code, the key is hand
   assert.equal(read.body.history[0].actor, "Felix (Felix' MacBook)");
   const bySession = await call('/api/v1/cards', { method: 'POST', token: got.body.agentToken, headers: { 'X-Gradula-Actor': 'somebody else' }, body: { kind: 'task', title: 'from a session on it' } });
   const readSession = await call(`/api/v1/cards/${bySession.body.key}`, { token: got.body.agentToken });
-  assert.equal(readSession.body.history[0].actor, "Felix (Claude Code · Felix' MacBook)", 'the hand is the program and the machine; a claimed actor is ignored');
+  assert.equal(readSession.body.history[0].actor, "Felix (AI sessions · Felix' MacBook)", 'the hand is the program and the machine; a claimed actor is ignored');
+
+  // One existing agent key is shared across coders; neither header changes its owner.
+  const legacy = await store.tokens.mint({ project: 'PRB', name: "Claude Code · Felix' MacBook", kind: 'agent', owner: 'z-felix', ownerName: 'Felix', createdBy: 'Felix' });
+  for (const [token, coder, expected] of [
+    [legacy.token, 'Codex', "Felix (Codex · Felix' MacBook)"],
+    [legacy.token, 'Claude Code', "Felix (Claude Code · Felix' MacBook)"],
+    [got.body.agentToken, 'Codex', "Felix (Codex · Felix' MacBook)"],
+    [got.body.token, 'Codex', "Felix (Felix' MacBook)"],
+  ]) {
+    const created = await call('/api/v1/cards', { method: 'POST', token, headers: { 'X-Gradula-Coder': coder, 'X-Gradula-Actor': 'somebody else' }, body: { kind: 'task', title: `By ${coder}` } });
+    assert.equal(created.status, 201);
+    const card = await call(`/api/v1/cards/${created.body.key}`, { token });
+    assert.equal(card.body.history[0].actor, expected);
+  }
+  // Remove the extra test key before checking the registered pair.
+  const legacyEntry = (await store.tokens.list('PRB')).find((k) => k.name === "Claude Code · Felix' MacBook");
+  await call(`/api/v1/keys/${legacyEntry.id}?project=PRB`, { method: 'DELETE', cookie: 'felix' });
+
+  const preference = await call('/api/v1/project?project=PRB', { method: 'PATCH', cookie: 'felix', body: { ladder: 'circles' } });
+  assert.equal(preference.status, 200);
+  assert.equal((await call('/api/v1/project?project=PRB', { cookie: 'felix' })).body.ladder, 'circles');
 
   // The board lists both under "Your keys"; revoking one leaves the other.
   const mine = await call('/api/v1/keys?project=PRB', { cookie: 'felix' });
-  assert.deepEqual(mine.body.map((k) => [k.name, k.kind]).sort(), [["Claude Code · Felix' MacBook", 'agent'], ["Felix' MacBook", 'human']]);
+  assert.deepEqual(mine.body.map((k) => [k.name, k.kind]).sort(), [["AI sessions · Felix' MacBook", 'agent'], ["Felix' MacBook", 'human']]);
   const agentKey = mine.body.find((k) => k.kind === 'agent');
   assert.equal((await call(`/api/v1/keys/${agentKey.id}?project=PRB`, { method: 'DELETE', cookie: 'felix' })).status, 200);
   assert.deepEqual((await call('/api/v1/keys?project=PRB', { cookie: 'felix' })).body.map((k) => k.kind), ['human']);

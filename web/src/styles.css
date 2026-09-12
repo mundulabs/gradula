@@ -11,14 +11,15 @@
  */
 
 :root {
-  --ground: #0b0d10;
-  --surface: #14171c;
-  --surface-high: #1b1f26;
-  --line: #262b33;
-  --line-light: #333a45;
-  --ink: #e9e7e2;
-  --faint: #8b929c;
-  --muted: #5a616b;
+  --ground: #101318;
+  color-scheme: dark;
+  --surface: #191e26;
+  --surface-high: #232a35;
+  --line: #2b3340;
+  --line-light: #424d5e;
+  --ink: #f1f3f6;
+  --faint: #b0bac8;
+  --muted: #909dad;
 
   /* States — the only colours in the house. */
   --running: #ff7a2f;
@@ -33,13 +34,14 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
     --ground: #f2f1ee;
+    color-scheme: light;
     --surface: #ffffff;
     --surface-high: #fbfaf8;
     --line: #dedbd4;
     --line-light: #c3bfb6;
     --ink: #16181c;
     --faint: #5b616a;
-    --muted: #8b929c;
+    --muted: #68717d;
     --running: #d1500f;
     --done-color: #1d8a58;
     --waiting: #a5711a;
@@ -150,7 +152,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outl
  * no longer know which one you are reading in.
  */
 .column {
-  flex: 0 0 268px;
+  flex: 1 0 236px;
   display: flex; flex-direction: column; gap: 8px;
   min-height: 0;
 }
@@ -187,20 +189,20 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outl
 .card {
   display: flex; flex-direction: column; gap: 7px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 7px;
-  padding: 9px 10px; text-align: left; width: 100%;
+  padding: 14px; text-align: left; width: 100%;
   cursor: pointer;
 }
 .card:hover { border-color: var(--line-light); }
 /* No rim for a state: a card in making used to wear a static orange border next
    to its beam — two voices for one fact, and the wrong colour (orange means
    "you are needed", not "someone is at work"). The beam says it alone now. */
-.card .key { font: 10.5px var(--mono); color: var(--muted); letter-spacing: 0.05em; }
-.card .title { font-size: 13.5px; line-height: 1.35; font-weight: 500; }
-.card .foot { display: flex; align-items: center; gap: 8px; font: 10.5px var(--mono); color: var(--muted); }
+.card .key { font: 11px var(--mono); color: var(--muted); letter-spacing: 0.05em; }
+.card .title { font-size: 14.5px; line-height: 1.45; font-weight: 500; }
+.card .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font: 10.5px var(--mono); color: var(--muted); }
 
 .labels { display: flex; flex-wrap: wrap; gap: 4px; }
 .label {
-  font: 10px var(--mono); border: 1px solid var(--line-light); color: var(--faint);
+  font: 11px var(--mono); border: 1px solid var(--line-light); color: var(--faint);
   border-radius: 3px; padding: 1px 5px;
 }
 .label.module { border-color: var(--proposal); color: var(--proposal); }
@@ -223,16 +225,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outl
  * legible behind the form, and a form you can read the board through is one
  * you fill in while looking at something else.
  */
-.sheet {
-  position: fixed; inset: 0; z-index: 50;
-  background: rgba(0, 0, 0, 0.72);
-  display: flex; justify-content: flex-end;
-}
-.sheet > div,
-.sheet > form {
-  width: min(520px, 100%); background: var(--surface); border-left: 1px solid var(--line);
-  padding: 20px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px;
-}
 .sheet h2 { font-size: 18px; margin: 0; line-height: 1.25; }
 .sheet .line { display: flex; gap: 10px; font: 12px var(--mono); color: var(--faint); flex-wrap: wrap; }
 .sheet .text { white-space: pre-wrap; color: var(--faint); font-size: 14px; }
@@ -244,10 +236,6 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outl
 a { color: var(--proposal); }
 
 /* --------------------------------------------------------- New card ---- */
-.sheet form {
-  width: min(520px, 100%); background: var(--surface); border-left: 1px solid var(--line);
-  padding: 20px 22px; display: flex; flex-direction: column; gap: 12px;
-}
 input, textarea, select {
   font: inherit; color: inherit; background: var(--surface-high);
   border: 1px solid var(--line-light); border-radius: 6px; padding: 8px 10px;
@@ -413,15 +401,6 @@ button[disabled] { opacity: 0.45; cursor: default; }
  * the paper. The settings sheet has a head beside its sections, so it needs
  * its own header rule — the card sheet has none.
  */
-.sheet > div > header {
-  display: flex; align-items: baseline; justify-content: space-between;
-  gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line);
-}
-.sheet > div > header button {
-  background: none; border: none; color: var(--muted);
-  font-size: 20px; line-height: 1; padding: 2px 6px; cursor: pointer;
-}
-.sheet > div > header button:hover { color: var(--ink); }
 .sheet section { display: flex; flex-direction: column; gap: 8px; }
 .sheet section h3 {
   margin: 8px 0 0; font-size: 13px; font-weight: 600;
@@ -482,7 +461,7 @@ a.sha:hover { color: var(--ink); border-bottom-color: var(--ink); }
   font: 10.5px var(--mono); letter-spacing: 0.06em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 999px; border: 1px solid var(--line-light); color: var(--muted);
 }
-.stand-live { color: var(--done); border-color: var(--done); }
+.stand-live { color: var(--done-color); border-color: var(--done-color); }
 .stand-deploying { color: var(--running); border-color: var(--running); }
 .stand-failed { color: var(--waiting); border-color: var(--waiting); }
 
@@ -769,27 +748,156 @@ button.ghost { background: transparent; border-color: var(--line); color: var(--
  * open beneath the head instead of all across it, and it closes itself the
  * moment you pick a view or start a card.
  */
-@media (max-width: 720px) {
-  .head { flex-wrap: nowrap; gap: 8px; padding: 8px 12px; position: relative; }
-  .head .search { flex: 1 1 auto; min-width: 0; max-width: none; }
-  .head .project-switch { flex: 0 1 auto; max-width: 30vw; }
-  .head-toggle {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 32px; padding: 0; flex: 0 0 auto;
-  }
-  .head-extra {
-    display: none;
-    position: absolute; top: 100%; left: 0; right: 0;
-    flex-direction: column; align-items: stretch; gap: 8px;
-    padding: 12px; background: var(--surface); border-bottom: 1px solid var(--line);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
-    max-height: calc(100vh - 56px); overflow-y: auto;
-  }
-  .head-extra.open { display: flex; }
-  .head-extra select, .head-extra input { width: 100%; }
-  .head-extra .views { width: 100%; height: auto; }
-  .head-extra .views .view { flex: 1 1 0; height: 36px; }
-  .head-extra > button { width: 100%; }
-  .head-extra .who { margin-left: 0; }
-  .head-extra .languages { align-self: flex-start; }
+
+/* Workspace controls: primary work remains visible, secondary actions form one menu. */
+[hidden] { display: none !important; }
+button { min-height: 38px; transition: background 120ms ease, border-color 120ms ease; }
+button:hover:not(:disabled) { background: var(--surface-high); }
+button:disabled { cursor: not-allowed; }
+button.primary { display: inline-flex; align-items: center; justify-content: center; gap: 7px; background: var(--ink); color: var(--ground); border-color: var(--ink); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #dbe2eb; }
+.icon { width: 18px; height: 18px; flex: 0 0 auto; vertical-align: middle; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 38px; padding: 0; }
+.head { gap: 12px; padding: 16px 22px; flex-wrap: nowrap; }
+.head button, .head input, .head select, .head .views { height: 40px; }
+.head .search { max-width: 360px; flex: 1 1 220px; min-width: 100px; }
+.project-name { font-size: 17px; letter-spacing: -0.02em; }
+.project-switch { max-width: 210px; font-weight: 600; }
+.views { margin-left: auto; padding: 3px; gap: 2px; background: var(--ground); }
+.views .view { padding: 0 12px; min-height: 32px; border-radius: 5px; color: var(--faint); }
+.views .view.here { background: var(--surface-high); color: var(--ink); }
+.menu-anchor { position: relative; }
+.head-toggle { display: inline-flex; }
+.head-extra.open { display: flex; flex-direction: column; align-items: stretch; gap: 8px; position: absolute; right: 0; top: calc(100% + 10px); width: 240px; padding: 12px; background: var(--surface); border: 1px solid var(--line-light); border-radius: 12px; box-shadow: 0 14px 50px #0008; z-index: 10; }
+.head-extra .who { margin: 4px; }
+.head-extra .languages { margin: 0; }
+.workspace-toolbar { display: flex; align-items: center; gap: 10px; padding: 14px 22px; flex: 0 0 auto; }
+.workspace-context { display: flex; align-items: baseline; gap: 12px; margin-right: auto; font-weight: 600; }
+.small { font-size: 13px; color: var(--faint); font-weight: 400; }
+.workspace-toolbar button { display: inline-flex; gap: 6px; align-items: center; }
+.filter-bar { display: flex; gap: 12px; flex-wrap: wrap; padding: 0 22px 16px; border-bottom: 1px solid var(--line); }
+.filter-bar label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--faint); min-width: 150px; flex: 1; max-width: 280px; }
+.board { padding: 4px 22px 20px; gap: 14px; }
+.column > header { padding: 10px 4px 12px; }
+.column h2 { font-size: 14px; }
+.column .number { font-size: 12px; }
+.column-empty { padding: 18px 10px; margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; border: 1px dashed var(--line); border-radius: 9px; }
+.column-inside { padding-bottom: 16px; overscroll-behavior-x: auto; overscroll-behavior-y: contain; }
+.card { border-radius: 10px; gap: 10px; }
+.card:hover { border-color: var(--faint); }
+.card .key { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.card .foot { line-height: 1.5; font-size: 11px; }
+.board-notice { display: flex; align-items: center; gap: 12px; padding: 16px 22px; flex-wrap: wrap; }
+.board-notice span { color: var(--faint); font-size: 13px; }
+.empty-state { padding: 36px 22px; }
+.column-tabs { display: none; }
+.error { background: color-mix(in srgb, var(--waiting) 8%, transparent); border: 1px solid color-mix(in srgb, var(--waiting) 35%, transparent); border-radius: 8px; margin: 0 22px 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
+.error button { margin-left: auto; }
+/* One sheet shell; its header never disappears while its content scrolls. */
+.sheet { position: fixed; inset: 0; margin: 0; width: 100%; height: 100dvh; max-width: none; max-height: none; padding: 12px; border: 0; background: transparent; color: var(--ink); display: flex; justify-content: flex-end; overflow: hidden; }
+.sheet:not([open]) { display: none; }
+.sheet::backdrop { background: #03070db3; backdrop-filter: blur(2px); }
+.sheet-panel { width: min(600px, 100%); min-width: 0; height: 100%; border: 1px solid var(--line-light); border-radius: 14px; background: var(--surface); display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 80px #0008; }
+.sheet-wide { width: min(780px, 100%); }
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--line); flex: 0 0 auto; }
+.sheet-head h2 { font-size: 17px; }
+.sheet-content { padding: 22px 24px 30px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; display: flex; flex-direction: column; gap: 18px; }
+.sheet-content h2 { font-size: 22px; letter-spacing: -0.025em; line-height: 1.35; }
+.sheet-content .error { margin: 0; }
+.sheet .line { overflow-wrap: anywhere; }
+.sheet .history { gap: 12px; padding: 18px 0; border-top: 1px solid var(--line); }
+.sheet .history > span { padding-left: 12px; border-left: 1px solid var(--line-light); line-height: 1.6; }
+.sheet .move { margin-top: 4px; }
+.sheet .text { color: var(--ink); }
+.sheet-content input, .sheet-content select, .sheet-content textarea { max-width: 100%; min-width: 0; }
+.sheet-content input:not([type=checkbox]), .sheet-content select { min-height: 42px; }
+.new-card-form { display: flex; flex-direction: column; gap: 18px; }
+.new-card-form label { display: flex; flex-direction: column; gap: 7px; color: var(--faint); font-size: 13px; }
+.new-card-form input, .new-card-form textarea, .new-card-form select { color: var(--ink); }
+.settings-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.settings-tabs button { flex: 1; color: var(--faint); border-color: transparent; }
+.settings-tabs button[aria-pressed=true] { color: var(--ink); border-color: var(--line-light); background: var(--surface-high); }
+.settings-body { padding: 0; margin: 0; border: 0; min-inline-size: 0; display: flex; flex-direction: column; gap: 18px; }
+.sheet section { gap: 14px; }
+.sheet section h3 { color: var(--ink); font-size: 16px; margin: 0; }
+.herald { padding: 18px; margin: 0; border-radius: 11px; background: var(--ground); }
+.herald header { flex-wrap: wrap; align-items: center; gap: 8px; }
+.herald header b { margin-right: auto; }
+.herald .row { margin-top: 14px; gap: 8px; }
+.audience { border: 1px solid var(--line-light); border-radius: 5px; padding: 2px 7px; color: var(--faint); font-size: 11px; }
+.draft label { font-size: 13px; color: var(--faint); margin: 0; }
+.draft label input, .draft label select { margin-top: 6px; color: var(--ink); }
+.draft .hint { margin: -8px 0 2px; }
+.notice { background: var(--surface-high); border: 1px solid var(--line-light); padding: 12px 14px; border-radius: 8px; margin: 0; font-size: 13px; }
+.discard-prompt { padding: 14px 24px; background: var(--surface-high); border-bottom: 1px solid var(--line-light); }
+.discard-prompt p { margin: 0 0 8px; font-size: 14px; }
+.confirm-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--waiting); font-size: 13px; }
+.map-face { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.map-face svg { flex: 0 0 auto; }
+.pulse { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+.pulse .flows { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
+@media (max-width: 720px) {
+  .head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px 8px; padding: 12px; }
+  .head .project-name, .head .project-switch { grid-column: 1; grid-row: 1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .new-action { grid-column: 2; grid-row: 1; }
+  .menu-anchor { grid-column: 3; grid-row: 1; }
+  .head .search { grid-column: 1; grid-row: 2; min-width: 0; max-width: none; width: 100%; }
+  .head .views { grid-column: 2 / 4; grid-row: 2; margin: 0; }
+  .head .views .view { padding: 0 8px; font-size: 13px; }
+  .workspace-toolbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
+  .workspace-context { gap: 8px; font-size: 14px; }
+  .workspace-toolbar .standing { display: none; }
+  .workspace-toolbar button { font-size: 13px; padding: 4px 8px; }
+  .filter-bar { padding: 0 12px 12px; gap: 8px; }
+  .filter-bar label { min-width: 100px; }
+  .board { padding: 6px 12px 16px; overflow-x: hidden; }
+  .column { flex: 1 1 100%; min-width: 0; }
+  .column:not([data-selected=true]) { display: none; }
+  .column > header { display: none; }
+  .column-tabs { display: flex; flex: 0 0 auto; overflow-x: auto; padding: 2px 12px 10px; gap: 6px; scrollbar-width: none; }
+  .column-tabs button { display: flex; gap: 8px; flex: 0 0 auto; align-items: center; color: var(--faint); border-color: var(--line); }
+  .column-tabs button[aria-pressed=true] { background: var(--surface-high); border-color: var(--faint); color: var(--ink); }
+  .column-tabs span { font: 11px var(--mono); }
+  .card { padding: 16px; }
+  .card .title { font-size: 15px; }
+  .sheet { padding: 0; }
+  .sheet-panel { width: 100%; border: 0; border-radius: 0; }
+  .sheet-head { padding: 12px 16px; }
+  .sheet-content { padding: 18px 16px 28px; }
+  .sheet-content input, .sheet-content select, .sheet-content textarea { font-size: 16px; }
+  .board-notice { padding: 12px; gap: 8px; }
+  .board-notice strong, .board-notice span { flex-basis: 100%; }
+  .pulse { padding: 12px; }
+  .error { margin: 0 12px 12px; }
+}
+
+.map-foot > select { max-width: 100%; margin-bottom: 12px; }
+@media (max-width: 720px) {
+  .map-time { font-size: 23px; }
+  .map-sector { font-size: 26px; }
+  .map-sector-number { display: none; }
+}
+
+/* Reserve the controls first; the plot scales into the remaining viewport. */
+.map-face { display: grid; grid-template-rows: minmax(0, 1fr) auto; align-items: stretch; overflow: hidden; padding: 8px 16px 12px; gap: 6px; }
+.map-plot { min-height: 0; min-width: 0; position: relative; }
+.map-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map-foot { width: 100%; gap: 6px; }
+.map-foot > select { margin: 0; max-width: min(100%, 420px); }
+.map-hint { min-height: 0; }
+.map-legend { margin: 0; }
+.map-tooltip { position: fixed; z-index: 20; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 12px 14px; border: 1px solid var(--line-light); border-radius: 10px; background: var(--surface-high); color: var(--ink); box-shadow: 0 8px 30px #0005; font-size: 14px; line-height: 1.5; pointer-events: none; overflow-wrap: anywhere; }
+.map-tooltip[hidden] { display: none; }
+.map-tooltip .small { display: block; margin-top: 6px; }
+@media (max-height: 600px) { .map-hint { display: none; } .map-foot { flex-direction: row; flex-wrap: wrap; justify-content: center; } .map-foot > select { max-width: 180px; } }
+
+/* A column scrolls its cards; it must never shrink plain cards to fit. */
+.column-inside > * { flex-shrink: 0; }
+.card .title { flex-shrink: 0; overflow-wrap: anywhere; }
+.map-face { grid-template-columns: minmax(0, 1fr); }
+.map-foot { min-width: 0; }
+.map-legend { justify-content: center; max-width: 100%; gap: 6px; }
+.map-legend .map-key-number { width: auto; height: auto; border: 0; border-radius: 0; }

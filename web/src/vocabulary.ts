@@ -21,3 +21,7 @@ export const KINDS = kinds as string[];
 export const GATE_KINDS = gateKinds as string[];
 /** The kind of key an AI session takes — marked in "Your keys", never a right. */
 export const AGENT_KEY_KIND = agentKeyKind as string;
+
+// @ts-expect-error — the service is plain JavaScript; this helper is pure.
+import { templateOf as matchTemplate } from '../../src/heralds.mjs';
+export const templateOf = matchTemplate as (filter: unknown, templates: Record<string, { filter: unknown }>) => string | undefined;

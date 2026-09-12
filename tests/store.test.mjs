@@ -8,6 +8,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { TEMPLATES, templateOf } from '../src/heralds.mjs';
 import { createMemoryStore, hashToken } from '../src/store.mjs';
 
 const implementations = [['memory', async () => createMemoryStore()]];
@@ -39,6 +40,9 @@ for (const [name, build] of implementations) {
 
     const one = await store.items.create('PRB', { kind: 'task', title: 'First' });
     const two = await store.items.create('PRB', { kind: 'idea', title: 'Second' });
+    assert.equal(await store.items.patch(one.key, { title: 'Lost update' }, { expected: { title: 'Stale' } }), null);
+    assert.equal((await store.items.get(one.key)).title, 'First');
+    assert.equal((await store.items.patch(one.key, { text: 'Changed safely' }, { expected: { title: 'First', gate: null } })).text, 'Changed safely');
     assert.equal(one.key, 'PRB-1');
     assert.equal(two.key, 'PRB-2', 'the numbers count up per project');
 
@@ -94,6 +98,12 @@ for (const [name, build] of implementations) {
       kind: 'telegram', name: 'Werkstatt', chat: '-100123',
       token: '123456:SECRET', filter: { verbs: ['moved'], voice: 'technical' },
     });
+    await store.heralds.set('PRB', { ...herald, token: undefined, schedule: { cadence: 'daily', hour: 8 } });
+    await store.heralds.set('PRB', { ...herald, token: undefined, schedule: undefined });
+    assert.equal((await store.heralds.list('PRB'))[0].schedule.cadence, 'daily');
+    await store.projects.create({ key: 'OTHER', name: 'Other' });
+    await assert.rejects(store.heralds.set('OTHER', { ...herald, token: undefined }));
+    assert.equal((await store.heralds.list('PRB'))[0].chat, '-100123');
     assert.equal(herald.token, 'set', 'a key does not leave the store');
     assert.equal((await store.heralds.list('PRB'))[0].filter.voice, 'technical');
     assert.equal((await store.heralds.list('PRB', { raw: true }))[0].token, '123456:SECRET',
@@ -105,7 +115,16 @@ for (const [name, build] of implementations) {
     assert.equal(after.token, '123456:SECRET', 'a key sent empty deletes nothing');
     assert.deepEqual(after.filter.verbs, ['created']);
 
+    await store.heralds.set('PRB', { ...herald, token: '', filter: TEMPLATES.outside.filter });
+    const reopened = (await store.heralds.list('PRB'))[0];
+    assert.equal(templateOf(reopened.filter), 'outside', 'the real store preserves the template meaning');
+
+    assert.equal(await store.heraldDeliveries.get(herald.id, 'run-1'), null);
+    await store.heraldDeliveries.set(herald.id, 'run-1', { messageId: 12, fingerprint: 'first' });
+    await store.heraldDeliveries.set(herald.id, 'run-1', { messageId: 12, fingerprint: 'second' });
+    assert.deepEqual(await store.heraldDeliveries.get(herald.id, 'run-1'), { messageId: 12, fingerprint: 'second' });
     assert.equal(await store.heralds.remove(herald.id), true);
+    assert.equal(await store.heraldDeliveries.get(herald.id, 'run-1'), null);
     assert.deepEqual(await store.heralds.list('PRB'), []);
   });
 

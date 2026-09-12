@@ -70,7 +70,7 @@ test('the title goes outward — and nothing else', () => {
 test('two voices, two sentences', () => {
   const event = move({ data: { reason: 'gate green' } });
   assert.equal(lineFor(event, { voice: 'human' }), 'GRD-9 ■■■■■ Done\nA picture and a file — gate green');
-  assert.equal(lineFor(event, { voice: 'plain' }), 'GRD-9 ■■■■■ done · moved\nA picture and a file [infra backend]\ndavid · gate green', 'three lines: key, ladder and what; the title; the hand and the reason');
+  assert.equal(lineFor(event, { voice: 'plain' }), 'GRD-9 ■■■■■ done · moved\nA picture and a file\n\ngate green\n\n[infra backend]\n\ndavid', 'three lines: key, ladder and what; the title; the hand and the reason');
 });
 
 test('a long title is shortened, not cut off', () => {
@@ -179,9 +179,9 @@ test('the key at the head of the line is the link — no second key beneath, and
   const card = await gradula.addItem('PRB', { title: 'A thing & another', kind: 'task' }, 'david');
   await gradula.settle();
   const plain = said.find((m) => m.text.includes('· created'));
-  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ ready · created\nA thing &amp; another\ndavid`, 'the key is the link, the ladder, what happened; the title; the hand — nothing appended');
+  assert.equal(plain.text, `<a href="https://board.test/${card.key}">${card.key}</a> ●◐○○○ ready · created\nA thing &amp; another\n\ndavid`, 'the key is the link, the ladder, what happened; the title; the hand — nothing appended');
   const human = said.find((m) => m.text.includes(' New\n'));
-  assert.equal(human.text, `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ New\nA thing &amp; another`);
+  assert.equal(human.text, `<a href="https://board.test/${card.key}">${card.key}</a> ●◐○○○ New\nA thing &amp; another`);
   said.length = 0;
   await gradula.startItem(card.key, 'david');
   await gradula.settle();
@@ -212,7 +212,7 @@ test('a commit as evidence is its own line — the hash, linked into the reposit
   await gradula.settle(); said.length = 0;
   await gradula.addEvidence(card.key, { kind: 'commit', ref: 'd2de57062b76abcdef', note: 'Every editor: the hooks are git\'s', files: ['docs/x.md'] }, 'David (Claude Code · mac)');
   await gradula.settle();
-  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ■▩□□□ ready · commit <a href="https://github.com/acc/repo/commit/d2de570">d2de570</a>\nEvery editor: the hooks are git's [docs]\nDavid (Claude Code · mac)`);
+  assert.equal(said[0], `<a href="https://board.test/${card.key}">${card.key}</a> ●◐○○○ ready · commit <a href="https://github.com/acc/repo/commit/d2de570">d2de570</a>\nEvery editor: the hooks are git's\n\n[docs]\n\nDavid via Claude Code`);
   assert.deepEqual(await gradula.cardsOfRef('PRB', 'd2de57062b76'), [card.key], 'the commit knows its card — adopted once');
 });
 
@@ -244,4 +244,47 @@ test('a board with circles speaks in circles', async () => {
   await gradula.addItem('PRB', { title: 'Round', kind: 'task' }, 'david');
   await gradula.settle();
   assert.match(said[0], /^PRB-1 ●◐○○○ ready · created\n/);
+});
+
+
+test('Outside survives JSONB key order and filter-list order on save and reopen', async () => {
+  const { templateOf } = await import('../src/heralds.mjs');
+  const outside = TEMPLATES.outside.filter;
+  const reordered = Object.fromEntries(Object.entries(outside).reverse().map(([key, value]) => [key, Array.isArray(value) ? [...value].reverse() : value]));
+  assert.equal(templateOf(reordered), 'outside');
+  assert.equal(templateOf({ ...reordered, visibility: 'internal' }), undefined, 'different audience never matches Outside');
+  assert.equal(templateOf({ ...reordered, states: ['making'] }), undefined);
+});
+
+test('herald edits stay in their project, preserve omitted settings, and protect public reports', async () => {
+  const { createGradula } = await import('../src/gradula.mjs');
+  const { createMemoryStore } = await import('../src/store.mjs');
+  const store = createMemoryStore();
+  const gradula = createGradula(store);
+  await gradula.createProject({ key: 'AAA', name: 'First' });
+  await gradula.createProject({ key: 'BBB', name: 'Second' });
+  const first = await gradula.setHerald('AAA', { name: 'Workshop', kind: 'telegram', chat: 'one', token: 'fake', template: 'workshop', schedule: { cadence: 'daily' } });
+  const changed = await gradula.setHerald('AAA', { id: first.id, chat: 'two' });
+  assert.equal(changed.name, first.name);
+  assert.deepEqual(changed.filter, first.filter);
+  assert.deepEqual(changed.schedule, first.schedule);
+  await assert.rejects(gradula.setHerald('BBB', { id: first.id, chat: 'stolen' }), { status: 404 });
+  await assert.rejects(gradula.removeHerald('BBB', first.id), { status: 404 });
+  assert.equal((await store.heralds.list('AAA'))[0].chat, 'two');
+  const outward = await gradula.setHerald('AAA', { name: 'Outside', kind: 'telegram', chat: 'public', token: 'fake', template: 'outside' });
+  await assert.rejects(gradula.heraldSay('AAA', outward.id, 'Internal details'), { status: 403 });
+  await assert.rejects(gradula.setHerald('AAA', { id: outward.id, schedule: { cadence: 'daily' } }), { code: 'public-report' });
+  await gradula.setHerald('AAA', { id: first.id, active: false });
+  await assert.rejects(gradula.heraldSay('AAA', first.id, 'Report'), { code: 'paused' });
+});
+
+test('notifications separate the reason and author while history retains the machine', () => {
+  const actor = 'David Bläsing (Codex · Davids-MacBook-Pro.local)';
+  const moment = move({ actor, data: { reason: 'Implemented and verified.' } });
+  const message = lineFor(moment, { style: 'circles' });
+  assert.match(message, /\n\nImplemented and verified\.\n\n\[infra backend\]\n\nDavid Bläsing via Codex$/);
+  assert.doesNotMatch(message, /MacBook|\.local/);
+  assert.equal(moment.actor, actor);
+  assert.doesNotMatch(lineFor(moment, { visibility: 'public' }), /David|Codex|Implemented|infra/);
+  assert.match(lineFor(move({ actor: 'David (Claude Code · machine)' })), /David via Claude Code$/, 'historical actors are never relabelled as Codex');
 });

@@ -113,8 +113,18 @@ export const ROLES = ['admin', 'dev', 'watch'];
  */
 export const KEY_KINDS = ['human', 'agent', 'system'];
 export const AGENT_KEY_KIND = 'agent';
-/** The hand as the chronicle names it: `Claude Code · Davids-MacBook-Pro`. */
-export const agentKeyName = (machine) => `Claude Code · ${machine}`;
+/** A shared agent key belongs to the machine; the request names its coder. */
+export const agentKeyName = (machine) => `AI sessions · ${machine}`;
+
+/** The request may describe a coder only on an agent key; its owner and
+ * registered machine remain authoritative. Old shared keys work unchanged. */
+export function sessionKeyName(token, coder) {
+  const coders = ['Codex', 'Claude Code', 'Gemini CLI', 'Cursor', 'Antigravity', 'Copilot'];
+  if (token?.kind !== AGENT_KEY_KIND || !coders.includes(coder)) return token?.name;
+  const name = token.name;
+  const prefix = [...coders, 'AI sessions'].find((value) => name.startsWith(`${value} · `));
+  return `${coder} · ${prefix ? name.slice(prefix.length + 3) : name}`;
+}
 
 export const MAY = {
   admin: ['see', 'write', 'start', 'manage'],
@@ -167,6 +177,8 @@ export const bornIn = (kind) => (kind === 'idea' ? 'ideas' : 'ready');
  * circles the round ones that match a mark like Mundula's, diamonds the
  * sharp ones. The glyphs differ, the reading never does.
  */
+export const CARD_STYLE = 'circles';
+
 export const LADDER_STYLES = {
   squares: { behind: '■', now: '▩', ahead: '□', ice: '·' },
   circles: { behind: '●', now: '◐', ahead: '○', ice: '·' },

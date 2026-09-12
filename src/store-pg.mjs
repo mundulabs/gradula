@@ -379,6 +379,13 @@ create table if not exists device_request (
 );
 create index if not exists device_pending on device_request (project, status, created);
 
+-- Durable progress message ids survive restarts and disappear with their herald.
+create table if not exists herald_delivery (
+  herald text not null references herald(id) on delete cascade,
+  key text not null,
+  data jsonb not null,
+  primary key (herald, key)
+);
 -- MIGRATIONS. A create table if not exists creates a MISSING table and does
 -- NOT touch an existing one — a column added later is missing from every
 -- database that already existed. Measured on 09.09.: kind and seq ran locally
@@ -470,6 +477,7 @@ create unique index if not exists card_foreign on card (project, foreign_id) whe
 -- production lay for seven minutes on 09.09.
 create index if not exists history_seq on history (seq);
 create index if not exists history_card_folge on history (card, seq);
+
 `;
 
 export async function createPgStore(url, { schema = null } = {}) {
@@ -642,7 +650,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         const { rowCount } = await q('delete from card where key = $1', [key]);
         return rowCount > 0;
       },
-      async patch(key, changes) {
+      async patch(key, changes, { expected = {} } = {}) {
         const columns = {
           kind: 'kind', state: 'state', title: 'title', text: 'text', module: 'module', stack: 'stack',
           person: 'person', target: 'target', runner: 'runner', files: 'files',
@@ -662,7 +670,13 @@ export async function createPgStore(url, { schema = null } = {}) {
         }
         if (!sets.length) return store.items.get(key);
         values.push(key);
-        const { rows } = await q(`update card set ${sets.join(', ')}, changed = now() where key = $${values.length} returning *`, values);
+        const where = [`key = $${values.length}`];
+        for (const [field, value] of Object.entries(expected)) {
+          if (!['title', 'text', 'person', 'gate'].includes(field)) throw new Error('Unsupported comparison field');
+          values.push(field === 'gate' && value !== null ? JSON.stringify(value) : value);
+          where.push(`${field} is not distinct from $${values.length}::${field === 'gate' ? 'jsonb' : 'text'}`);
+        }
+        const { rows } = await q(`update card set ${sets.join(', ')}, changed = now() where ${where.join(' and ')} returning *`, values);
         return asItem(rows[0]) ?? null;
       },
       async list(projectKey, filter = {}) {
@@ -876,6 +890,15 @@ export async function createPgStore(url, { schema = null } = {}) {
         return { ...release, project: projectKey };
       },
     },
+    heraldDeliveries: {
+      async get(herald, key) {
+        const { rows } = await q('select data from herald_delivery where herald = $1 and key = $2', [herald, key]);
+        return rows[0]?.data ?? null;
+      },
+      async set(herald, key, data) {
+        await q('insert into herald_delivery (herald, key, data) values ($1,$2,$3) on conflict (herald, key) do update set data = excluded.data', [herald, key, JSON.stringify(data)]);
+      },
+    },
     heralds: {
       async list(projectKey, { raw = false } = {}) {
         const { rows } = await q('select * from herald where project = $1 order by id', [projectKey]);
@@ -889,17 +912,19 @@ export async function createPgStore(url, { schema = null } = {}) {
         const id = herald.id ?? mintId();
         await q(
           `insert into herald (id, project, kind, name, chat, token, filter, active, schedule)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,coalesce($9::jsonb, (select schedule from herald where id = $1 and project = $2), '{}'::jsonb))
            on conflict (id) do update set kind = excluded.kind, name = excluded.name, chat = excluded.chat,
              -- A key sent empty does NOT delete.
              token = coalesce(excluded.token, herald.token),
-             filter = excluded.filter, active = excluded.active, schedule = excluded.schedule`,
+             filter = excluded.filter, active = excluded.active, schedule = coalesce(excluded.schedule, herald.schedule)
+           where herald.project = excluded.project`,
           [id, projectKey, herald.kind ?? 'telegram', herald.name ?? 'Herald', herald.chat ?? null,
            herald.token ? String(herald.token) : null, JSON.stringify(herald.filter ?? {}), herald.active !== false,
-           JSON.stringify(herald.schedule ?? {})],
+           herald.schedule === undefined ? null : JSON.stringify(herald.schedule)],
         );
-        const { rows } = await q('select * from herald where id = $1', [id]);
+        const { rows } = await q('select * from herald where id = $1 and project = $2', [id, projectKey]);
         const row = rows[0];
+        if (!row) throw new Error('No such herald.');
         return { id: row.id, project: row.project, kind: row.kind, name: row.name, chat: row.chat,
           token: row.token ? 'set' : null, filter: row.filter ?? {}, schedule: row.schedule ?? {}, active: row.active, created: iso(row.created) };
       },

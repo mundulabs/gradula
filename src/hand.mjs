@@ -90,3 +90,17 @@ export function handOf(env, { machine = false } = {}) {
     hand: agent && env.GRADULA_AGENT_TOKEN ? 'agent' : 'person',
   };
 }
+
+/** Session metadata describes the coder, never the authenticated person or rights.
+ * CODEX_HOME alone is installation configuration, not a running Codex session.
+ */
+export function coderOf(env) {
+  if (env.GRADULA_HAND === 'person') return null;
+  if (env.CODEX_THREAD_ID || env.CODEX_CI || env.CODEX_SANDBOX || env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE) return 'Codex';
+  if (env.CLAUDECODE) return 'Claude Code';
+  if (env.GEMINI_CLI) return 'Gemini CLI';
+  if (env.CURSOR_AGENT) return 'Cursor';
+  if (env.ANTIGRAVITY) return 'Antigravity';
+  if (env.COPILOT_AGENT) return 'Copilot';
+  return null;
+}

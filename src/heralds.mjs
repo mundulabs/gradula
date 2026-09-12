@@ -66,7 +66,7 @@ export const TEMPLATES = {
   workshop: {
     name: 'Workshop',
     line: 'Everything that moves — for the team channel.',
-    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'ingested', 'resurfaced', 'released', 'notes'], voice: 'plain' },
+    filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'ingested', 'resurfaced', 'released', 'notes'], voice: 'plain', pipeline: true },
   },
   /*
    * Release meant "target: release" — the ladder of how far a wish may travel,
@@ -124,6 +124,20 @@ export const TEMPLATES = {
   },
 };
 
+/** JSONB reorders object keys. Filter lists are sets, so their order cannot
+ * decide whether the saved herald still uses its template. */
+export function templateOf(filter, templates = TEMPLATES) {
+  const canonical = (value) => {
+    if (Array.isArray(value)) return [...new Set(value)].sort();
+    if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort()
+      .filter((key) => value[key] !== undefined)
+      .map((key) => [key, canonical(value[key])]));
+    return value;
+  };
+  const signature = (value) => JSON.stringify(canonical(value ?? {}));
+  return Object.entries(templates).find(([, template]) => signature(template.filter) === signature(filter))?.[0];
+}
+
 const EMPTY = (list) => !Array.isArray(list) || list.length === 0;
 
 /** A card's labels across both axes — module AND stack. */
@@ -171,6 +185,13 @@ const short = (text, n) => {
  * title. The text is where somebody has written an address, a customer's
  * name or half a key.
  */
+/** Keep the detailed actor untouched in history; notifications name the person and coder. */
+export function notificationActor(actor, language = 'en') {
+  const text = String(actor ?? '');
+  const match = /^(.*) \((Codex|Claude Code|Gemini CLI|Cursor|Antigravity|Copilot|AI sessions) · [^()]+\)$/.exec(text);
+  return match ? `${match[1]} ${language === 'de' ? 'mit' : 'via'} ${match[2]}` : text;
+}
+
 export function lineFor(moment, { voice = 'plain', visibility = 'internal', project = null, language = 'en', style = 'squares' } = {}) {
   const { card = {}, verb, actor, data = {} } = moment;
   const isPublic = visibility === 'public';
@@ -178,18 +199,8 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
   const mark = project ? `${card.key ?? project}` : card.key ?? '';
   const ladder = card.state ? ladderOf(card.state, style) : '';
 
-  /*
-   * THREE LINES, THE SAME EVERY TIME — the eye finds each thing where it was
-   * last time:
-   *   MDLA-3 ■■■▩□ review · moved         the key (a link), where it stands (picture and word), what happened
- *   MDLA-3 ■■▩□□ making · commit d2de570   a commit as evidence: the hash (a link) — an arrow said the same and nobody read it
-   *   The title of the card [docs tools]  what it is
-   *   dokploy · seen on dev (e81d7c6)      whose hand, and why
-   * A commit as evidence puts the commit on the first line (its hash a link)
-   * and the commit's own sentence on the second — not the card's title again.
-   * The human voice says the second line first, as a sentence, and keeps the
-   * rest; the public voice drops the hand, the reason and the labels.
-   */
+  // Stable reading order: status and title, explanation, topics, author.
+  // Commit evidence uses its own subject. Public messages omit internal details.
   const commit = verb === 'evidenced' && data.kind === 'commit' && data.ref ? String(data.ref).slice(0, 7) : null;   /* seven: git's own abbreviation */
   // the ladder is a picture, the state is the word — both, so neither the eye nor the reader has to decode; then what happened
   // an incident carries how loud it was (Sentry's own word: fatal, error, warning, info) — beside what happened, every time it is named
@@ -197,7 +208,8 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
   const what = `${card.state ?? 'moving'} · ${commit ? `commit ${commit}` : verb}${loud}`;
   const labels = labelsOf(card);
   const second = commit ? short(data.comment ?? '', 140) || title : title;
-  const tail = [!isPublic && actor ? actor : '', !isPublic && data.reason ? short(data.reason, 200) : ''].filter(Boolean);
+  const author = !isPublic && actor ? notificationActor(actor, language) : '';
+  const explanation = !isPublic && data.reason ? short(data.reason, 1200) : '';
 
   if (voice === 'human') {
     const head = HEADS[language]?.[verb] ?? HEADS.en[verb] ?? verb;
@@ -210,8 +222,8 @@ export function lineFor(moment, { voice = 'plain', visibility = 'internal', proj
   }
 
   const first = [mark, ladder, what].filter(Boolean).join(' ');
-  const body = `${second}${labels.length && !isPublic ? ` [${labels.join(' ')}]` : ''}`;
-  return `${first}\n${body}${tail.length ? `\n${tail.join(' · ')}` : ''}`;
+  const topics = labels.length && !isPublic ? `[${labels.join(' ')}]` : '';
+  return [`${first}\n${second}`, explanation, topics, author].filter(Boolean).join('\n\n');
 }
 
 /**

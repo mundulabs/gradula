@@ -80,7 +80,12 @@ no actor header read. They differ in one thing: the hand the chronicle names.
 | key | kind | name | the chronicle writes |
 | --- | --- | --- | --- |
 | `GRADULA_TOKEN` | `human` | the machine (`Davids-MacBook-Pro`) | `david (Davids-MacBook-Pro)` |
-| `GRADULA_AGENT_TOKEN` | `agent` | `Claude Code · Davids-MacBook-Pro` | `david (Claude Code · Davids-MacBook-Pro)` |
+| `GRADULA_AGENT_TOKEN` | `agent` | `AI sessions · Davids-MacBook-Pro` | `david (Codex · Davids-MacBook-Pro)` when Codex acts |
+
+The CLI and MCP send the detected coder in `X-Gradula-Coder`. Only agent keys
+use this display metadata; the authenticated owner and registered machine stay
+unchanged. Legacy `Claude Code · machine` keys also report the active coder.
+Older clients without coder metadata retain the stored key name.
 
 A session is recognised by the environment its tool runner sets (`CLAUDECODE`,
 `CODEX_*`) and takes the agent key; the MCP server is a machine's door by
@@ -323,3 +328,25 @@ infra/               the compose file for production
 
 License: Apache-2.0. See [AGENTS.md](AGENTS.md) for the rules that apply when
 working in this repository.
+
+Progress shapes have fixed meanings: cards use five circles (●●◐○○),
+workflow steps use squares (■▩□). Filled means succeeded, patterned means
+running, empty means waiting or stopped; skipped steps use a dot. Failure and
+cancellation are always named, never disguised as completion.
+
+**Workshop → Live pipeline progress** watches the project's connected GitHub
+workflows even when the board is closed. It checks about every minute and uses
+actual jobs and steps, one message per run attempt. Changes edit that message;
+unchanged snapshots are silent. Message IDs and fingerprints persist in
+`herald_delivery` across restarts. Missing messages may be replaced; timeouts
+and rate limits never cause an immediate repost. Later chat messages are left
+alone, and no message is deleted. This is progress of GitHub workflows, not
+proof that an external deployment or store review has finished.
+
+Outside is never eligible for pipeline details. Existing Workshop heralds
+can enable the checkbox; newly selected Workshop templates include it.
+The initial poll skips old completed runs. The monitor currently checks the
+30 most recent workflow runs and up to 500 jobs per attempt; the run link
+remains the complete view. Deploy one Gradula scheduler instance to avoid
+competing senders. A send acknowledged by Telegram but lost before its message
+ID is stored can still produce a duplicate on retry.

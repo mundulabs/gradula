@@ -81,6 +81,7 @@ export type Herald = {
   house?: boolean;
   active: boolean;
   filter: {
+    pipeline?: boolean;
     verbs?: string[]; kinds?: string[]; states?: string[]; targets?: string[];
     sources?: string[]; labels?: string[]; voice?: 'plain' | 'human'; visibility?: 'internal' | 'public';
   };
@@ -141,6 +142,7 @@ export const create = (project: string, fields: { title: string; kind: string; t
   call<Card>(`/api/v1/cards?project=${project}`, { method: 'POST', body: JSON.stringify(fields) });
 
 export type Change = {
+  expected?: Record<string, unknown>;
   title?: string; text?: string; kind?: string; person?: string | null;
   visibility?: 'internal' | 'public';
   gate?: { kind: string; call: string; expect?: string | null } | null;

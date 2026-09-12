@@ -6,9 +6,7 @@
  * that does not work on a phone and is imprecise on a desktop would be the
  * wrong first gesture; the right one comes when somebody misses it.
  *
- * Settings sit in their own sheet and hold only what LEAVES the house —
- * heralds and reports. A settings screen that also carries the board's own
- * preferences is a screen where nobody finds the one switch that matters.
+ * Settings hold keys, heralds and reports. Progress shapes have fixed meanings.
  */
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { BorderBeam } from 'border-beam';
@@ -17,12 +15,15 @@ import { signalOf, beamFor, changedBetween, isRunning, IMPULSE_MS, BEAM_STATIC, 
 import { Liquid } from 'liquid-gooey';
 import { group, parentsFrom, type Group } from './bonds';
 import { chosenLanguage, keepLanguage, words, LANGUAGES, type Language } from './words';
-import { KINDS, GATE_KINDS, AGENT_KEY_KIND } from './vocabulary';
+import { KINDS, GATE_KINDS, AGENT_KEY_KIND, templateOf } from './vocabulary';
 import AreaMap from './Map';
 import PulseView from './Pulse';
 import Legend from './Legend';
 import { ageOf, shortAge } from './age';
 import Prose from './Prose';
+import Dialog from './Dialog';
+import Icon from './Icon';
+import ConfirmAction from './ConfirmAction';
 import {
   signInPath, me as readMe, projects as readProjects, cards as readCards,
   card as readCard, system as readSystem, move, start, create, change, confirm, say, decide,
@@ -175,7 +176,7 @@ function CardButton({ card, open, signal, picture }: { card: Card; open: () => v
       <span className="foot">
         {card.person ? <span>{card.person}</span> : null}
         {card.count ? <span>{card.count}×</span> : null}
-        {card.gate ? <span className="done">{t('card.gate')}</span> : null}
+        {card.gate ? <span>{t('card.gate')}</span> : null}
         <LaneChips card={card} picture={picture} />
         {card.blockedBy.length ? <span className="waiting">{t('card.waits')} {card.blockedBy.join(' ')}</span> : null}
         {/*
@@ -217,7 +218,7 @@ function PersonField({ value, people, onChange }: { value: string; people: strin
   const [typing, setTyping] = useState(!known && Boolean(value));
   return (
     <div className="person-field">
-      <select value={typing ? NEW_PERSON : (known ? value : '')} onChange={(e) => {
+      <select aria-label={t('card.person')} value={typing ? NEW_PERSON : (known ? value : '')} onChange={(e) => {
         if (e.target.value === NEW_PERSON) { setTyping(true); onChange(''); return; }
         setTyping(false); onChange(e.target.value);
       }}>
@@ -244,7 +245,7 @@ function GateField({ gate, setGate, known = [] }: { gate: Card['gate']; setGate:
   const sources = known.filter((path) => SOURCE_PATH.test(path));
   return (
     <div className="gate-field">
-      <select value={gate ? kind : ''} onChange={(e) => setGate(e.target.value ? { kind: e.target.value, call: gate?.call ?? '', expect: gate?.expect ?? null } : null)}>
+      <select aria-label={t('card.gate')} value={gate ? kind : ''} onChange={(e) => setGate(e.target.value ? { kind: e.target.value, call: gate?.call ?? '', expect: gate?.expect ?? null } : null)}>
         {/* The kinds come from the service (GATE_KINDS). They stood here as a
             second list, and after the move to English it still offered
             `befehl`, `datei` and `adresse` — three of four choices the service
@@ -274,7 +275,7 @@ function GateField({ gate, setGate, known = [] }: { gate: Card['gate']; setGate:
             <input placeholder={kind === 'url' ? 'https://…/api/health' : kind === 'file' ? 'packages/…/x.ts' : 'npm test -- x'}
                    value={gate.call} onChange={(e) => setGate({ ...gate, call: e.target.value })} />
           )}
-          <input placeholder={t('card.gateExpect')}
+          <input aria-label={t('card.gateExpect')} placeholder={t('card.gateExpect')}
                  value={gate.expect ?? ''} onChange={(e) => setGate({ ...gate, expect: e.target.value || null })} />
         </>
       ) : null}
@@ -292,19 +293,31 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
   const [draft, setDraft] = useState<{ title: string; text: string; person: string; gate: Card['gate'] } | null>(null);
   const [word, setWord] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const baseline = useRef<typeof draft>(null);
+  const lock = useRef(false);
 
   // Read again when the picture changed: the deployed line is written into
   // the chronicle while the picture is gathered, and the sheet should show it
   // the minute the chip fills.
-  useEffect(() => { readCard(project, cardKey).then(setCard).catch((e) => setError(String(e.message ?? e))); }, [project, cardKey, picture]);
+  useEffect(() => {
+    let active = true;
+    readCard(project, cardKey).then((value) => { if (active) setCard(value); }).catch((e) => { if (active) setError(String(e.message ?? e)); });
+    return () => { active = false; };
+  }, [project, cardKey, picture]);
 
   const run = async (fn: () => Promise<Card>) => {
-    try { setCard(await fn()); changed(); } catch (e) { setError(String((e as Error).message ?? e)); }
+    if (lock.current) return false;
+    lock.current = true; setBusy(true); setError(null);
+    try { setCard(await fn()); changed(); return true; }
+    catch (e) { setError(String((e as Error).message ?? e)); return false; }
+    finally { lock.current = false; setBusy(false); }
   };
 
   const openToChange = () => {
     if (!card) return;
     setDraft({ title: card.title, text: card.text, person: card.person ?? '', gate: card.gate });
+    baseline.current = { title: card.title, text: card.text, person: card.person ?? '', gate: card.gate };
     setEditing(true);
   };
 
@@ -313,26 +326,31 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
     // Send only what really changed: a PATCH that sends everything writes
     // back what somebody else has changed in the meantime, too.
     //
+    const original = baseline.current;
+    if (!original) return;
     const fields: Record<string, unknown> = {};
-    if (draft.title !== card.title) fields.title = draft.title;
-    if (draft.text !== card.text) fields.text = draft.text;
-    if ((draft.person || null) !== card.person) fields.person = draft.person || null;
-    if (JSON.stringify(draft.gate) !== JSON.stringify(card.gate)) fields.gate = draft.gate;
+    const expected: Record<string, unknown> = {};
+    const fresh = await readCard(project, cardKey).catch(() => null);
+    if (!fresh) { setError(t('ui.retrySave')); return; }
+    for (const field of ['title', 'text', 'person', 'gate'] as const) {
+      if (JSON.stringify(draft[field]) === JSON.stringify(original[field])) continue;
+      const current = field === 'person' ? fresh.person ?? '' : fresh[field];
+      if (JSON.stringify(current) !== JSON.stringify(original[field])) { setError(t('ui.editConflict')); return; }
+      fields[field] = field === 'person' ? draft.person || null : draft[field];
+      expected[field] = field === 'person' ? original.person || null : original[field];
+    }
     if (!Object.keys(fields).length) { setEditing(false); return; }
-    try { setCard(await change(project, card.key, fields)); setEditing(false); changed(); }
-    catch (e) { setError(String((e as Error).message ?? e)); }
+    if (await run(() => change(project, card.key, { ...fields, expected }))) setEditing(false);
   };
 
   return (
-    <div className="sheet" onClick={close}>
-      <div onClick={(e) => e.stopPropagation()}>
-        {error ? <p className="error">{error}</p> : null}
-        {!card ? <p className="empty">…</p> : (
+    <Dialog title={cardKey} close={close} busy={busy} dirty={!!word.trim() || (editing && JSON.stringify(draft) !== JSON.stringify(baseline.current))}>
+        {error ? <p className="error" role="alert">{error}</p> : null}
+        {!card ? <p className="empty">{t('ui.loading')}</p> : (
           <>
-            <span className="key" style={{ font: '11px var(--mono)', color: 'var(--muted)' }}>{card.key}</span>
             <h2>{card.title}</h2>
             <div className="line">
-              <span>{card.kind}</span><span>·</span><span>{card.state}</span>
+              <span>{t(card.kind)}</span><span>·</span><span>{t(card.state)}</span>
               {card.person ? <><span>·</span><span>{card.person}</span></> : null}
               {card.source !== 'human' ? <><span>·</span><span>{card.source}</span></> : null}
               {card.level ? <><span>·</span><span className={LEVEL_CLASS[card.level] ?? 'level'}>{t(`level.${card.level}`, card.level)}</span></> : null}
@@ -370,7 +388,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                 <button onClick={() => run(() => confirm(project, card.key))}>{t('card.confirm')}</button>
               </div>
             ) : null}
-            {card.gate ? <div className="line"><span className="done">{t('card.gate')}</span><span>{card.gate.kind}</span><span>{card.gate.call}</span></div>
+            {card.gate ? <div className="line"><span>{t('card.gate')}</span><span>{card.gate.kind}</span><span>{card.gate.call}</span></div>
               : ['making', 'review'].includes(card.state)
                 ? <div className="line waiting">{t('card.gateMissing')}</div>
                 : null}
@@ -380,8 +398,8 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
 
             {editing && draft ? (
               <div className="change">
-                <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
-                <textarea rows={7} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+                <input aria-label={t('card.title')} maxLength={200} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
+                <textarea aria-label={t('card.text')} rows={7} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
                 {/*
                   The people this board already knows, by the name the chronicle
                   uses. A free field is right — somebody who has not touched a
@@ -397,7 +415,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                 <PersonField value={draft.person} people={people} onChange={(person) => setDraft({ ...draft, person })} />
                 <GateField gate={draft.gate} setGate={(gate) => setDraft({ ...draft, gate })} known={knownPaths} />
                 <div className="move">
-                  <button onClick={keep}>{t('card.save')}</button>
+                  <button className="primary" disabled={busy || !draft.title.trim()} onClick={keep}>{t('card.save')}</button>
                   <button onClick={() => setEditing(false)}>{t('card.discard')}</button>
                 </div>
               </div>
@@ -449,7 +467,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
               you have to operate.
             */}
             <div className="move">
-              {!editing ? <button onClick={openToChange}>{t('card.editing')}</button> : null}
+              {!editing ? <button onClick={openToChange}>{t('card.edit')}</button> : null}
               {/*
                 THE DOOR SAYS THE SAME THING THE BUTTON SAYS.
                 Start refuses an idea, a card on ice and a card that waits —
@@ -460,7 +478,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
               */}
               {card.state === 'ideas' || card.state === 'ice' ? (
                 <button onClick={() => run(() => move(project, card.key, 'ready'))}>{t('card.toReady')}</button>
-              ) : card.state !== 'making' && card.blockedBy.length ? (
+              ) : card.state === 'ready' && card.blockedBy.length ? (
                 <button onClick={() => {
                   const why = window.prompt(t('card.anywayWhy').replace('…', card.blockedBy.join(', ')));
                   if (why === null || !why.trim()) return;
@@ -468,7 +486,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                 }}>
                   {t('card.startAnyway')}
                 </button>
-              ) : card.state !== 'making' ? (
+              ) : card.state === 'ready' ? (
                 <button onClick={() => run(() => start(project, card.key))}>{t('card.start')}</button>
               ) : null}
               <button className="by-hand" aria-expanded={byHand} onClick={() => setByHand(!byHand)}>
@@ -520,25 +538,23 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
             ) : null}
 
             <div className="talk">
-              <textarea rows={2} placeholder={t('card.say')} value={word} onChange={(e) => setWord(e.target.value)} />
+              <textarea aria-label={t('card.say')} rows={2} placeholder={t('card.say')} value={word} onChange={(e) => setWord(e.target.value)} />
               <div className="move">
-                <button disabled={!word.trim()} onClick={() => { const t = word.trim(); setWord(''); run(() => say(project, card.key, t)); }}>{t('card.say2')}</button>
+                <button disabled={busy || !word.trim()} onClick={async () => { const text = word.trim(); if (await run(() => say(project, card.key, text))) setWord(''); }}>{t('card.say2')}</button>
                 {card.kind === 'decision' ? (
-                  <button disabled={!word.trim()} onClick={() => {
+                  <button disabled={busy || !word.trim()} onClick={async () => {
                     const reason = word.trim();
                     const outcome = window.prompt(t('card.decided'));
                     if (!outcome) return;
-                    setWord('');
-                    run(() => decide(project, card.key, outcome, reason));
+                    if (await run(() => decide(project, card.key, outcome, reason))) setWord('');
                   }}>{t('card.decide')}</button>
                 ) : null}
               </div>
             </div>
-            <button onClick={close}>{t('card.close')}</button>
+
           </>
         )}
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
@@ -563,33 +579,29 @@ function NewCard({ project, done, cancel }: { project: string; done: () => void;
   };
 
   return (
-    <div className="sheet" onClick={cancel}>
-      <form onClick={(e) => e.stopPropagation()} onSubmit={submit}>
-        <h2>{t('card.new')}</h2>
+    <Dialog title={t('card.new')} close={cancel} dirty={!!title.trim() || !!text.trim()} busy={busy}>
+      <form className="new-card-form" onSubmit={submit}>
         {error ? <p className="error">{error}</p> : null}
-        <input autoFocus placeholder={t('card.title')} value={title} onChange={(e) => setTitle(e.target.value)} />
+        <label>{t('card.title')}<input required maxLength={200} autoFocus placeholder={t('card.title')} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
         {/* The kinds come from the service's vocabulary — a second list here
             would be a second truth, and one of them would be in one language. */}
-        <select value={kind} onChange={(e) => setKind(e.target.value)}>
+        <label>{t('ui.kind')}<select value={kind} onChange={(e) => setKind(e.target.value)}>
           {KINDS.map((one) => <option key={one} value={one}>{t(one)}</option>)}
-        </select>
-        <textarea rows={6} placeholder={t('card.text')} value={text} onChange={(e) => setText(e.target.value)} />
+        </select></label>
+        <p className="hint">{t('ui.newCardHint')}</p>
+        <label>{t('card.text')}<textarea rows={6} placeholder={t('card.text')} value={text} onChange={(e) => setText(e.target.value)} /></label>
         <div className="move">
-          <button type="submit" disabled={!title.trim() || busy}>{t('card.create')}</button>
-          <button type="button" onClick={cancel}>{t('card.cancel')}</button>
+          <button className="primary" type="submit" disabled={!title.trim() || busy}>{t('card.create')}</button>
+          <button type="button" disabled={busy} onClick={(e) => e.currentTarget.closest('dialog')?.dispatchEvent(new Event('cancel', { cancelable: true }))}>{t('card.cancel')}</button>
         </div>
       </form>
-    </div>
+    </Dialog>
   );
 }
 
 
 /**
- * Settings — heralds and reports.
- *
- * Everything that leaves the house is configured here, and nothing else is:
- * a settings screen that also holds the board's preferences is a screen where
- * nobody finds the one switch that matters.
+ * Settings — keys, heralds and reports.
  */
 /**
  * A PERSON'S OWN KEYS. Minted here, shown ONCE, revoked here — never handed
@@ -661,7 +673,7 @@ function KeySection({ project }: { project: string }) {
           {/* The sessions' key: `gradula login` mints it beside yours; revoking one leaves the other. */}
           {k.kind === AGENT_KEY_KIND ? <span className="small">{t('keys.agent')}</span> : null}
           <span className="small">{t('keys.used')} {k.usedAt ? k.usedAt.slice(0, 16).replace('T', ' ') : t('keys.never')}</span>
-          <button onClick={() => revoke(k.id)}>{t('keys.revoke')}</button>
+          <ConfirmAction label={t('keys.revoke')} action={() => revoke(k.id)} />
         </div>
       ))}
       <div className="row">
@@ -680,11 +692,19 @@ function KeySection({ project }: { project: string }) {
 }
 
 function Settings({ project, close }: { project: string; close: () => void }) {
+  const [tab, setTab] = useState<'channels' | 'reports' | 'access'>('channels');
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
+  const draftBase = useRef('');
+  const beginDraft = (value: Partial<Herald> & { template?: string; token?: string }) => { draftBase.current = JSON.stringify(value); setError(null); setNote(null); setDraft(value); };
+  const perform = async (fn: () => Promise<unknown>) => {
+    if (lock.current) return;
+    lock.current = true; setBusy(true); setError(null); setNote(null);
+    try { await fn(); } catch (e) { setError((e as Error).message); }
+    finally { lock.current = false; setBusy(false); }
+  };
   const [heralds, setHeralds] = useState<Herald[]>([]);
   const [templates, setTemplates] = useState<Record<string, Template>>({});
-  /* the template a herald's filter IS — so the form shows "Outside", not "keep the filter", when nothing was changed by hand */
-  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
-  const templateOf = (filter: Herald['filter']) => Object.entries(templates).find(([, t2]) => same({ ...t2.filter }, { ...filter }))?.[0];
   const [draft, setDraft] = useState<(Partial<Herald> & { template?: string; token?: string }) | null>(null);
   const [chats, setChats] = useState<Record<string, { id: string; kind: string; name: string }[]>>({});
   const [draftChats, setDraftChats] = useState<{ id: string; kind: string; name: string }[]>([]);
@@ -694,18 +714,20 @@ function Settings({ project, close }: { project: string; close: () => void }) {
   const [preview, setPreview] = useState<Report | null>(null);
   const [period, setPeriod] = useState('this week');
   const [voice, setVoice] = useState<'plain' | 'human'>('human');
+  useEffect(() => { setPreview(null); }, [period, voice, project]);
 
   const reload = useCallback(() => {
     heraldsRead(project).then(setHeralds).catch((e) => setError(String(e.message ?? e)));
   }, [project]);
 
-  useEffect(() => { reload(); templatesRead(project).then(setTemplates).catch(() => setTemplates({})); houseKeyRead(project).then((h) => setHouse(!!h.available)).catch(() => setHouse(false)); }, [project, reload]);
+  useEffect(() => { reload(); templatesRead(project).then(setTemplates).catch((e) => setError(e.message)); houseKeyRead(project).then((h) => setHouse(!!h.available)).catch(() => setHouse(false)); }, [project, reload]);
   /*
    * THE CHANNEL IS A LIST. With the house key the list needs no button: as
    * soon as the draft says "the house key", Telegram is asked which channels
    * the house bot can see, and the field is a choice, not a number.
    */
   const usingHouse = draft?.token === HOUSE_KEY;
+  const publicDraft = (draft?.template ? templates[draft.template]?.filter.visibility : draft?.filter?.visibility) === 'public';
   useEffect(() => {
     if (!usingHouse) return;
     chatsForKey(project, HOUSE_KEY).then((out) => setDraftChats(out.ok ? out.chats ?? [] : [])).catch(() => setDraftChats([]));
@@ -749,36 +771,36 @@ function Settings({ project, close }: { project: string; close: () => void }) {
   };
 
   return (
-    <div className="sheet" role="dialog" aria-label={t('nav.settings')} onClick={close}>
-      <div onClick={(e) => e.stopPropagation()}>
-      <header>
-        <h2>{t('nav.settings')}</h2>
-        <button onClick={close} aria-label={t('card.close')}>×</button>
-      </header>
+    <Dialog title={t('nav.settings')} close={close} wide busy={busy} dirty={!!draft && JSON.stringify(draft) !== draftBase.current}>
+      <nav className="settings-tabs" aria-label={t('nav.settings')}>
+        {(['channels', 'reports', 'access'] as const).map((one) => <button type="button" key={one} aria-pressed={tab === one} onClick={() => setTab(one)}>{t(`settings.${one}`)}</button>)}
+      </nav>
+      {error ? <p className="error" role="alert">{error}</p> : null}
+      {note ? <p className="notice" role="status">{note}</p> : null}
 
-      {error ? <p className="error">{error}</p> : null}
-      {note ? <p className="small">{note}</p> : null}
+      <fieldset className="settings-body" disabled={busy}>
+      <div hidden={tab !== 'access'}><KeySection project={project} /></div>
 
-      <KeySection project={project} />
-
-      <section>
+      <section hidden={tab !== 'channels' || !!draft}>
         <h3>{t('herald.head')}</h3>
         {!heralds.length ? <p className="small">{t('herald.none')}</p> : null}
         {heralds.map((h) => (
           <article className="herald" key={h.id}>
             <header>
-              <b>{h.name}</b> <span className="small">{h.kind} → {h.chat ?? '—'}</span>
+              <b>{h.name}</b><span className="audience">{t(h.filter.visibility === 'public' ? 'settings.public' : 'settings.internal')}</span>
+              <span className="small">{h.active === false ? t('settings.paused') : t('settings.active')}</span>
               {h.token ? null : <span className="error"> no key</span>}
             </header>
             <p className="small">
-              {(h.filter.verbs ?? ['everything']).join(' ')} · {h.filter.voice ?? 'plain'} · {h.filter.visibility ?? 'internal'}
-              {h.filter.labels?.length ? ` · @${h.filter.labels.join(',')}` : ''}
+              {templates[templateOf(h.filter, templates) ?? '']?.line ?? t('settings.custom')}
+              {h.filter.pipeline ? ` · ${t('herald.pipeline')}` : ''}
             </p>
             <div className="row">
-              <button onClick={() => setDraft({ ...h, token: h.house ? HOUSE_KEY : '', template: templateOf(h.filter) })}>{t('card.edit')}</button>
-              <button onClick={() => probe(h.id)}>{t('herald.probe')}</button>
-              <button onClick={() => findChats(h.id)}>{t('herald.chats')}</button>
-              <button onClick={() => dropHerald(project, h.id).then(reload)}>{t('herald.remove')}</button>
+              <button onClick={() => beginDraft({ ...h, token: h.house ? HOUSE_KEY : '', template: templateOf(h.filter, templates) })}>{t('card.edit')}</button>
+              <button onClick={() => perform(() => probe(h.id))}>{t('herald.probe')}</button>
+              <button onClick={() => perform(() => findChats(h.id))}>{t('herald.chats')}</button>
+              <button onClick={() => perform(() => saveHerald(project, { id: h.id, active: h.active === false }).then(reload))}>{t(h.active === false ? 'settings.resume' : 'settings.pause')}</button>
+              <ConfirmAction label={t('herald.remove')} action={() => dropHerald(project, h.id).then(reload)} />
             </div>
             {chats[h.id] ? (
               <ul className="small">
@@ -786,7 +808,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
                   ? chats[h.id].map((c) => (
                       <li key={c.id}>
                         <code>{c.id}</code> {c.kind} {c.name}
-                        <button onClick={() => saveHerald(project, { id: h.id, chat: c.id }).then(reload)}>{t('card.use')}</button>
+                        <button onClick={() => perform(() => saveHerald(project, { id: h.id, chat: c.id }).then(reload))}>{t('card.use')}</button>
                       </li>
                     ))
                   : <li>{t('herald.noChats')}</li>}
@@ -795,11 +817,11 @@ function Settings({ project, close }: { project: string; close: () => void }) {
           </article>
         ))}
         {/* a new herald takes the house key when the house has one — the channels then list themselves */}
-        <button onClick={() => setDraft({ kind: 'telegram', template: 'workshop', ...(house ? { token: HOUSE_KEY } : {}) })}>+ Herald</button>
+        <button className="primary" onClick={() => beginDraft({ kind: 'telegram', template: 'workshop', ...(house ? { token: HOUSE_KEY } : {}) })}><Icon name="plus" />{t('herald.new')}</button>
       </section>
 
       {draft ? (
-        <section className="draft">
+        <section className="draft" hidden={tab !== 'channels'}>
           <h3>{t(draft.id ? 'herald.edit' : 'herald.new')}</h3>
           {/*
             EVERY FIELD SAYS WHAT IT IS AND WHERE ITS VALUE COMES FROM.
@@ -808,7 +830,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             a place the board never mentioned.
           */}
           <label>{t('herald.name')}
-            <input value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            <input autoFocus maxLength={80} value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               placeholder={t('herald.namePlaceholder')} />
           </label>
           <p className="hint">{t('herald.nameWhy')}</p>
@@ -864,21 +886,29 @@ function Settings({ project, close }: { project: string; close: () => void }) {
 
           <label>
             {t('herald.template')}
-            <select value={draft.template ?? ''} onChange={(e) => setDraft({ ...draft, template: e.target.value || undefined })}>
+            <select value={draft.template ?? templateOf(draft.filter, templates) ?? ''} onChange={(e) => { const template = e.target.value || undefined; setDraft({ ...draft, template, ...(template && templates[template]?.filter.visibility === 'public' ? { schedule: { ...draft.schedule, cadence: 'off' } } : {}) }); }}>
               <option value="">— {t('herald.keepFilter')} —</option>
               {Object.entries(templates).map(([id, t2]) => <option key={id} value={id}>{t2.name} — {t2.line}</option>)}
             </select>
           </label>
           <p className="hint">{t('herald.templateWhy')}</p>
+          <label className="check">
+            <input type="checkbox"
+              checked={!!(draft.template ? templates[draft.template]?.filter.pipeline : draft.filter?.pipeline)}
+              disabled={(draft.template ? templates[draft.template]?.filter.visibility : draft.filter?.visibility) === 'public'}
+              onChange={(e) => setDraft({ ...draft, template: undefined, filter: { ...(draft.template ? templates[draft.template]?.filter : draft.filter), pipeline: e.target.checked } })} />
+            {' '}{t('herald.pipeline')}
+          </label>
+          <p className="hint">{t('herald.pipelineWhy')}</p>
           {/*
             WHEN IT SPEAKS BY ITSELF. A report you have to trigger is, after two
             weeks, one nobody triggers — so a herald can carry its own cadence:
             a workshop channel daily, a client channel weekly, both on the same
             board. `off` means it only ever speaks when a hand presses send.
           */}
-          <label>{t('herald.cadence')}
+          <label hidden={publicDraft}>{t('herald.cadence')}
             <div className="row">
-              <select
+              <select disabled={publicDraft}
                 value={draft.schedule?.cadence ?? 'off'}
                 onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, cadence: e.target.value as 'daily' | 'weekly' | 'off' } })}
               >
@@ -898,21 +928,22 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             </div>
           </label>
           <div className="row">
-            <button onClick={save}>{t('card.save')}</button>
+            <button className="primary" disabled={!draft.chat?.trim()} onClick={() => perform(save)}>{t('card.save')}</button>
             <button onClick={() => setDraft(null)}>{t('card.cancel')}</button>
           </div>
         </section>
       ) : null}
 
-      <section>
+      <section hidden={tab !== 'reports'}>
         <h3>{t('report.head')}</h3>
+        <p className="hint">{t('settings.reportAudience')}</p>
         <div className="row">
           <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder={t('report.period')} />
           <select value={voice} onChange={(e) => setVoice(e.target.value as 'plain' | 'human')}>
             <option value="human">{t('herald.voiceHuman')}</option>
             <option value="plain">{t('herald.voicePlain')}</option>
           </select>
-          <button onClick={build}>{t('build.head')}</button>
+          <button className="primary" onClick={() => perform(build)}>{t('build.head')}</button>
         </div>
         {preview ? (
           <>
@@ -921,15 +952,15 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             </p>
             <pre className="report">{voice === 'plain' ? preview.plain : preview.human}</pre>
             <div className="row">
-              {heralds.filter((h) => h.chat).map((h) => (
-                <button key={h.id} onClick={() => deliver(h.id)}>Send to {h.name}</button>
+              {heralds.filter((h) => h.chat && h.active !== false && h.filter.visibility !== 'public').map((h) => (
+                <button key={h.id} onClick={() => perform(() => deliver(h.id))}>Send to {h.name}</button>
               ))}
             </div>
           </>
         ) : <p className="small">{t('herald.quiet')}</p>}
       </section>
-      </div>
-    </div>
+      </fieldset>
+    </Dialog>
   );
 }
 
@@ -1136,11 +1167,31 @@ export default function App() {
   // GET somewhere and stay reachable always; the rest (filters, legend,
   // settings, language, standing) folds behind one button on a narrow screen.
   const [menuOpen, setMenuOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [mobileColumn, setMobileColumn] = useState<State>('ready');
+  const [loading, setLoading] = useState(true);
+  const cardRequest = useRef(0);
+  const scope = useRef('');
+  const currentScope = JSON.stringify([project, search, moduleFilter, craftFilter, areaFilter]);
+  scope.current = currentScope;
+  const activeProject = useRef(project);
+  activeProject.current = project;
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const outside = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false); };
+    const escape = (e: KeyboardEvent) => { if (e.key === 'Escape') setMenuOpen(false); };
+    document.addEventListener('pointerdown', outside); document.addEventListener('keydown', escape);
+    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', escape); };
+  }, [menuOpen]);
+  const resetFilters = () => { setSearch(''); setAreaFilter(''); setModuleFilter(''); setCraftFilter(''); };
+  const filterCount = [search, areaFilter, moduleFilter, craftFilter].filter(Boolean).length;
 
   // Opening and closing writes the address along, without reloading the page
   // — and the browser's back button closes the sheet, as it should.
   const open = useCallback((key: string | null) => {
     setOpenKey(key);
+    if (key) setProject(key.split('-')[0]);
     const url = new URL(window.location.href);
     url.searchParams.delete('card');
     url.pathname = key ? cardHref(key) : `${mountPath()}/`;
@@ -1161,7 +1212,7 @@ export default function App() {
       .then((who) => { setMe(who); setSignedIn(true); return readProjects(); })
       .then((list) => {
         setProjects(list);
-        setProject((now) => (now && list.some((p) => p.key === now) ? now : list[0]?.key ?? ''));
+        setProject((now) => { const wanted = openKey?.split('-')[0] ?? now; return list.some((p) => p.key === wanted) ? wanted : list[0]?.key ?? ''; });
       })
       .catch((e) => (e instanceof NotSignedIn ? setSignedIn(false) : setError(String(e.message ?? e))));
   }, []);
@@ -1169,8 +1220,11 @@ export default function App() {
   const load = useCallback(() => {
     if (!project) return;
     localStorage.setItem('gradula.project', project);
+    const request = ++cardRequest.current;
+    setLoading(true); setError(null);
     readCards(project, { q: search || undefined, module: moduleFilter || undefined, stack: craftFilter || undefined, area: areaFilter || undefined })
       .then((fresh) => {
+        if (scope.current !== currentScope || request !== cardRequest.current) return;
         const moved = changedBetween(previous.current, fresh);
         previous.current = fresh;
         setCards(fresh);
@@ -1179,8 +1233,9 @@ export default function App() {
           setTimeout(() => setJustChanged(new Set()), IMPULSE_MS);
         }
       })
-      .catch((e) => setError(String(e.message ?? e)));
-  }, [project, search, moduleFilter, craftFilter, areaFilter]);
+      .catch((e) => { if (scope.current === currentScope && request === cardRequest.current) setError(String(e.message ?? e)); })
+      .finally(() => { if (scope.current === currentScope && request === cardRequest.current) setLoading(false); });
+  }, [project, search, moduleFilter, craftFilter, areaFilter, currentScope]);
 
   // While typing, do not ask on every character: a search that starts thirty
   // times in a row is slower than one that waits once.
@@ -1192,8 +1247,8 @@ export default function App() {
   const loadPicture = useCallback(() => {
     if (!project) return;
     readSystem(project)
-      .then((doc) => setPicture(new Map((doc.cards ?? []).map((card) => [card.key, card]))))
-      .catch(() => setPicture(new Map()));
+      .then((doc) => { if (activeProject.current === project) setPicture(new Map((doc.cards ?? []).map((card) => [card.key, card]))); })
+      .catch(() => { if (activeProject.current === project) setPicture(new Map()); });
   }, [project]);
 
   // The long line. It says only THAT something moved; the reading happens
@@ -1235,13 +1290,15 @@ export default function App() {
     if (!project) return;
     readVocabulary(project)
       .then((v) => {
+        if (activeProject.current !== project) return;
         setModules(v.map((m) => m.id));
         setAreaOfModule(Object.fromEntries(v.map((m) => [m.id, m.area ?? m.id])));
       })
-      .catch(() => { setModules([]); setAreaOfModule({}); });
+      .catch(() => { if (activeProject.current === project) { setModules([]); setAreaOfModule({}); } });
+    setCards([]); previous.current = []; setBonds([]); setPicture(new Map()); setStanding(null);
     setAreaFilter('');
-    readLinks(project).then(setBonds).catch(() => setBonds([]));
-    readStanding(project).then(setStanding).catch(() => setStanding(null));
+    readLinks(project).then((value) => { if (activeProject.current === project) setBonds(value); }).catch(() => {});
+    readStanding(project).then((value) => { if (activeProject.current === project) setStanding(value); }).catch(() => {});
     setModuleFilter('');
     setCraftFilter('');
     loadPicture();
@@ -1256,9 +1313,9 @@ export default function App() {
    * already chosen, and then there would be no way back to the others.
    */
   useEffect(() => {
-    if (craftFilter) return;
+    if (filterCount) return;
     setCrafts([...new Set(cards.flatMap((c) => c.stack))].sort());
-  }, [cards, craftFilter]);
+  }, [cards, filterCount]);
 
   /*
    * What this board already knows about itself — no extra request, and both
@@ -1287,83 +1344,57 @@ export default function App() {
 
   if (signedIn === false) return <Door />;
 
-  if (signedIn === null) return <main className="door" aria-busy="true" />;
+  if (signedIn === null) return <main className="door" aria-busy={!error}><div className="card-door"><h1>{t('ui.app')}</h1><p role={error ? 'alert' : 'status'}>{error ?? t('ui.loading')}</p>{error ? <button onClick={() => window.location.reload()}>{t('ui.retry')}</button> : null}</div></main>;
 
   return (
     <>
       <header className="head">
-        {projects.length > 1 ? (
-          <select className="project-switch" value={project} onChange={(e) => setProject(e.target.value)}>
-            {projects.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-          </select>
-        ) : <span className="who project-name">{projects[0]?.name ?? ''}</span>}
-        <input className="search" placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
-        {/*
-          A PHONE HAS NO ROOM FOR TEN CONTROLS IN A ROW. Finding a card
-          (search, above) is how most visits start, so it stays in the open
-          with the project switcher; everything else — the three views, the
-          filters, adding a card, settings — folds behind one button under
-          720px (`.head-toggle` / `.head-extra`, see styles.css). On a wide
-          screen `.head-extra` is `display: contents`, so this changes
-          nothing there: the children sit in the row exactly as before.
-        */}
-        <button
-          className="head-toggle" aria-label={t('nav.menu')} aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >☰</button>
-        <div className={menuOpen ? 'head-extra open' : 'head-extra'}>
-          <span className="views">
-            {(['board', 'map', 'pulse'] as const).map((one) => (
-              <button key={one} className={view === one ? 'view here' : 'view'} onClick={() => { setView(one); setMenuOpen(false); }}>
-                {t(`nav.${one}`)}
-              </button>
-            ))}
-          </span>
-          <button onClick={() => { setCreating(true); setMenuOpen(false); }}>+ {t('card')}</button>
-          {areas.length > 1 ? (
-            <select value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-              <option value="">{t('nav.allAreas')}</option>
-              {areas.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          ) : null}
-          {modules.length ? (
-            <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}>
-              <option value="">{t('nav.allModules')}</option>
-              {shownModules.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : null}
-          {crafts.length ? (
-            <select value={craftFilter} onChange={(e) => setCraftFilter(e.target.value)}>
-              <option value="">{t('nav.allCrafts')}</option>
-              {crafts.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          ) : null}
-          <button onClick={() => setLegend(true)} aria-label={t('nav.legend')}>{t('nav.legend')}</button>
-          <button onClick={() => setSettings(true)} aria-label={t('nav.settings')}>{t('nav.settings')}</button>
-          <LanguageSwitch />
-          {standing && standing.standing !== 'unknown' ? (
-            // Written out, not composed: a class name you cannot grep is one no
-            // test finds either — and that is exactly how rules are orphaned.
-            // The surface test caught me here.
-            <span className={STAND_CLASS[standing.standing] ?? 'standing'} title={standing.line}>
-              {standing.standing}
-            </span>
-          ) : null}
-          <span className="who">{me?.kind === 'human' ? me.name : ''}</span>
+        {projects.length > 1 ? <select className="project-switch" aria-label={t('ui.project')} value={project} onChange={(e) => { open(null); setProject(e.target.value); resetFilters(); }}>
+          {projects.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
+        </select> : <strong className="project-name">{projects[0]?.name ?? t('ui.app')}</strong>}
+        <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        <nav className="views" aria-label={t('ui.views')}>
+          {(['board', 'map', 'pulse'] as const).map((one) => <button key={one} aria-pressed={view === one} className={view === one ? 'view here' : 'view'} onClick={() => setView(one)}>{t(`nav.${one}`)}</button>)}
+        </nav>
+        <button className="primary new-action" disabled={!project} onClick={() => setCreating(true)}><Icon name="plus" />{t('ui.newCard')}</button>
+        <div className="menu-anchor" ref={menuRef}>
+          <button className="head-toggle icon-button" aria-label={t('nav.menu')} aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}><Icon name="more" /></button>
+          {menuOpen ? <div className="head-extra open">
+            <button onClick={() => { setSettings(true); setMenuOpen(false); }} disabled={!project}>{t('nav.settings')}</button>
+            <button onClick={() => { setLegend(true); setMenuOpen(false); }}>{t('nav.legend')}</button>
+            <LanguageSwitch />
+            <span className="who">{me?.kind === 'human' ? me.name : ''}</span>
+          </div> : null}
         </div>
       </header>
+      <div className="workspace-toolbar">
+        <div className="workspace-context"><span>{t(`nav.${view}`)}</span><span className="small" role="status">{loading ? t('ui.loading') : `${cards.length} ${t('map.cards')}`}</span></div>
+        {standing && standing.standing !== 'unknown' ? <span className={STAND_CLASS[standing.standing] ?? 'standing'} title={standing.line}>{standing.standing}</span> : null}
+        {view !== 'pulse' ? <button aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" />{t('ui.filters')}{filterCount ? ` · ${filterCount}` : ''}</button> : null}
+        {filterCount && view !== 'pulse' ? <button className="ghost" onClick={resetFilters}>{t('ui.clearFilters')}</button> : null}
+      </div>
+      {filtersOpen && view !== 'pulse' ? <div className="filter-bar">
+        <label>{t('ui.area')}<select value={areaFilter} onChange={(e) => { setAreaFilter(e.target.value); setModuleFilter(''); }}><option value="">{t('nav.allAreas')}</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
+        <label>{t('ui.module')}<select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}><option value="">{t('nav.allModules')}</option>{shownModules.map((module) => <option key={module} value={module}>{module}</option>)}</select></label>
+        <label>{t('ui.craft')}<select value={craftFilter} onChange={(e) => setCraftFilter(e.target.value)}><option value="">{t('nav.allCrafts')}</option>{crafts.map((craft) => <option key={craft} value={craft}>{craft}</option>)}</select></label>
+      </div> : null}
+      {error ? <div className="error" role="alert">{error}<button onClick={load}>{t('ui.retry')}</button></div> : null}
+      {!project ? <div className="empty-state"><h2>{t('ui.noProjects')}</h2><p>{t('ui.noProjectsWhy')}</p></div> : null}
+      {!loading && !cards.length && project && view !== 'pulse' ? <div className="board-notice"><strong>{t(filterCount ? 'ui.noResults' : 'ui.emptyBoard')}</strong><span>{t(filterCount ? 'ui.noResultsWhy' : 'ui.emptyBoardWhy')}</span>{filterCount ? <button onClick={resetFilters}>{t('ui.clearFilters')}</button> : <button onClick={() => setCreating(true)}>{t('ui.newCard')}</button>}</div> : null}
+      {view === 'board' ? <nav className="column-tabs" aria-label={t('ui.stages')}>
+        {COLUMN_NAMES.map((column) => <button key={column.state} aria-pressed={mobileColumn === column.state} onClick={() => setMobileColumn(column.state)}>{column.name}<span>{cards.filter((card) => card.state === column.state).length}</span></button>)}
+      </nav> : null}
 
-      {error ? <p className="error">{error}</p> : null}
-
-      {view === 'pulse' ? <PulseView project={project} open={open} /> : view === 'map' ? <AreaMap cards={cards} open={open} areaOfModule={areaOfModule} /> : (
-      <div className="board">
+      {view === 'pulse' ? <PulseView key={`pulse:${project}`} project={project} open={open} /> : view === 'map' ? <AreaMap key={`map:${project}`} cards={cards} open={open} areaOfModule={areaOfModule} /> : (
+      <div className="board" aria-busy={loading}>
         {COLUMN_NAMES.map((column) => {
           const inside = cards.filter((k) => k.state === column.state);
           const groups = group(inside, parentsFrom(bonds));
           return (
-            <section className="column" key={column.state}>
+            <section className="column" key={column.state} data-selected={mobileColumn === column.state}>
               <header><h2>{column.name}</h2><span className="number">{inside.length}</span></header>
               <div className="column-inside">
+                {!inside.length ? <p className="column-empty">{t(`empty.${column.state}`)}</p> : null}
                 {groups.map((g) => (
                   <Bond key={g.cards[0].key} group={g} open={open} justChanged={justChanged} picture={picture} />
                 ))}
@@ -1375,12 +1406,12 @@ export default function App() {
       )}
 
       {openKey ? (
-        <Sheet project={project} cardKey={openKey} close={() => open(null)} changed={load} people={people} knownPaths={knownPaths}
+        <Sheet key={`${project}:${openKey}`} project={project} cardKey={openKey} close={() => open(null)} changed={load} people={people} knownPaths={knownPaths}
           repo={projects.find((p) => p.key === project)?.repo ?? null} picture={picture.get(openKey) ?? null} />
       ) : null}
       {legend ? <Legend close={() => setLegend(false)} /> : null}
-      {settings ? <Settings project={project} close={() => setSettings(false)} /> : null}
-      {creating ? <NewCard project={project} done={() => { setCreating(false); load(); }} cancel={() => setCreating(false)} /> : null}
+      {settings ? <Settings key={`settings:${project}`} project={project} close={() => setSettings(false)} /> : null}
+      {creating ? <NewCard key={`new:${project}`} project={project} done={() => { setCreating(false); load(); }} cancel={() => setCreating(false)} /> : null}
     </>
   );
 }

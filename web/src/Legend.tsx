@@ -11,6 +11,7 @@
  * breathes in orange" is a sentence about a thing; the thing itself is one
  * line of markup away and cannot drift.
  */
+import Dialog from './Dialog';
 import { BorderBeam } from 'border-beam';
 import { beamFor, BEAM_STATIC, LEVEL_CLASS } from './motion';
 import type { Signal } from './motion';
@@ -36,13 +37,8 @@ function Sample({ signal, label }: { signal: Signal; label: string }) {
 
 export default function Legend({ close }: { close: () => void }) {
   return (
-    <div className="sheet" role="dialog" aria-label={t('legend.head')} onClick={close}>
-      <div className="legend" onClick={(e) => e.stopPropagation()}>
-        <header>
-          <h2>{t('legend.head')}</h2>
-          <button onClick={close}>{t('card.close')}</button>
-        </header>
-
+    <Dialog title={t('legend.head')} close={close}>
+      <div className="legend">
         <h3>{t('legend.signals')}</h3>
         <p className="quiet">{t('legend.oneWarm')}</p>
         {SIGNALS.map((row) => (
@@ -102,6 +98,6 @@ export default function Legend({ close }: { close: () => void }) {
           {KINDS.map((kind: string) => <span className="kind" key={kind}>{t(kind)}</span>)}
         </div>
       </div>
-    </div>
+    </Dialog>
   );
 }

@@ -226,3 +226,28 @@ export async function compareCommits({ repo, token, base, head }, { fetchImpl = 
 export const publicConnection = (connection) => (connection
   ? { repo: connection.repo, token: connection.token ? 'set' : null, setAt: connection.setAt ?? null }
   : null);
+
+/** Workflow progress keeps GitHub's actual status, run id and retry attempt.
+ * Only metadata, never logs or credentials, enters a herald message. */
+export async function fetchWorkflowRuns({ repo, token }, { fetchImpl = fetch } = {}) {
+  const { status, body } = await ask(`/repos/${repo}/actions/runs?per_page=30`, token, fetchImpl);
+  if (status !== 200 || !Array.isArray(body?.workflow_runs)) throw new Error(`GitHub workflow runs: HTTP ${status}`);
+  return body.workflow_runs.map((run) => ({
+    id: run.id, attempt: run.run_attempt ?? 1, name: line(run.name),
+    branch: line(run.head_branch), commit: String(run.head_sha ?? '').slice(0, 7),
+    status: run.status, conclusion: run.conclusion, at: run.updated_at ?? run.created_at,
+    url: `https://github.com/${repo}/actions/runs/${run.id}`,
+  }));
+}
+
+export async function fetchWorkflowJobs({ repo, token }, run, { fetchImpl = fetch } = {}) {
+  const jobs = [];
+  for (let page = 1; page <= 5; page++) {
+    const { status, body } = await ask(`/repos/${repo}/actions/runs/${run.id}/attempts/${run.attempt}/jobs?per_page=100&page=${page}`, token, fetchImpl);
+    if (status !== 200 || !Array.isArray(body?.jobs)) throw new Error(`GitHub workflow jobs: HTTP ${status}`);
+    jobs.push(...body.jobs.map((job) => ({ name: line(job.name), status: job.status, conclusion: job.conclusion,
+      steps: (job.steps ?? []).map((step) => ({ name: line(step.name), status: step.status, conclusion: step.conclusion })) })));
+    if (jobs.length >= body.total_count || body.jobs.length < 100) return jobs;
+  }
+  throw new Error('GitHub workflow has more than 500 jobs; see the run for progress.');
+}

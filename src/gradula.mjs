@@ -24,6 +24,7 @@ import { wave, ripe, coverage } from './wave.mjs';
 import { messages, linkify, TEMPLATES, VOICES, VISIBILITIES } from './heralds.mjs';
 import { releasesIn, previousOf, cardsBetween, releaseNote, LANES, STAGES } from './releases.mjs';
 import { carriesOf } from './deployed.mjs';
+import { createPipelineHerald } from './pipeline-herald.mjs';
 import * as telegram from './telegram.mjs';
 import * as dokploy from './dokploy.mjs';
 import * as github from './github.mjs';
@@ -35,7 +36,7 @@ import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
 import { dueHeralds, CADENCES } from './schedule.mjs';
-import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, LADDER_STYLE_NAMES } from './spec.mjs';
+import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, CARD_STYLE } from './spec.mjs';
 import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
 import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
@@ -123,6 +124,7 @@ export const HOUSE_KEY = 'house';
 
 export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null } = {}) {
   const keyOf = (herald) => (herald?.token === HOUSE_KEY ? houseKey : herald?.token ?? null);
+  const pipelineHerald = createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl: defaultFetch });
   const findItem = async (key) => {
     const parsed = parseItemKey(key);
     if (!parsed) throw bad('id', `"${key}" is not a card key (example: MDLA-142).`);
@@ -171,7 +173,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (verb === 'started' && card.created && Date.now() - Date.parse(card.created) < 60_000) return sent;
       // Read only when somebody is actually listening — no herald, no query.
       const board = await store.projects.get(item.project);
-      for (const { herald, text } of messages(heralds, { card, verb, actor, data: data ?? {} }, { language: board?.language ?? 'en', style: board?.ladder ?? 'squares' })) {
+      for (const { herald, text } of messages(heralds, { card, verb, actor, data: data ?? {} }, { language: board?.language ?? 'en', style: CARD_STYLE })) {
       // The link leads to the card, and it IS the key at the head of the line —
       // not a second key beneath it. The PREVIEW stays off as long as the card
       // is internal: Telegram's crawler fetches the address itself and
@@ -213,7 +215,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const kind = heraldKinds[herald.kind];
         if (!kind?.send) continue;
         const visibility = filter.visibility ?? 'internal';
-        const text = releaseNote(release, cards, { visibility, language: filter.language ?? board?.language ?? 'en', origin, style: board?.ladder ?? 'squares' });
+        const text = releaseNote(release, cards, { visibility, language: filter.language ?? board?.language ?? 'en', origin, style: CARD_STYLE });
         if (!text) continue;
         const repo = (await store.github.get(projectKey))?.repo ?? board?.repo ?? null;
         const result = await kind.send({ token: keyOf(herald), chat: herald.chat }, linkify(escapeHtml(text), { origin: visibility === 'public' ? origin : origin, repo: visibility === 'public' ? null : repo }), { html: true, preview: false });
@@ -260,6 +262,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
 
   return {
     store,
+    pollPipelines(projectKey) { return pipelineHerald.poll(projectKey); },
 
     async createProject({ key, name, repo = null }, actor = 'system') {
       const projectKey = String(key ?? '').trim().toUpperCase();
@@ -272,7 +275,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     async getProject(key) {
       const project = await store.projects.get(String(key ?? '').toUpperCase());
       if (!project) throw missing(`There is no project ${key}.`);
-      return project;
+      return { ...project, ladder: CARD_STYLE };
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */
@@ -290,7 +293,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      */
     async getVocabulary(projectKey) {
       const entries = await store.vocab.get(String(projectKey).toUpperCase());
-      return (entries ?? []).map((entry) => ({ ...entry, area: entry.area ?? areaOf(entry.paths) ?? entry.id }));
+      return (entries ?? []).map((entry) => ({ ...entry, area: (entry.area && /^[a-z0-9][a-z0-9-]{0,40}$/.test(entry.area) ? entry.area : areaOf(entry.paths)) ?? entry.id }));
     },
 
     async addItem(projectKey, fields, actor, { system = false } = {}) {
@@ -543,7 +546,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       // THE LADDER'S STYLE: squares, circles or diamonds — the glyphs, never the meaning.
       if (changes.ladder !== undefined) {
         if (changes.ladder === null) next.ladder = null;
-        else if (!LADDER_STYLE_NAMES.includes(String(changes.ladder))) throw bad('ladder', `ladder: ${LADDER_STYLE_NAMES.join(', ')}.`);
+        else if (changes.ladder !== CARD_STYLE) throw bad('ladder', 'Cards use circles; pipeline steps use squares. Their shapes are fixed.');
         else next.ladder = String(changes.ladder);
       }
       if (changes.publish !== undefined) {
@@ -626,6 +629,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      */
     async setHerald(projectKey, input, actor) {
       const project = await this.getProject(projectKey);
+      // An id is scoped to this project, including partial updates from the UI.
+      if (input.id) {
+        const previous = (await store.heralds.list(project.key, { raw: true })).find((h) => h.id === input.id);
+        if (!previous) throw missing('No such herald.');
+        input = { ...previous, ...input, token: input.token,
+          schedule: input.schedule === undefined ? previous.schedule : { ...previous.schedule, ...input.schedule } };
+      }
       const kind = String(input.kind ?? 'telegram');
       if (!heraldKinds[kind]) throw bad('kind', `herald kind: ${Object.keys(heraldKinds).join(', ')}.`);
       const template = input.template ? TEMPLATES[String(input.template)] : null;
@@ -638,6 +648,8 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
        * filter given without a template is a hand's own.
        */
       const filter = template ? { ...template.filter } : { ...(input.filter ?? {}) };
+      if (filter.pipeline !== undefined && typeof filter.pipeline !== 'boolean') throw bad('pipeline', 'pipeline must be true or false.');
+      if (filter.pipeline && filter.visibility === 'public') throw bad('pipeline', 'Pipeline progress is internal; Outside receives published updates.');
       if (filter.voice && !VOICES.includes(filter.voice)) throw bad('voice', `voice: ${VOICES.join(', ')}.`);
       // The channel's own language. Not the developer's: a workshop channel in
       // German and a client channel in English is one board and two audiences.
@@ -650,6 +662,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         weekday: Number.isFinite(Number(input.schedule?.weekday)) ? Math.max(0, Math.min(6, Number(input.schedule.weekday))) : 1,
         lastRun: input.schedule?.lastRun ?? null,
       };
+      if (filter.visibility === 'public' && schedule?.cadence && schedule.cadence !== 'off') throw bad('public-report', 'Reports contain internal work. Public channels receive published updates only.');
       if (schedule && !CADENCES.includes(schedule.cadence)) throw bad('cadence', `cadence: ${CADENCES.join(', ')}.`);
       const kept = await store.heralds.set(project.key, {
         id: input.id,
@@ -664,7 +677,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return kept;
     },
 
-    async removeHerald(id) {
+    async removeHerald(projectKey, id) {
+      const project = await this.getProject(projectKey);
+      if (!(await store.heralds.list(project.key)).some((h) => h.id === id)) throw missing('No such herald.');
       const path = await store.heralds.remove(id);
       if (!path) throw missing('No such herald.');
       return { entfernt: true };
@@ -763,9 +778,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         period,
         milestone: milestone ? String(milestone).toUpperCase() : null,
         counts: { done: found.done.length, decided: found.decided.length, incidents: found.incidents.length, touched: found.touched },
-        plain: plainReport(found, { project: project.key, period }),
+        plain: plainReport(found, { project: project.key, period, style: CARD_STYLE }),
         human: humanReport(found, { period }),
-        html: htmlReport(found, { project: project.key, period, voice, style: project.ladder ?? 'squares' }),
+        html: htmlReport(found, { project: project.key, period, voice, style: CARD_STYLE }),
       };
     },
 
@@ -776,6 +791,8 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!herald) throw missing('No such herald.');
       const kind = heraldKinds[herald.kind];
       if (!kind?.send) return { sent: false, reason: `${herald.kind} cannot send` };
+      if (herald.filter?.visibility === 'public') throw new Refusal(403, 'public-report', 'Reports contain internal work. Public channels receive published updates only.');
+      if (herald.active === false) throw new Refusal(409, 'paused', 'This channel is paused.');
       // the report's keys and hashes become links here — the text is already HTML, so linkify only what is not inside a tag
       const repo = (await store.github.get(project.key))?.repo ?? project.repo ?? null;
       const linked = String(text).split(/(<[^>]+>)/).map((part) => (part.startsWith('<') ? part : linkify(part, { origin, repo }))).join('');
@@ -939,7 +956,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const project = await this.getProject(projectKey);
       const heralds = await store.heralds.list(project.key, { raw: true });
       const out = [];
-      for (const { herald, since, period } of dueHeralds(heralds, { now })) {
+      for (const { herald, since, period } of dueHeralds(heralds.filter((h) => h.filter?.visibility !== 'public'), { now })) {
         const built = await this.report(project.key, {
           since, period, voice: herald.filter?.voice === 'plain' ? 'plain' : 'human',
         });
@@ -1061,7 +1078,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (changes.files !== undefined) next.files = paths(changes.files, 'files') ?? [];
       if (!Object.keys(next).length) return this.getItem(item.key);
 
-      const updated = await store.items.patch(item.key, next);
+      const expected = changes.expected ?? {};
+      if (typeof expected !== 'object' || Array.isArray(expected) || Object.keys(expected).some((field) => !['title', 'text', 'person', 'gate'].includes(field))) throw bad('expected', 'Unsupported edit comparison.');
+      const updated = await store.items.patch(item.key, next, { expected });
+      if (!updated) throw new Refusal(409, 'edit-conflict', 'This field changed while you were editing. Reopen the editor to review the latest version.');
       await note(item, actor, 'changed', { fields: Object.keys(next) });
       return this.getItem(updated.key);
     },
@@ -1433,7 +1453,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
        * whoever was quickest. It cannot now: the yes is a move a person
        * makes, and the chronicle names who made it.
        */
-      if (item.state === 'ideas' || item.state === 'ice') {
+      if (!['ready', 'making'].includes(item.state)) {
         throw new Refusal(409, 'not-ready', `${item.key} is in ${item.state}. Move it to ready first — that move is the yes, and the chronicle names who gave it.`);
       }
       const running = (await store.items.list(item.project, { state: 'making' })).filter((r) => r.id !== item.id);

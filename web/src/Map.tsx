@@ -22,7 +22,7 @@
  * looked alike; the rings said nothing; and a sector with one card looked as
  * important as one with twenty.
  */
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { chosenLanguage, words } from './words';
 import { ageOf, shortAge } from './age';
 
@@ -59,6 +59,14 @@ const day = (ms: number) => new Date(ms).toISOString().slice(5, 10).replace('-',
  */
 export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Card[]; open: (key: string) => void; areaOfModule?: Record<string, string> }) {
   const [hover, setHover] = useState<Dot | null>(null);
+  const tooltip = useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  useLayoutEffect(() => {
+    if (!hover || !tooltip.current) return;
+    const box = tooltip.current.getBoundingClientRect();
+    setPosition({ x: Math.max(8, Math.min(anchor.x + 14, window.innerWidth - box.width - 8)), y: Math.max(8, anchor.y + 14 + box.height < window.innerHeight ? anchor.y + 14 : anchor.y - box.height - 14) });
+  }, [hover, anchor]);
   const [only, setOnly] = useState<string | null>(null);
   const [onlyState, setOnlyState] = useState<string | null>(null);
 
@@ -101,7 +109,7 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
 
   return (
     <div className="map-face">
-      <svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="img"
+      <div className="map-plot"><svg viewBox={`0 0 ${SIZE} ${SIZE}`} role="group"
         aria-label={`${cards.length} ${t('map.cards')}, ${areas.length} ${t('map.areas')} — ${t('map.how')}`}>
         {/* The rings say when. Without a label a ring is decoration. */}
         {[0, 0.5, 1].map((r) => (
@@ -127,6 +135,8 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
                 x2={CENTRE + Math.cos(edge) * OUTER} y2={CENTRE + Math.sin(edge) * OUTER}
                 className="map-spoke" />
               <text x={lx} y={ly} className="map-sector" textAnchor="middle"
+                role="button" tabIndex={0} aria-label={name}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOnly(only === name ? null : name); } }}
                 onClick={() => setOnly(only === name ? null : name)}>
                 {name}
                 <tspan className="map-sector-number" dy="14" x={lx}>{count}</tspan>
@@ -144,18 +154,27 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
             tabIndex={0}
             role="button"
             aria-label={`${dot.card.key} ${dot.card.title}, ${dot.area}, ${dot.card.state}`}
-            onMouseEnter={() => setHover(dot)}
+            aria-describedby={hover?.card.key === dot.card.key ? "map-tooltip" : undefined}
+            onMouseEnter={(e) => { setAnchor({ x: e.clientX, y: e.clientY }); setHover(dot); }}
+            onMouseMove={(e) => setAnchor({ x: e.clientX, y: e.clientY })}
             onMouseLeave={() => setHover(null)}
-            onFocus={() => setHover(dot)}
+            onFocus={(e) => { const box = e.currentTarget.getBoundingClientRect(); setAnchor({ x: box.right, y: box.top }); setHover(dot); }}
             onBlur={() => setHover(null)}
             onClick={() => open(dot.card.key)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') open(dot.card.key); }}
+            onKeyDown={(e) => { if (e.key === 'Escape') setHover(null); if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(dot.card.key); } }}
           />
         ))}
-      </svg>
+      </svg></div>
 
       <div className="map-foot">
-        <div className="map-hint" aria-live="polite">
+        <select aria-label={t('ui.area')} value={only ?? ''} onChange={(e) => setOnly(e.target.value || null)}>
+          <option value="">{t('nav.allAreas')}</option>
+          {areas.map((area) => <option key={area} value={area}>{area}</option>)}
+        </select>
+        <div className="map-hint">
+          <span className="small">{t('map.how')}</span>
+        </div>
+        <div ref={tooltip} id="map-tooltip" role="tooltip" className="map-tooltip" hidden={!hover} style={{ left: position.x, top: position.y }}>
           {hover ? (
             <>
               <b>{hover.card.key}</b> {hover.card.title}
@@ -173,12 +192,7 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
                 ].join(' · ')}
               </span>
             </>
-          ) : (
-            <span className="small">
-              {t('map.how')} {areas.length} {t('map.areas')}, {cards.length} {t('map.cards')}.
-              {only || onlyState ? ` ${t('map.filtered')}` : ` ${t('map.clickArea')}`}
-            </span>
-          )}
+          ) : null}
         </div>
         {/*
           * The legend IS the filter. A legend that only explains is a legend
@@ -199,6 +213,10 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
             </li>
           ))}
         </ul>
+        <select aria-label={t('nav.search')} value="" onChange={(e) => { if (e.target.value) open(e.target.value); }}>
+          <option value="">{t('nav.search')}</option>
+          {shown.map(({ card }) => <option key={card.key} value={card.key}>{card.key} · {card.title}</option>)}
+        </select>
       </div>
     </div>
   );
