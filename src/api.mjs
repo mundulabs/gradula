@@ -167,6 +167,12 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       ctx.needAdmin();
       return { status: 200, body: await gradula.store.projects.list() };
     }],
+    ['POST', /^\/api\/admin\/projects\/([A-Z]{2,8})\/runtime-connections$/, async (req, m, ctx) => {
+      ctx.needAdmin();
+      const { destination } = await readJson(req);
+      await gradula.getProject(m[1]); await gradula.getProject(destination);
+      return { status: 200, body: await gradula.store.projects.moveRuntimeConnections(m[1], destination) };
+    }],
     ['POST', /^\/api\/admin\/projects\/([A-Z]{2,8})\/rekey$/, async (req, m, ctx) => ({
       status: 200, body: await gradula.rekeyProject(m[1], (await readJson(req)).key, ctx.actor),
     })],

@@ -104,6 +104,15 @@ export function createMemoryStore() {
         return clone(row);
       },
       async get(key) { return clone(projects.get(key) ?? null); },
+      async moveRuntimeConnections(from, to) {
+        project(from); project(to);
+        if (from === to) throw new Error('Different projects required');
+        const sources = { sentry, dokploy, eas };
+        if (Object.values(sources).some((map) => map.has(to))) throw new Error('Destination already has runtime connections');
+        const moved = [];
+        for (const [name, map] of Object.entries(sources)) if (map.has(from)) { map.set(to, map.get(from)); map.delete(from); moved.push(name); }
+        return { from, to, moved };
+      },
       /**
        * Change the key itself. That is not the same as renaming: every card
        * key carries it, so every card moves with it.

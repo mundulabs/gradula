@@ -23,6 +23,23 @@ if (process.env.GRADULA_DB_URL) {
 }
 
 for (const [name, build] of implementations) {
+  test(`${name}: separate runtime connections without touching cards or overwriting destinations`, async (t) => {
+    const store = await build(); t.after(() => store.close?.());
+    await store.projects.create({ key: 'SRC', name: 'Native' });
+    await store.projects.create({ key: 'OLD', name: 'Legacy' });
+    const card = await store.items.create('SRC', { kind: 'task', title: 'Keep history' });
+    await store.dokploy.set('SRC', { base: 'https://deploy.test/api', token: 'secret', composeId: 'old-web' });
+    await store.eas.set('SRC', { app: '@old/app', token: 'expo-secret' });
+    await store.eas.set('OLD', { app: '@another/app', token: 'other' });
+    await assert.rejects(store.projects.moveRuntimeConnections('SRC', 'OLD'));
+    assert.equal((await store.dokploy.get('SRC')).composeId, 'old-web');
+    await store.projects.create({ key: 'LEG', name: 'Legacy destination' });
+    const result = await store.projects.moveRuntimeConnections('SRC', 'LEG');
+    assert.deepEqual(result.moved, ['dokploy', 'eas']);
+    assert.equal(await store.dokploy.get('SRC'), null);
+    assert.equal((await store.dokploy.get('LEG')).token, 'secret');
+    assert.equal((await store.items.get(card.key)).project, 'SRC');
+  });
   test(`${name}: a project, a card, a key`, async (t) => {
     const store = await build();
     t.after(() => store.close?.());

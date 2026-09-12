@@ -546,6 +546,29 @@ export async function createPgStore(url, { schema = null } = {}) {
        * in ONE sequence of statements, or there is a moment in which a card
        * points at a project that no longer exists.
        */
+      async moveRuntimeConnections(from, to) {
+        if (from === to) throw new Error('Different projects required');
+        const client = await pool.connect();
+        try {
+          await client.query('begin');
+          const projects = await client.query('select key from project where key = any($1::text[]) order by key for update', [[from, to]]);
+          if (projects.rowCount !== 2) throw new Error('Both projects must exist');
+          const tables = ['sentry', 'dokploy', 'eas'];
+          for (const table of tables) {
+            const found = await client.query(`select project from ${table} where project = $1`, [to]);
+            if (found.rowCount) throw new Error('Destination already has runtime connections');
+          }
+          const moved = [];
+          for (const table of tables) {
+            const result = await client.query(`update ${table} set project = $2 where project = $1`, [from, to]);
+            if (result.rowCount) moved.push(table);
+          }
+          await client.query('commit');
+          return { from, to, moved };
+        } catch (error) { await client.query('rollback'); throw error; }
+        finally { client.release(); }
+      },
+
       async rekey(oldKey, newKey) {
         const client = await pool.connect();
         try {
