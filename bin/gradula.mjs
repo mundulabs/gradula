@@ -477,8 +477,10 @@ switch (command) {
     if (flags.here && (typeof flags.here !== 'string' || !flags.here.trim())) stop('--here needs a reason; otherwise start creates an isolated worktree.');
     if (!flags.here) {
       const branch = `codex/${key}`;
-      const place = join('.worktrees', 'plan', key);
+      let place = join('.worktrees', 'plan', key);
       try {
+        const currentBranch = execFileSync('git', ['branch', '--show-current'], { encoding: 'utf8' }).trim();
+        if (currentBranch === branch) place = '.';
         const exclude = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { encoding: 'utf8' }).trim();
         const excluded = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
         if (!excluded.split('\n').includes('/.worktrees/')) writeFileSync(exclude, `${excluded}\n/.worktrees/\n`);

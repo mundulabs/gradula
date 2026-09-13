@@ -32,4 +32,8 @@ test('CLI defaults to an isolated worktree and its session can work and release'
  await run(['work',card.key,'--',process.execPath,'-e','process.exit(0)'],tree);
  assert.equal((await g.getItem(card.key)).reservation,null);
  assert.equal((await g.getItem(card.key)).state,'making');
+ await run(['start',card.key],tree);
+ assert.equal((await g.getItem(card.key)).reservation.session,workSession(env,tree));
+ await run(['release-work',card.key],tree);
+ assert.equal((await g.getItem(card.key)).reservation,null);
 });
