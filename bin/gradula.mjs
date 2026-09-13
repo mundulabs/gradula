@@ -34,6 +34,8 @@ const HELP = `gradula — wish, board, standing
   gradula new [<kind>] "<title>" [--text "…"]   kinds: idea, task, venture, milestone, decision
                       [--gate test:tests/x.test.mjs] [--person david] [--file path]
   gradula show <CARD>
+  gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
+  gradula resume <CARD>            brief plus local workspace risk and recent evidence
   gradula approve <CARD>           the review says yes — done, with a reason
   gradula reject <CARD> "what is missing" back to making, and the sentence is the reason
   gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
@@ -325,6 +327,64 @@ function localStanding(row, root = repoRoot()) {
   return { ...row, card: worktreeCard(row), dirty, ahead, inside };
 }
 
+
+
+function clipLine(value, limit = 360) {
+  const clean = String(value ?? '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= limit) return clean;
+  const cut = clean.slice(0, limit - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${cut.slice(0, space > limit * 0.65 ? space : cut.length)}…`;
+}
+
+function shortHistory(entry) {
+  const data = entry.data ?? {};
+  if (entry.verb === 'evidenced') return `${entry.verb} ${data.kind ?? ''} ${data.ref ? String(data.ref).slice(0, 12) : ''}${data.comment ? ` · ${String(data.comment).slice(0, 90)}` : ''}`.trim();
+  if (entry.verb === 'moved') return `${entry.verb} ${data.from ?? ''} → ${data.to ?? ''}${data.reason ? ` · ${String(data.reason).slice(0, 100)}` : ''}`;
+  if (entry.verb === 'started') return `${entry.verb}${data.workspaceReason ? ` · ${String(data.workspaceReason).slice(0, 100)}` : ''}`;
+  if (entry.verb === 'said') return `${entry.verb} · ${String(data.line ?? '').replace(/\s+/g, ' ').slice(0, 120)}`;
+  if (entry.verb === 'deployed') return `${entry.verb} ${data.environment ?? ''}${data.sha ? ` ${String(data.sha).slice(0, 7)}` : ''}`.trim();
+  return entry.verb;
+}
+
+function printBrief(card, { resume = false, local = null } = {}) {
+  const labels = [card.module.length ? `[${card.module.join(' ')}]` : '', card.stack.filter((x) => !card.module.includes(x)).join(' ')].filter(Boolean).join(' ');
+  console.log(`${card.key} · ${card.state} · ${card.title}`);
+  if (labels) console.log(`Labels: ${labels}`);
+  console.log(`Goal: ${clipLine(card.text || card.title)}`);
+  console.log(`Gate: ${card.gate ? `${card.gate.kind} ${card.gate.call}${card.gate.expect ? ` -> ${card.gate.expect}` : ''}` : 'none'}`);
+  if (card.blockedBy?.length) console.log(`Blocked by: ${card.blockedBy.join(', ')}`);
+  if (card.reservation) {
+    const active = Date.parse(card.reservation.until) > Date.now() ? 'active' : 'activity unknown';
+    const files = (card.reservation.files ?? []).slice(0, 6).join(', ');
+    console.log(`Reservation: ${card.reservation.actor} · ${active}${files ? ` · ${files}` : ''}`);
+  } else console.log('Reservation: none');
+  if (resume && local) {
+    const row = local.find((one) => one.card === card.key);
+    if (row) {
+      const bits = [
+        row.dirty === null ? 'status unknown' : row.dirty ? `${row.dirty} dirty` : 'clean',
+        row.ahead === null ? null : row.ahead ? `${row.ahead} local commits not on dev` : 'no local commits',
+        row.inside ? null : 'outside repo folder',
+      ].filter(Boolean);
+      console.log(`Workspace: ${bits.join(' · ')} · ${row.path}`);
+    } else console.log('Workspace: no local task worktree found');
+  }
+  const evidence = (card.history ?? []).filter((e) => ['evidenced', 'deployed', 'moved', 'started', 'said'].includes(e.verb)).slice(-6);
+  if (resume && evidence.length) {
+    console.log('Recent:');
+    for (const entry of evidence) console.log(`- ${String(entry.at ?? '').slice(0, 16).replace('T', ' ')} ${clipLine(shortHistory(entry), 140)}`);
+  } else {
+    const last = [...(card.history ?? [])].reverse().find((e) => ['evidenced', 'deployed', 'moved', 'started', 'said'].includes(e.verb));
+    if (last) console.log(`Last: ${clipLine(shortHistory(last), 140)}`);
+  }
+  const next = card.state === 'ready' ? `gradula start ${card.key}`
+    : card.state === 'making' ? `gradula work ${card.key} -- <command>  ·  or gradula move ${card.key} review --reason "..."`
+      : card.state === 'review' ? `gradula approve ${card.key}  ·  or gradula reject ${card.key} "what is missing"`
+        : card.state === 'ideas' ? `gradula move ${card.key} ready --reason "yes"` : 'none';
+  console.log(`Next: ${next}`);
+}
+
 const [command, ...rest] = process.argv.slice(2);
 const { flags, words } = args(rest);
 
@@ -425,6 +485,21 @@ switch (command) {
       console.log(`  gradula new … --gate test:tests/x.test.mjs   ·   or add it in the sheet`);
     }
     if (card.links?.length) console.log(`  touches: ${card.links.join(', ')}`);
+    break;
+  }
+
+
+  case 'brief':
+  case 'resume': {
+    const key = String(words[0] ?? '').toUpperCase();
+    if (!/^[A-Z]{2,8}-[0-9]{1,7}$/.test(key)) stop(`gradula ${command} <CARD>`);
+    const card = await call(`/api/v1/cards/${key}`);
+    let local = null;
+    if (command === 'resume') {
+      try { const root = repoRoot(); local = worktrees().map((row) => localStanding(row, root)); }
+      catch (error) { console.error(`Workspace unavailable: ${error.message}`); local = []; }
+    }
+    printBrief(card, { resume: command === 'resume', local });
     break;
   }
 
@@ -1142,7 +1217,7 @@ switch (command) {
       }
       const bits = [
         row.dirty === null ? 'status unknown' : row.dirty ? `${row.dirty} dirty` : 'clean',
-        row.ahead === null ? null : row.ahead ? `${row.ahead} commits not on dev` : 'no local commits',
+        row.ahead === null ? null : row.ahead ? `${row.ahead} local commits not on dev` : 'no local commits',
         row.inside ? null : 'outside repo folder',
         `reservation ${lease}`,
       ].filter(Boolean);
@@ -1155,7 +1230,7 @@ switch (command) {
       for (const row of extras) {
         const bits = [
           row.dirty === null ? 'status unknown' : row.dirty ? `${row.dirty} dirty` : 'clean',
-          row.ahead === null ? null : row.ahead ? `${row.ahead} commits not on dev` : 'no local commits',
+          row.ahead === null ? null : row.ahead ? `${row.ahead} local commits not on dev` : 'no local commits',
         ].filter(Boolean);
         console.log(`  ${row.card.padEnd(10)} ${bits.join(' · ')}`);
         console.log(`             ${row.path}`);

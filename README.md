@@ -122,6 +122,8 @@ gradula cards [--state ready] [--kind task] [--module panels] [--area studio] [-
 gradula new [<kind>] "<title>" [--text "…"]   kinds: idea, task, venture, milestone, decision
                     [--gate test:tests/x.test.mjs] [--person david] [--file path]
 gradula show <CARD>
+gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
+gradula resume <CARD>            brief plus local workspace risk and recent evidence
 gradula approve <CARD>           the review says yes — done, with a reason
 gradula reject <CARD> "reason"   back to making, and the sentence is the reason
 gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
@@ -166,6 +168,8 @@ gradula project [--alias "david=David Bläsing"] [--language de|en]
 
 A commit whose message contains `Plan: KEY-42` becomes evidence on that card
 through `gradula sync` (or automatically, once `gradula hook` is installed).
+
+`gradula brief KEY` is the prompt-sized handoff for modern IDE chats: current goal, state, labels, gate, reservation and next command. `gradula resume KEY` adds only the local risk that matters when a chat died or work is stale: matching worktree, dirty file count, commits not on `dev`, and the last few relevant chronicle lines. Use `show` when a person wants the full card; use `brief`/`resume` when an agent needs to continue without dragging the whole board into context.
 
 ### The life of a card, after the code
 
