@@ -261,9 +261,19 @@ export function messages(heralds, moment, { language = 'en', style = 'squares' }
  * no card links; without a repository no commit links — never a guess.
  */
 export function linkify(escaped, { origin = null, repo = null } = {}) {
-  let out = String(escaped ?? '');
+  // Protect explicit URLs and file references before linking keys/hashes.
+  // A prose path is not proof that a file has been pushed to GitHub. Code
+  // entities also stop Telegram treating an .md filename as a domain.
+  const protectedText = [];
+  let out = String(escaped ?? '').replace(
+    /https?:\/\/[^\s<>]+|(?<![\w@])(?:[~.]?\/)?(?:[\w.-]+\/)*[\w.-]+\.(?:md|mdx|json|ya?ml|toml|[cm]?[jt]sx?|rs|py|sh|txt|csv|png|jpe?g|svg|wasm)(?::\d+(?::\d+)?)?(?![\w/-]|\.[\w])/gi,
+    (value) => {
+      const index = protectedText.push(/^https?:\/\//i.test(value) ? value : `<code>${value}</code>`) - 1;
+      return `\u0000${index}\u0000`;
+    },
+  );
   if (origin) out = out.replace(/\b([A-Z]{2,8}-[0-9]{1,7})\b/g, (key) => `<a href="${origin.replace(/\/+$/, '')}/${key}">${key}</a>`);
   // a hash: 7–40 hex characters standing alone — not inside a word, not part of a key, not a number like 2026
   if (repo) out = out.replace(/(^|[^A-Za-z0-9/"#-])([0-9a-f]{7,40})(?![A-Za-z0-9-])/g, (m, before, sha) => (/[a-f]/.test(sha) ? `${before}<a href="https://github.com/${repo}/commit/${sha}">${sha}</a>` : m));
-  return out;
+  return out.replace(/\u0000(\d+)\u0000/g, (_, index) => protectedText[Number(index)]);
 }

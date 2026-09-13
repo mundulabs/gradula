@@ -288,3 +288,17 @@ test('notifications separate the reason and author while history retains the mac
   assert.doesNotMatch(lineFor(moment, { visibility: 'public' }), /David|Codex|Implemented|infra/);
   assert.match(lineFor(move({ actor: 'David (Claude Code · machine)' })), /David via Claude Code$/, 'historical actors are never relabelled as Codex');
 });
+
+
+test('file references stay copyable code without fabricated remote links', async () => {
+  const { linkify } = await import('../src/heralds.mjs');
+  const options = { origin: 'https://grad.test', repo: 'acc/repo' };
+  assert.equal(linkify('Evidence: docs/portable-image-evidence.md and report.json. No push.', options),
+    'Evidence: <code>docs/portable-image-evidence.md</code> and <code>report.json</code>. No push.');
+  assert.equal(linkify('src/MDLA-3/abc1234.rs:12 /Users/dev/docs/check.md', options),
+    '<code>src/MDLA-3/abc1234.rs:12</code> <code>/Users/dev/docs/check.md</code>');
+  const url = 'https://github.com/acc/repo/blob/abc1234/docs/MDLA-3.md';
+  assert.equal(linkify(url, options), url, 'explicit URLs are preserved without nested card or commit links');
+  assert.equal(linkify('Read docs/check.md &amp; MDLA-3', options),
+    'Read <code>docs/check.md</code> &amp; <a href="https://grad.test/MDLA-3">MDLA-3</a>');
+});
