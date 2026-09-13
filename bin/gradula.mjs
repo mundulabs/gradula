@@ -62,6 +62,9 @@ const HELP = `gradula — wish, board, standing
                                  an empty axis is filled, a touched one is asked
   gradula suggestions              what the cartographer sees (it changes nothing)
   gradula work <CARD> [-- <cmd>]   say you are working; the board shows it live
+  gradula workspace                local worktrees beside the board: dirty, ahead, missing
+  gradula discard-worktree <CARD> --reason "…" [--discard-changes "…"] [--discard-commits "…"]
+                                 remove a local task worktree; dirty work or local commits need their own reason
   gradula github [<CARD>]          what hangs on a card in GitHub; without a card: connect
                  --repo owner/name --token <read token>
   gradula health [--quiet 14]      what is wrong with the board itself — no score
@@ -276,6 +279,50 @@ function vocabularyOf(root = process.cwd()) {
   return [...module.values()]
     .map((one) => { const area = areaFor(one.paths); return area ? { ...one, area } : one; })
     .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+function git(args, { cwd = process.cwd(), soft = false } = {}) {
+  try { return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
+  catch (error) { if (soft) return null; throw error; }
+}
+
+function repoRoot() {
+  return git(['rev-parse', '--show-toplevel']);
+}
+
+function worktrees() {
+  const out = git(['worktree', 'list', '--porcelain'], { soft: true });
+  if (!out) return [];
+  const rows = [];
+  let row = null;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      if (row) rows.push(row);
+      row = { path: line.slice(9), branch: null, head: null };
+    } else if (row && line.startsWith('branch ')) row.branch = line.slice(7).replace(/^refs\/heads\//, '');
+    else if (row && line.startsWith('HEAD ')) row.head = line.slice(5);
+  }
+  if (row) rows.push(row);
+  return rows;
+}
+
+function worktreeCard(row) {
+  return cardOfBranch(row.branch) ?? (/\/([A-Z]{2,8}-[1-9][0-9]{0,6})$/.exec(row.path)?.[1] ?? null);
+}
+
+function localStanding(row, root = repoRoot()) {
+  const status = git(['-C', row.path, 'status', '--porcelain'], { soft: true });
+  const dirty = status === null ? null : status.split('\n').filter(Boolean).length;
+  let ahead = null;
+  if (row.branch && row.branch !== 'dev') {
+    const base = git(['-C', row.path, 'rev-parse', '--verify', 'dev'], { soft: true });
+    if (base) {
+      const count = git(['-C', row.path, 'rev-list', '--count', 'dev..HEAD'], { soft: true });
+      ahead = count === null ? null : Number(count);
+    }
+  }
+  const inside = row.path === root || row.path.startsWith(`${root}/`);
+  return { ...row, card: worktreeCard(row), dirty, ahead, inside };
 }
 
 const [command, ...rest] = process.argv.slice(2);
@@ -1076,6 +1123,78 @@ switch (command) {
     await call(`/api/v1/cards/${key}/release-work`, { method: 'POST', soft: true }).catch(error => console.error(error.message));
     console.log(code === 0 ? `\n${key}: command finished; the heartbeat has stopped.` : `\n${key}: exited ${code}.`);
     process.exit(code ?? 0);
+  }
+
+  case 'workspace': {
+    const cards = await call('/api/v1/cards?state=making');
+    const byKey = new Map(cards.map((card) => [card.key, card]));
+    const root = repoRoot();
+    const local = worktrees().map((row) => localStanding(row, root));
+    const byCard = new Map(local.filter((row) => row.card).map((row) => [row.card, row]));
+    console.log(`Repository: ${root}`);
+    console.log(`Making: ${cards.length} card${cards.length === 1 ? '' : 's'}`);
+    for (const card of cards) {
+      const row = byCard.get(card.key);
+      const lease = card.reservation && Date.parse(card.reservation.until) > Date.now() ? 'active' : card.reservation ? 'unknown' : 'none';
+      if (!row) {
+        console.log(`  ${card.key.padEnd(10)} no local worktree · reservation ${lease}`);
+        continue;
+      }
+      const bits = [
+        row.dirty === null ? 'status unknown' : row.dirty ? `${row.dirty} dirty` : 'clean',
+        row.ahead === null ? null : row.ahead ? `${row.ahead} commits not on dev` : 'no local commits',
+        row.inside ? null : 'outside repo folder',
+        `reservation ${lease}`,
+      ].filter(Boolean);
+      console.log(`  ${card.key.padEnd(10)} ${bits.join(' · ')}`);
+      console.log(`             ${row.path}`);
+    }
+    const extras = local.filter((row) => row.card && !byKey.has(row.card));
+    if (extras.length) {
+      console.log('\nLocal task worktrees without a making card:');
+      for (const row of extras) {
+        const bits = [
+          row.dirty === null ? 'status unknown' : row.dirty ? `${row.dirty} dirty` : 'clean',
+          row.ahead === null ? null : row.ahead ? `${row.ahead} commits not on dev` : 'no local commits',
+        ].filter(Boolean);
+        console.log(`  ${row.card.padEnd(10)} ${bits.join(' · ')}`);
+        console.log(`             ${row.path}`);
+      }
+    }
+    break;
+  }
+
+  case 'discard-worktree': {
+    const key = String(words[0] ?? '').toUpperCase();
+    if (!/^[A-Z]{2,8}-[0-9]{1,7}$/.test(key)) stop('gradula discard-worktree <CARD> --reason "…"');
+    const reason = typeof flags.reason === 'string' ? flags.reason.trim() : '';
+    if (!reason) stop('--reason is required; discarding local work must leave a sentence behind.');
+    const root = repoRoot();
+    const row = worktrees().map((one) => localStanding(one, root)).find((one) => one.card === key && one.path !== root);
+    if (!row) stop(`${key}: no local task worktree found.`);
+    if (row.dirty === null) stop(`${key}: cannot read worktree status; inspect ${row.path} by hand.`);
+    if (row.dirty > 0 && !(typeof flags['discard-changes'] === 'string' && flags['discard-changes'].trim())) {
+      stop(`${key}: ${row.dirty} dirty file${row.dirty === 1 ? '' : 's'} in ${row.path}. Add --discard-changes "why those local edits can go".`);
+    }
+    if ((row.ahead ?? 0) > 0 && !(typeof flags['discard-commits'] === 'string' && flags['discard-commits'].trim())) {
+      stop(`${key}: ${row.ahead} commit${row.ahead === 1 ? '' : 's'} not on dev. Add --discard-commits "why those commits can stay only on the branch or be ignored".`);
+    }
+    const args = ['worktree', 'remove'];
+    if (row.dirty > 0) args.push('--force');
+    args.push(row.path);
+    git(args);
+    const discardLine = [
+      `Local worktree removed: ${reason}`,
+      row.dirty > 0 ? `Discarded local changes: ${flags['discard-changes'].trim()}` : null,
+      (row.ahead ?? 0) > 0 ? `Local commits kept on ${row.branch}: ${flags['discard-commits'].trim()}` : null,
+    ].filter(Boolean).join('\n');
+    await call(`/api/v1/cards/${key}/say`, { method: 'POST', body: { text: discardLine }, soft: true }).catch((error) => console.error(`Could not write discard note: ${error.message}`));
+    await call(`/api/v1/cards/${key}/release-work`, { method: 'POST', soft: true }).catch(() => null);
+    console.log(`${key}: removed local worktree`);
+    console.log(`Reason: ${reason}`);
+    if ((row.ahead ?? 0) > 0) console.log(`Branch kept: ${row.branch}. Delete it separately only after the commits are pushed, synced, or deliberately abandoned.`);
+    console.log(`Next: move ${key} to ready or ice with a reason if the work should not continue.`);
+    break;
   }
 
   /**

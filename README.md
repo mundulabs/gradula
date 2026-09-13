@@ -126,7 +126,8 @@ gradula approve <CARD>           the review says yes — done, with a reason
 gradula reject <CARD> "reason"   back to making, and the sentence is the reason
 gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
 gradula confirm <CARD>…          take over the labels a rule proposed
-gradula start <CARD> [--tree]    --tree creates a branch and a worktree
+gradula start <CARD>             creates an isolated branch/worktree by default
+               --here "reason"   stay in this checkout when one developer intentionally combines related work
                [--anyway "why"]  start a card that waits on another
 gradula link <CARD> <needs|blocks|part-of|resembles|touches> <CARD>
 gradula sync [--since <ref>]     send commits carrying "Plan: CARD" as evidence
@@ -139,6 +140,9 @@ gradula publish|unpublish <CARD> what may leave the house
 gradula relabel                  run the label rules over old cards
 gradula suggestions              what the cartographer sees (it changes nothing)
 gradula work <CARD> [-- <cmd>]   say you are working; the board shows it live
+gradula workspace                local worktrees beside the board: dirty, ahead, missing
+gradula discard-worktree <CARD> --reason "…" [--discard-changes "…"] [--discard-commits "…"]
+                                 remove a local task worktree; dirty work or local commits need their own reason
 gradula github [<CARD>] [--repo owner/name --token <read token>]
 gradula health [--quiet 14]      what is wrong with the board itself
 gradula goals                    milestones, their coverage, the nearest date first
@@ -366,6 +370,8 @@ A reservation lasts 90 seconds and is renewed every 25 seconds by `work`. The bo
 Concurrent starts use a database compare-and-swap: one wins, the other must refresh. An active reservation held by another session rejects a start unless `--takeover "reason"` is supplied. Its reason and previous actor are recorded. Only the owning session can renew or release; old sessions fail after a handover. `gradula release-work KEY` leaves the card state unchanged. Moving out of Making releases its reservation. Expiry means **activity unknown**, not Done or discarded changes; reserved cards are not automatically put back on Ready by the stalled-card sweep.
 
 Planned scope uses repository-relative files or folders. Shared files/folders warn with the other card, actor and activity; shared modules give a lighter warning. No module or file is exclusively locked. Same-developer overlap is advisory: the worker can decide whether one checkout is clearer than several. Another active owner in the same files is a coordination warning, and taking over that card still requires a recorded reason. Start, card details and heartbeat responses include overlaps, so an earlier worker learns about a later start on its next heartbeat. These checks use declared scope and recorded evidence; Gradula does not inspect another developer's editor or prevent semantic/Git merge conflicts. Separate worktrees, small PRs, review and up-to-date integration checks remain necessary.
+
+`gradula workspace` is the local sweep before resuming, cleaning or handing work to a new chat. It joins the board's Making cards with this repository's Git worktrees and reports missing local worktrees, dirty files, commits not on `dev`, and task worktrees whose cards are no longer Making. `gradula discard-worktree KEY --reason "…"` removes only the local worktree and tries to release this session's reservation; the branch is kept. Dirty files require `--discard-changes "…"`, and local commits require `--discard-commits "…"`, so destructive cleanup leaves a sentence instead of a silence.
 
 
 Ordinary herald bursts are grouped by distinct card: repeated changes to one card retain its latest detailed message. A confirmed GitHub pre-start billing/budget failure is identified in the internal pipeline message as requiring local PR verification; it never turns failed or skipped checks green. The repository owns verification policy and execution, not Gradula. Device login exits unsuccessfully when not approved and stores the issued credentials with owner-only permissions.

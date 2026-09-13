@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,rmSync} from 'node:fs';
+import {existsSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {execFileSync,spawn} from 'node:child_process';
@@ -56,4 +56,29 @@ test('CLI can deliberately reserve work in the current checkout', async t => {
  const held=await g.getItem(card.key);
  assert.equal(held.reservation.session,workSession(env,dir));
  assert.ok(held.history.some(e=>e.data?.workspaceReason==='same developer is integrating related work'));
+});
+
+test('CLI workspace cleanup refuses silent loss of local edits', async t => {
+ const dir=mkdtempSync(join(tmpdir(),'gradula-discard-'));
+ t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git(['init','-b','dev']);git(['-c','user.name=Test','-c','user.email=test@example.invalid','commit','--allow-empty','-m','Initial']);
+ const store=createMemoryStore(),g=createGradula(store);await g.createProject({key:'PRB',name:'Test'});
+ const card=await g.addItem('PRB',{kind:'task',title:'Discard local work'},'test');const auth=await store.tokens.mint({project:'PRB',name:'test'});
+ const server=createServer(createApi(g));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const env={...process.env,GRADULA_URL:`http://127.0.0.1:${server.address().port}`,GRADULA_TOKEN:auth.token,GRADULA_AGENT_TOKEN:'',GRADULA_SESSION:'',CODEX_THREAD_ID:''};
+ const cli=fileURLToPath(new URL('../bin/gradula.mjs',import.meta.url));
+ const run=(args,cwd=dir)=>new Promise((resolve,reject)=>{let output='';const child=spawn(process.execPath,[cli,...args],{cwd,env});child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);child.on('error',reject);child.on('close',code=>code===0?resolve(output):reject(Error(output)));});
+ await run(['start',card.key,'--files','src/audio']);
+ const tree=join(dir,'.worktrees','plan',card.key);
+ writeFileSync(join(tree,'local.txt'),'not kept');
+ await assert.rejects(run(['discard-worktree',card.key,'--reason','restart the ticket cleanly']),/dirty file/);
+ assert.equal(existsSync(tree),true);
+ const output=await run(['discard-worktree',card.key,'--reason','restart the ticket cleanly','--discard-changes','scratch notes only']);
+ assert.match(output,/removed local worktree/);
+ assert.equal(existsSync(tree),false);
+ assert.ok(git(['branch','--list',`codex/${card.key}`]));
+ const history=(await g.getItem(card.key)).history;
+ assert.ok(history.some(e=>e.verb==='said' && /Local worktree removed: restart the ticket cleanly/.test(e.data.line)));
+ assert.ok(history.some(e=>e.verb==='said' && /Discarded local changes: scratch notes only/.test(e.data.line)));
 });
