@@ -68,13 +68,8 @@ export const TEMPLATES = {
     line: 'Everything that moves — for the team channel.',
     filter: { verbs: ['created', 'moved', 'started', 'evidenced', 'decided', 'ingested', 'resurfaced', 'released', 'notes'], voice: 'plain', pipeline: true },
   },
-  /*
-   * Release meant "target: release" — the ladder of how far a wish may travel,
-   * which nobody sets since the board moves by itself. Since 2026-09-10 done
-   * IS production: a card goes to done when its commits are seen on main
-   * (deployed.mjs, arrived) or when a hand approves it. So "what left the
-   * house" is exactly: moved to done.
-   */
+  // Release notifications describe releases. Done is separate: confirmed
+  // production arrival or approval may complete a card, subject to its gate.
   release: {
     name: 'Release',
     line: 'One note per release — web, iOS, Android, update — with the cards it carries.',
