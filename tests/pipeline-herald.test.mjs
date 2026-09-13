@@ -6,7 +6,7 @@ import { createPipelineHerald, pipelineText, stepMark } from '../src/pipeline-he
 import { send, edit } from '../src/telegram.mjs';
 
 const now = '2026-09-12T12:00:00Z';
-const run = { id: 10, run_attempt: 1, name: 'Release', head_branch: 'main', head_sha: 'abcdef123456', status: 'in_progress', conclusion: null, updated_at: now };
+const run = { id: 10, run_attempt: 1, name: 'Release', head_branch: 'main', head_sha: 'abcdef1234567890abcdef1234567890abcdef12', status: 'in_progress', conclusion: null, updated_at: now };
 const job = { name: 'Ship iOS', status: 'in_progress', steps: [
   { name: 'Build', status: 'completed', conclusion: 'success' },
   { name: 'Upload', status: 'in_progress' },
@@ -22,6 +22,7 @@ async function fixture() {
   const data = { runs: [structuredClone(run)], jobs: [structuredClone(job)], fail: false };
   const fetchImpl = async (url) => {
     if (data.fail) throw new Error('offline');
+    if (url.includes('/commits/')) return { status: data.localUnavailable ? 403 : 200, json: async () => ({ statuses: data.local ? [data.local] : [] }) };
     assert.ok(url.startsWith('https://api.github.com/repos/owner/repo/actions/runs'));
     return { status: 200, json: async () => url.includes('/jobs?') ? { jobs: data.jobs, total_count: data.jobs.length } : { workflow_runs: data.runs } };
   };
@@ -122,4 +123,34 @@ test('Telegram returns message ids, edits only that id, and treats unchanged con
   assert.equal(requests[1].body.message_id, 17);
   assert.equal(requests[1].body.disable_web_page_preview, true);
   assert.deepEqual(await edit(address, 17, 'second', { fetchImpl: async () => ({ status: 400, json: async () => ({ ok: false, description: 'Bad Request: message is not modified' }) }) }), { sent: true, messageId: 17 });
+});
+
+
+test('local evidence arriving after hosted completion edits the same message without inventing hosted success', async () => {
+  const f = await fixture();
+  f.data.runs[0] = { ...run, status: 'completed', conclusion: 'cancelled' };
+  f.data.jobs = [];
+  const monitor = f.make();
+  await monitor.poll('PRB');
+  f.data.local = { context: 'mundus/local-ci', state: 'success', description: 'Passed locally' };
+  await monitor.poll('PRB');
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[1].method, 'edit');
+  assert.equal(f.calls[1].id, 42);
+  assert.match(f.calls[1].text, /Local CI · success/);
+  assert.match(f.calls[1].text, /Attempt 1 · cancelled/);
+  assert.doesNotMatch(f.calls[1].text, /deployed/);
+  await monitor.poll('PRB');
+  assert.equal(f.calls.length, 2);
+  f.data.local.state = 'failure';
+  await monitor.poll('PRB');
+  assert.match(f.calls[2].text, /Local CI · failure/);
+});
+
+
+test('missing commit-status access never hides hosted job progress', async () => {
+  const f = await fixture(); f.data.localUnavailable = true;
+  await f.make().poll('PRB');
+  assert.match(f.calls[0].text, /Local CI · unavailable/);
+  assert.match(f.calls[0].text, /Ship iOS · in_progress/);
 });

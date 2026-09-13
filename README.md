@@ -378,3 +378,9 @@ Settings → **Manual acceptance required** defaults to off. When off, confirmed
 **Accept and finish** moves reviewed work to Done without pushing, merging or deploying. Missing or failed gate evidence disables the action with an explanation. `gradula gates` records verification and no longer automatically accepts work.
 
 Card chips separate **Git dev/main** from **Deployment DEV/PROD**. Git counts show confirmed recorded commits on each branch; the lookup is bounded to the latest 100 commits per branch, so an unmatched older commit remains unconfirmed, not proven absent. Deployment chips preserve historical delivery observations and are not proof of a Git push.
+
+
+The Workshop pipeline message also reads the `mundus/local-ci` commit status for
+its exact full Git SHA. Local verification is labelled developer-reported and
+never changes GitHub's workflow outcome or implies deployment. The same message
+is refreshed when local evidence arrives after a hosted run completes or skips.

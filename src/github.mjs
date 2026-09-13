@@ -247,7 +247,7 @@ export async function fetchWorkflowRuns({ repo, token }, { fetchImpl = fetch } =
   if (status !== 200 || !Array.isArray(body?.workflow_runs)) throw new Error(`GitHub workflow runs: HTTP ${status}`);
   return body.workflow_runs.map((run) => ({
     id: run.id, attempt: run.run_attempt ?? 1, name: line(run.name),
-    branch: line(run.head_branch), commit: String(run.head_sha ?? '').slice(0, 7),
+    branch: line(run.head_branch), sha: String(run.head_sha ?? ''), commit: String(run.head_sha ?? '').slice(0, 7),
     status: run.status, conclusion: run.conclusion, at: run.updated_at ?? run.created_at,
     url: `https://github.com/${repo}/actions/runs/${run.id}`,
   }));
@@ -264,4 +264,15 @@ export async function fetchWorkflowJobs({ repo, token }, run, { fetchImpl = fetc
     if (jobs.length >= body.total_count || body.jobs.length < 100) return jobs;
   }
   throw new Error('GitHub workflow has more than 500 jobs; see the run for progress.');
+}
+
+/** A developer-published result for this exact commit; never a hosted CI result. */
+export async function fetchLocalVerification({ repo, token }, sha, { fetchImpl = fetch } = {}) {
+  if (!/^[a-f0-9]{40}$/i.test(sha ?? '')) return null;
+  try {
+    const { status, body } = await ask(`/repos/${repo}/commits/${sha}/status?per_page=100`, token, fetchImpl);
+    if (status !== 200 || !Array.isArray(body?.statuses)) return { state: 'unavailable' };
+    const result = body.statuses.find(s => s.context === 'mundus/local-ci');
+    return result ? { state: result.state, at: result.updated_at, description: line(result.description) } : null;
+  } catch { return { state: 'unavailable' }; }
 }

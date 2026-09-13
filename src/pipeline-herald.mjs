@@ -1,7 +1,7 @@
 /** One durable Telegram message per workflow attempt, updated from real jobs.
  * This monitor does not depend on an open browser. Outside never receives it.
  */
-import { fetchWorkflowRuns, fetchWorkflowJobs } from './github.mjs';
+import { fetchWorkflowRuns, fetchWorkflowJobs, fetchLocalVerification } from './github.mjs';
 import { hashToken } from './store.mjs';
 
 const label = (part) => part.status === 'completed' ? (part.conclusion ?? 'unknown') : (part.status ?? 'unknown');
@@ -10,8 +10,9 @@ export const stepMark = (step) => {
   return step.status === 'in_progress' ? '▩' : '□';
 };
 
-export function pipelineText(project, run, jobs) {
+export function pipelineText(project, run, jobs, local = null) {
   const lines = [`${project} · ${run.name} · ${run.branch} · ${run.commit}`, `Attempt ${run.attempt} · ${label(run)}`];
+  if (local) lines.push(`${local.state === 'success' ? '■' : local.state === 'pending' ? '▩' : '□'} Local CI · ${local.state} · developer-reported for this commit`);
   for (const job of jobs) {
     const steps = job.steps.length ? job.steps : [job];
     const bar = steps.slice(0, 40).map(stepMark).join('') + (steps.length > 40 ? '…' : '');
@@ -22,7 +23,7 @@ export function pipelineText(project, run, jobs) {
     lines.push(line);
   }
   if (jobs.some(job => job.localFallback === 'billing')) lines.push('GitHub billing blocked the job before tests started. Local PR verification is required; no test failure is waived.');
-  if (!jobs.length) lines.push('□ Waiting for job details');
+  if (!jobs.length) lines.push(run.status === 'completed' ? '□ No hosted job executed' : '□ Waiting for GitHub job details');
   lines.push('■ succeeded · ▩ running · □ waiting / stopped · · skipped', run.url);
   return lines.join('\n');
 }
@@ -37,6 +38,7 @@ export function createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl = fe
     if (!connection?.repo) return [];
     const runs = await fetchWorkflowRuns(connection, { fetchImpl });
     const jobs = new Map();
+    const localResults = new Map();
     const results = [];
     for (const herald of heralds) {
       const kind = heraldKinds[herald.kind];
@@ -53,10 +55,11 @@ export function createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl = fe
         const previous = await store.heraldDeliveries.get(herald.id, key);
         // Do not replay completed history when a subscription is first enabled.
         if (!previous && run.status === 'completed' && (!run.at || run.at < watch.since)) continue;
-        if (previous?.completed && previous.updatedAt === run.at) continue;
+        // Local evidence can arrive after a hosted run has finished or skipped.
         const jobKey = `${run.id}:${run.attempt}`;
         if (!jobs.has(jobKey)) jobs.set(jobKey, await fetchWorkflowJobs(connection, run, { fetchImpl }));
-        const text = pipelineText(project, run, jobs.get(jobKey));
+        if (!localResults.has(run.sha)) localResults.set(run.sha, await fetchLocalVerification(connection, run.sha, { fetchImpl }));
+        const text = pipelineText(project, run, jobs.get(jobKey), localResults.get(run.sha));
         const fingerprint = hashToken(text);
         if (fingerprint === previous?.fingerprint) {
           if (previous.updatedAt !== run.at) await store.heraldDeliveries.set(herald.id, key, { ...previous, updatedAt: run.at, completed: run.status === 'completed' });
