@@ -409,3 +409,13 @@ test('agent configuration folders belong to tooling, including old stored areas'
   assert.equal((await gradula.getVocabulary('AREA'))[0].area, 'tooling');
   assert.equal(normalizeVocabulary([{ id: 'ci', paths: ['.github/workflows'] }])[0].area, 'infra');
 });
+
+
+test('CI pipelines do not imply GPU work, while explicit graphics evidence still does', () => {
+  for (const title of ['Publish local pre-push verification for pipeline progress', 'Show local CI evidence alongside GitHub workflow progress', 'Release pipeline']) {
+    assert.ok(!labelsFor({title}).stack.includes('gpu'));
+  }
+  assert.ok(labelsFor({title:'GPU render pipeline'}).stack.includes('gpu'));
+  assert.ok(labelsFor({title:'Improve shader pipeline'}).stack.includes('gpu'));
+  assert.ok(labelsFor({title:'Update pipeline',files:['shaders/render.wgsl']}).stack.includes('gpu'));
+});

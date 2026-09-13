@@ -68,7 +68,8 @@ export const STACK_WORDS = {
   // `token` is NOT in that list. On this board a token is almost always an
   // access token — "store the Sentry token and hook" came back labelled
   // `model`, and a craft that is wrong is worse than a craft that is absent.
-  gpu: ['gpu', 'shader', 'wgsl', 'glsl', 'webgpu', 'vertex', 'fragment', 'raymarch', 'raymarcher', 'compute', 'textur', 'texture', 'pipeline'],
+  // A pipeline may be CI, release or data processing; it is not GPU evidence.
+  gpu: ['gpu', 'shader', 'wgsl', 'glsl', 'webgpu', 'vertex', 'fragment', 'raymarch', 'raymarcher', 'compute', 'textur', 'texture'],
 };
 
 const lower = (value) => String(value ?? '').toLowerCase();
