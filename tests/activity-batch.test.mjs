@@ -62,3 +62,18 @@ test('ordinary bursts combine before Done', async () => {
   assert.match(sent[0],/2 cards updated/);
   assert.match(sent[0],/review/);
 });
+
+
+test('several events for one card send the latest detailed message', async () => {
+  const sent = [];
+  const g = createGradula(createMemoryStore(), { activityWindowMs: 30, origin:'https://board.test', heraldKinds: { probe: { async send(_c,text) { sent.push(text); return {sent:true}; } } } });
+  await g.createProject({key:'PRB',name:'Probe'});
+  await g.setHerald('PRB',{kind:'probe',name:'Workshop',chat:'a',token:'x',template:'workshop'},'human');
+  const card = await g.addItem('PRB',{title:'Latest detailed title',kind:'task'},'human');
+  await g.moveItem(card.key,'review','human',{reason:'Latest review evidence'});
+  await g.settle();
+  assert.equal(sent.length,1);
+  assert.match(sent[0],/review/);
+  assert.match(sent[0],/Latest detailed title/);
+  assert.doesNotMatch(sent[0],/cards updated|cards completed|•/);
+});

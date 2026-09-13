@@ -193,7 +193,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const send = (text, options) => kind.send({ token: keyOf(herald), chat: herald.chat }, text, options);
         const result = ['created', 'started', 'moved', 'evidenced', 'decided', 'changed'].includes(verb)
           ? await activityBatch.enqueue(`${item.project}:${herald.id}`, { card, body, verb, to: data?.to }, async (entries) => {
-            if (entries.length === 1) return send(body, { html, preview: card.visibility === 'public' });
+            if (new Set(entries.map(entry => entry.card.key)).size === 1) {
+              const latest = entries.at(-1);
+              return send(latest.body, { html, preview: latest.card.visibility === 'public' });
+            }
             let formatted;
             for (let limit = 12; limit >= 0; limit--) {
               const summary = activitySummary(entries, board?.name ?? item.project, { language: board?.language, limit });

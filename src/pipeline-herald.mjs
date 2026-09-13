@@ -21,6 +21,7 @@ export function pipelineText(project, run, jobs) {
     if ([...lines, line, run.url].join('\n').length > 3700) { lines.push('More jobs in the workflow run.'); break; }
     lines.push(line);
   }
+  if (jobs.some(job => job.localFallback === 'billing')) lines.push('GitHub billing blocked the job before tests started. Local PR verification is required; no test failure is waived.');
   if (!jobs.length) lines.push('□ Waiting for job details');
   lines.push('■ succeeded · ▩ running · □ waiting / stopped · · skipped', run.url);
   return lines.join('\n');

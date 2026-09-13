@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { verify, branchStanding, commitUrl, publicConnection } from '../src/github.mjs';
+import { verify, billingBlocked, branchStanding, commitUrl, publicConnection } from '../src/github.mjs';
 
 const replies = (map) => async (url) => {
   const key = Object.keys(map).find((k) => String(url).includes(k));
@@ -24,7 +24,7 @@ test('a repository you cannot see is an answer, not a crash', async () => {
   assert.deepEqual(out, { ok: false, reason: 'the repository is not visible with this key' });
 });
 
-test('red beats running beats green', () => {
+test('red beats running beats green', async () => {
   // Whoever sees "green" because one check out of ten was green is wrong —
   // and precisely when it matters.
   const cases = [
@@ -32,6 +32,8 @@ test('red beats running beats green', () => {
     [[{ status: 'completed', conclusion: 'success' }, { status: 'in_progress' }], 'running'],
     [[{ status: 'completed', conclusion: 'success' }], 'green'],
     [[], 'idle'],
+    [[{ status:'completed', conclusion:'skipped' }], 'idle'],
+    [[{ status:'completed', conclusion:'success' }, {status:'completed', conclusion:'neutral'}], 'idle'],
   ];
   for (const [runs, want] of cases) {
     const fetchImpl = replies({
@@ -39,7 +41,7 @@ test('red beats running beats green', () => {
       '/commits/plan': { sha: 'abcdef1234567890', commit: { message: 'A title\n\nand a long body' } },
       'check-runs': { check_runs: runs.map((r, i) => ({ ...r, name: `check ${i}`, html_url: 'https://x' })) },
     });
-    return branchStanding({ repo: 'a/b', token: 't', branch: 'plan/GRD-33' }, { fetchImpl })
+    await branchStanding({ repo: 'a/b', token: 't', branch: 'plan/GRD-33' }, { fetchImpl })
       .then((out) => assert.equal(out.standing, want, `${JSON.stringify(runs)} → ${want}`));
   }
 });
@@ -68,4 +70,14 @@ test('a branch that does not exist is not a failure', async () => {
 
 test('the key does not leave the service', () => {
   assert.equal(publicConnection({ repo: 'a/b', token: 'secret' }).token, 'set');
+});
+
+
+test('local fallback requires explicit GitHub pre-start billing evidence', async () => {
+  for (const [message,expected] of [
+    ['The job was not started because recent account payments have failed or your spending limit needs to be increased.',true],
+    ['The test failed with a payment validation error.',false],
+    ['Job cancelled',false],
+  ]) assert.equal(await billingBlocked({repo:'a/b',token:'t'},'123',{fetchImpl:replies({'/annotations':[{message}]})}),expected);
+  assert.equal(await billingBlocked({repo:'a/b'},'123',{fetchImpl:replies({})}),false);
 });

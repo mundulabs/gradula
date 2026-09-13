@@ -18,7 +18,7 @@
  * ignores it.
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, chmodSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
@@ -1375,7 +1375,7 @@ switch (command) {
       if (poll.status === 'expired') { console.log('\nThe request expired. Run it again.'); break; }
       process.stdout.write('.');
     }
-    if (!keys?.token) { if (Date.now() >= until) console.log('\nTimed out. Run it again.'); break; }
+    if (!keys?.token) { if (Date.now() >= until) console.log('\nTimed out. Run it again.'); process.exitCode = 1; break; }
     process.stdout.write('\n');
 
     // Write the machine's own file — the nearest .gradula.env, or one here.
@@ -1390,6 +1390,7 @@ switch (command) {
     writeFileSync(file, mergeEnv(had, {
       GRADULA_URL: base, GRADULA_TOKEN: keys.token, ...(keys.agentToken ? { GRADULA_AGENT_TOKEN: keys.agentToken } : {}),
     }));
+    chmodSync(file, 0o600);
     const agent = keys.agentToken ? ` — and your sessions as ${agentKeyName(machine)}` : '';
     console.log(`Done. ${file} speaks as you${agent}. No actor line needed.`);
     break;

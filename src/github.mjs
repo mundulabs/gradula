@@ -97,7 +97,7 @@ export async function branchStanding({ repo, token, branch }, { fetchImpl = fetc
       // whoever sees only "green" because one of ten checks was green is wrong.
       standing: checks.some((c) => c.standing === 'red') ? 'red'
         : checks.some((c) => c.standing === 'running') ? 'running'
-        : checks.length ? 'green' : 'idle',
+        : checks.length && checks.every(c => c.standing === 'green') ? 'green' : 'idle',
     };
   } catch (error) {
     return { ok: false, reason: line(error.message) };
@@ -133,6 +133,19 @@ export async function fetchPipeline({ repo, token }, { fetchImpl = fetch, limit 
   } catch (error) {
     return { ok: false, reason: line(error.message) };
   }
+}
+
+/** Only GitHub's explicit pre-start billing annotation permits local fallback.
+ * A failure in a test, or missing access to diagnostics, never implies billing.
+ */
+export async function billingBlocked({repo, token}, checkId, {fetchImpl = fetch} = {}) {
+  if (!/^\d+$/.test(String(checkId))) return false;
+  try {
+    const {status, body} = await ask(`/repos/${repo}/check-runs/${checkId}/annotations`, token, fetchImpl);
+    return status === 200 && Array.isArray(body) && body.some(a =>
+      /job was not started because/i.test(a.message ?? '') &&
+      /payments have failed|spending limit/i.test(a.message ?? ''));
+  } catch { return false; }
 }
 
 /** The releases: a tag, a date, a link — what the store and TestFlight hang on. */
@@ -245,8 +258,9 @@ export async function fetchWorkflowJobs({ repo, token }, run, { fetchImpl = fetc
   for (let page = 1; page <= 5; page++) {
     const { status, body } = await ask(`/repos/${repo}/actions/runs/${run.id}/attempts/${run.attempt}/jobs?per_page=100&page=${page}`, token, fetchImpl);
     if (status !== 200 || !Array.isArray(body?.jobs)) throw new Error(`GitHub workflow jobs: HTTP ${status}`);
-    jobs.push(...body.jobs.map((job) => ({ name: line(job.name), status: job.status, conclusion: job.conclusion,
-      steps: (job.steps ?? []).map((step) => ({ name: line(step.name), status: step.status, conclusion: step.conclusion })) })));
+    jobs.push(...await Promise.all(body.jobs.map(async (job) => ({ name: line(job.name), status: job.status, conclusion: job.conclusion,
+      ...(job.conclusion === 'failure' && !(job.steps ?? []).length && await billingBlocked({repo,token}, job.check_run_url?.split('/').at(-1), {fetchImpl}) ? {localFallback: 'billing'} : {}),
+      steps: (job.steps ?? []).map((step) => ({ name: line(step.name), status: step.status, conclusion: step.conclusion })) }))));
     if (jobs.length >= body.total_count || body.jobs.length < 100) return jobs;
   }
   throw new Error('GitHub workflow has more than 500 jobs; see the run for progress.');
