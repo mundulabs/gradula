@@ -1,9 +1,9 @@
-/** Explicit part-of relationships organize the board. Shared files are
+/** Explicit parents take priority; shared modules offer a labeled fallback. Shared files are
  * overlap evidence, not a product hierarchy; they remain in collision checks.
  */
 import type { Card } from './api';
 
-export type Bond = { reason: 'venture'; detail: string };
+export type Bond = { reason: 'venture' | 'module'; detail: string };
 export type Group = { cards: Card[]; bond: Bond | null };
 
 /**
@@ -28,6 +28,27 @@ export function group(cards: Card[], parentOf: Map<string, string> = new Map(), 
     if (part.length < 2) continue;
     for (const card of part) taken.add(card.key);
     groups.push({ cards: part, bond: { reason: 'venture', detail: titles.get(venture)?.trim() ? `${titles.get(venture)} · ${venture}` : venture } });
+  }
+
+  // Broad maintenance labels do not describe a feature. Prefer smaller,
+  // more specific shared modules, never a bucket spanning most of a column.
+  const maintenance = new Set(['docs', 'doc', 'repo', 'tests', 'tools', 'tooling', 'github', 'githooks']);
+  const modules = new Map<string, Card[]>();
+  for (const card of cards) {
+    if (taken.has(card.key) || parentOf.has(card.key)) continue;
+    for (const module of new Set(card.module ?? [])) {
+      if (maintenance.has(module)) continue;
+      if (!modules.has(module)) modules.set(module, []);
+      modules.get(module)!.push(card);
+    }
+  }
+  const candidates = [...modules].filter(([, part]) => part.length >= 2 && part.length <= Math.max(2, Math.min(8, cards.length / 2)))
+    .sort(([a, x], [b, y]) => x.length - y.length || a.localeCompare(b));
+  for (const [module, sharing] of candidates) {
+    const free = sharing.filter((card) => !taken.has(card.key));
+    if (free.length < 2) continue;
+    free.forEach((card) => taken.add(card.key));
+    groups.push({ cards: free, bond: { reason: 'module', detail: module } });
   }
 
   // Everything else stands alone. A group of one is not a group — it would

@@ -1052,7 +1052,7 @@ function Bond({ group, open, justChanged, picture }: {
       signal={signalOf(k, justChanged.has(k.key))} picture={picture.get(k.key) ?? null} />
   ));
   if (!group.bond) return <>{cards}</>;
-  const why = `${t('bond.venture')} ${group.bond.detail}`;
+  const why = `${t(group.bond.reason === 'module' ? 'bond.module' : 'bond.venture')} ${group.bond.detail}`;
   /*
    * A GROUP OF EIGHTEEN IS NOT A GROUP.
    *
@@ -1072,7 +1072,7 @@ function Bond({ group, open, justChanged, picture }: {
    * Deliberately NOT remembered across a reload — a board that opens with
    * three columns silently folded is a board that lies about what is on it.
    */
-  if (group.cards.length > MELT_AT_MOST) return (
+  if (group.bond.reason === 'module' || group.cards.length > MELT_AT_MOST) return (
     <div className={'group wide group-venture'}>
       <button className="bond fold" aria-expanded={!folded} onClick={() => setFolded(!folded)}>
         <span className="chevron" aria-hidden="true">{folded ? '▸' : '▾'}</span>

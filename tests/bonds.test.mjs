@@ -27,3 +27,19 @@ test('a single visible child stays ungrouped even when siblings exist in another
   const cards = [card('MDLA-3')];
   assert.deepEqual(group(cards, new Map([['MDLA-3', 'MDLA-1'], ['MDLA-4', 'MDLA-1']])), [{ cards, bond: null }]);
 });
+
+test('specific modules restore useful groups without files or broad maintenance buckets', () => {
+  const cards = ['a','b','c','d','e','f'].map(key => ({ ...card(key), module: ['repo', 'docs', 'tests', 'core'] }));
+  cards[0].module.push('audio'); cards[1].module.push('audio');
+  cards[2].module.push('visual'); cards[3].module.push('visual');
+  const groups = group(cards);
+  assert.deepEqual(groups.filter(g => g.bond).map(g => [g.bond.detail, g.cards.map(c => c.key)]), [['audio', ['a','b']], ['visual', ['c','d']]]);
+  assert.equal(groups.flatMap(g => g.cards).length, 6);
+});
+
+test('module fallback respects explicit parents and deduplicates module labels', () => {
+  const cards = ['a','b','c'].map(key => ({ ...card(key), module: ['audio', 'audio'] }));
+  const groups = group(cards, new Map([['a','parent']]));
+  assert.equal(groups[0].bond, null);
+  assert.deepEqual(groups[1], { cards: cards.slice(1), bond: { reason: 'module', detail: 'audio' } });
+});

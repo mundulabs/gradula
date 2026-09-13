@@ -89,6 +89,8 @@ export default function Legend({ close }: { close: () => void }) {
         </div>
 
 
+        <p className="quiet">{t('legend.moduleWhy')}</p>
+
         <h3>{t('legend.kinds')}</h3>
         <p className="quiet">{t('legend.kindsWhy')}</p>
         <div className="legend-row">
