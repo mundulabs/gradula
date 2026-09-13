@@ -36,6 +36,7 @@ const HELP = `gradula — wish, board, standing
   gradula show <CARD>
   gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
   gradula resume <CARD>            brief plus local workspace risk and recent evidence
+  gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
   gradula approve <CARD>           the review says yes — done, with a reason
   gradula reject <CARD> "what is missing" back to making, and the sentence is the reason
   gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
@@ -353,6 +354,8 @@ function printBrief(card, { resume = false, local = null } = {}) {
   if (labels) console.log(`Labels: ${labels}`);
   console.log(`Goal: ${clipLine(card.text || card.title)}`);
   console.log(`Gate: ${card.gate ? `${card.gate.kind} ${card.gate.call}${card.gate.expect ? ` -> ${card.gate.expect}` : ''}` : 'none'}`);
+  const cardFiles = card.files ?? [];
+  if (cardFiles.length) console.log(`Files: ${cardFiles.slice(0, resume ? 12 : 6).join(', ')}${cardFiles.length > (resume ? 12 : 6) ? ` … +${cardFiles.length - (resume ? 12 : 6)}` : ''}`);
   if (card.blockedBy?.length) console.log(`Blocked by: ${card.blockedBy.join(', ')}`);
   if (card.reservation) {
     const active = Date.parse(card.reservation.until) > Date.now() ? 'active' : 'activity unknown';
@@ -500,6 +503,38 @@ switch (command) {
       catch (error) { console.error(`Workspace unavailable: ${error.message}`); local = []; }
     }
     printBrief(card, { resume: command === 'resume', local });
+    break;
+  }
+
+
+  case 'files': {
+    const key = String(words[0] ?? '').toUpperCase();
+    const action = String(words[1] ?? 'show');
+    if (!/^[A-Z]{2,8}-[0-9]{1,7}$/.test(key)) stop('gradula files <CARD> show|add|from-evidence [path…]');
+    const card = await call(`/api/v1/cards/${key}`);
+    const current = card.files ?? [];
+    if (action === 'show') {
+      if (!current.length) console.log(`${key}: no structured files yet`);
+      else for (const file of current) console.log(file);
+      break;
+    }
+    let next = current;
+    if (action === 'add') {
+      const given = words.slice(2).flatMap((one) => String(one).split(',')).map((one) => one.trim()).filter(Boolean);
+      if (!given.length) stop('gradula files <CARD> add path [path…]');
+      next = [...new Set([...current, ...given.map((f) => f.replace(/^\/+/, ''))])].slice(0, 60);
+    } else if (action === 'from-evidence') {
+      const fromHistory = [];
+      for (const entry of card.history ?? []) {
+        const files = Array.isArray(entry.data?.files) ? entry.data.files : [];
+        for (const file of files) fromHistory.push(String(file).replace(/^\/+/, ''));
+      }
+      if (!fromHistory.length) stop(`${key}: no evidence files found in this card's chronicle.`);
+      next = [...new Set([...current, ...fromHistory])].slice(0, 60);
+    } else stop('gradula files <CARD> show|add|from-evidence [path…]');
+    const updated = await call(`/api/v1/cards/${key}`, { method: 'PATCH', body: { files: next } });
+    console.log(`${updated.key}: ${updated.files.length} structured file${updated.files.length === 1 ? '' : 's'}`);
+    for (const file of updated.files) console.log(`  ${file}`);
     break;
   }
 
