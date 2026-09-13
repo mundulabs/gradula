@@ -24,7 +24,7 @@ import { wave, ripe, coverage } from './wave.mjs';
 import { messages, linkify, TEMPLATES, VOICES, VISIBILITIES } from './heralds.mjs';
 import { releasesIn, previousOf, cardsBetween, releaseNote, LANES, STAGES } from './releases.mjs';
 import { carriesOf } from './deployed.mjs';
-import { createCompletionBatch, completionSummary } from './completion-batch.mjs';
+import { createActivityBatch, activitySummary } from './activity-batch.mjs';
 import { createPipelineHerald } from './pipeline-herald.mjs';
 import * as telegram from './telegram.mjs';
 import * as dokploy from './dokploy.mjs';
@@ -123,7 +123,7 @@ const HERALD_KINDS = { telegram };
  */
 export const HOUSE_KEY = 'house';
 
-export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, completionWindowMs = 5000 } = {}) {
+export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, activityWindowMs = 5000 } = {}) {
   const keyOf = (herald) => (herald?.token === HOUSE_KEY ? houseKey : herald?.token ?? null);
   const pipelineHerald = createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl: defaultFetch });
   const findItem = async (key) => {
@@ -137,7 +137,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
   // What is going out right now. `settle()` waits for it — a test needs that,
   // and so does a service being shut down.
   const inFlight = new Set();
-  const completions = createCompletionBatch({ delay: completionWindowMs });
+  const activityBatch = createActivityBatch({ delay: activityWindowMs });
 
   // Where a Sentry issue happened, when its payload did not say: asked once
   // per issue id for the life of the process (see ingestIssue).
@@ -189,12 +189,12 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         const repo = (await store.github.get(item.project))?.repo ?? board?.repo ?? null;
         const body = html ? linkify(escapeHtml(text), { origin, repo }) : text;
         const send = (text, options) => kind.send({ token: keyOf(herald), chat: herald.chat }, text, options);
-        const result = verb === 'moved' && data?.to === 'done'
-          ? await completions.enqueue(`${item.project}:${herald.id}`, { card, body }, async (entries) => {
+        const result = ['created', 'started', 'moved', 'evidenced', 'decided', 'changed'].includes(verb)
+          ? await activityBatch.enqueue(`${item.project}:${herald.id}`, { card, body, verb, to: data?.to }, async (entries) => {
             if (entries.length === 1) return send(body, { html, preview: card.visibility === 'public' });
             let formatted;
             for (let limit = 12; limit >= 0; limit--) {
-              const summary = completionSummary(entries, board?.name ?? item.project, { language: board?.language, limit });
+              const summary = activitySummary(entries, board?.name ?? item.project, { language: board?.language, limit });
               formatted = html ? linkify(escapeHtml(summary), { origin, repo }) : summary;
               if (formatted.length <= 3600) break;
             }

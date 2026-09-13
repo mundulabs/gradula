@@ -351,8 +351,8 @@ remains the complete view. Deploy one Gradula scheduler instance to avoid
 competing senders. A send acknowledged by Telegram but lost before its message
 ID is stored can still produce a duplicate on retry.
 
-### Completion notifications
+### Card activity notifications
 
 A Git push records evidence; it does not itself complete cards. Confirmed production deployment can move eligible cards to Done, subject to their gates; manual approval can also complete cards. Development deployment moves eligible cards to Review.
 
-Done transition notifications collect in a five-second window per project and herald. A single completion keeps its detailed notification. A burst produces one bounded summary with the total and linked card keys, showing up to twelve titles and the remaining count. Filters still apply before batching; full events remain in each card's chronicle. Scheduled reports remain separate. Delivery windows live in memory, like other immediate herald notifications; they are not a durable delivery queue. Graceful shutdown waits for pending notifications.
+Creation, start, move, evidence, decision and subscribed edit notifications collect in a five-second window per project and herald. A single event keeps its detailed notification. A burst produces one bounded summary with the unique card total, latest state and linked card keys, showing up to twelve titles and the remaining count. A burst consisting entirely of Done transitions says completed; mixed activity says updated. New and recurring incidents remain immediate; release and pipeline notifications keep their separate behavior. Filters still apply before batching; full events remain in each card's chronicle. Scheduled reports remain separate. Delivery windows live in memory, like other immediate herald notifications; they are not a durable delivery queue. The service exposes `settle()` to wait for pending notifications.
