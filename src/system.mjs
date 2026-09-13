@@ -268,6 +268,16 @@ export async function gatherSystem({
   // has arrived only once there is something that could arrive: a card
   // without a commit is not "not deployed", it is not yet on its way.
   for (const card of out.cards) card.evidence = (evidence.get(card.key) ?? []).length;
+  // Branch evidence is independent from deployments. A bounded listing can
+  // confirm presence, but absence from the last 100 commits proves nothing.
+  if (gh?.repo && gh.token && [...evidence.values()].some(refs => refs.length)) {
+    const branches = await Promise.all(['dev', 'main'].map(async branch => ({branch, result: await github.fetchBranchCommits({...gh,branch}, opts)})));
+    for (const card of out.cards) {
+      const refs = [...new Set((evidence.get(card.key) ?? []).map(e => e.sha))];
+      card.git = {repo: gh.repo, total: refs.length};
+      for (const {branch,result} of branches) card.git[branch] = result.ok ? refs.filter(ref => /^[a-f0-9]{7,40}$/i.test(ref) && result.commits.some(c => c.sha.startsWith(ref))).length : null;
+    }
+  }
   const lanes = out.environments.filter((environment) => environment.deployments.length);
   if (lanes.length) {
     const joined = await gatherDeployed({

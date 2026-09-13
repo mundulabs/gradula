@@ -444,7 +444,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
    when the lane runs the card's commits, outlined when it does not yet, absent
    when nobody could tell. The done colour, because arriving is a state — and
    the chips stay quiet next to the beam: they answer, they do not call. */
-.lanes { display: inline-flex; gap: 3px; }
+.lanes { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .lane {
   font: 9px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; line-height: 13px;
   padding: 0 4px; border-radius: 3px; border: 1px solid var(--line-light); color: var(--faint);
@@ -907,3 +907,6 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 
 .work-reservation p { margin: 10px 0; overflow-wrap: anywhere; }
 .work-reservation label { margin-top: 12px; }
+
+.work-reservation .acceptance-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+.work-reservation .acceptance-toggle input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }

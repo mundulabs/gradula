@@ -45,7 +45,7 @@ const HELP = `gradula — wish, board, standing
                  [--anyway "why"]  start a card that waits on another — the sentence is the reason
   gradula link <CARD> <needs|blocks|part-of|resembles|touches> <CARD>
   gradula sync [--since <ref>] [--adopt]   send commits carrying "Plan: CARD" as evidence; --adopt gives a card to one that carries none
-  gradula gates [--commands]       run the gates; green moves the card to done
+  gradula gates [--commands]       run the gates; record evidence for acceptance
   gradula wave [<VENTURE>]         what can go side by side right now
   gradula heralds                  who speaks outward, and about what
   gradula herald --template <name> --chat <id> --token <t>
@@ -637,8 +637,8 @@ switch (command) {
   }
 
   /**
-   * Run the gates. Green means done — that is not a guess but exactly what
-   * the gate claimed. Red means "not yet", never "broken": the reason may be
+   * Run the gates and record verification; acceptance remains explicit.
+   * Red means "not yet", never "broken": the reason may be
    * a missing tool.
    */
   case 'gates': {
@@ -664,8 +664,7 @@ switch (command) {
       }).catch(() => null);
       if (ok) {
         green += 1;
-        await call(`/api/v1/cards/${card.key}/move`, { method: 'POST', body: { state: 'done', reason: `gate green: ${line}` } });
-        console.log(`  → done`);
+        console.log('  → verification recorded; review and approve to finish');
       } else red += 1;
     }
     console.log(`\n${green} green · ${red} red · ${skipped} skipped`);

@@ -22,6 +22,7 @@ export type Card = {
   stack: string[];
   suggestions?: { module: string[]; stack: string[] };
   person: string | null;
+  gateStanding?: 'green' | 'red' | null;
   gate: { kind: string; call: string; expect: string | null } | null;
   source: string;
   files: string[];
@@ -56,6 +57,7 @@ export type Card = {
  * (null when nobody could tell) and how many commits stand behind it.
  */
 export type SystemCard = {
+  git?: {repo: string; total: number; dev: number | null; main: number | null};
   key: string; title: string; state: State; labels: string[]; actor: string | null;
   deployed: { development: boolean | null; production: boolean | null };
   evidence?: number;
@@ -316,3 +318,6 @@ export type Pulse = {
 export const pulse = (project: string, since?: string) => call<Pulse>(
   `/api/v1/pulse?project=${project}${since ? `&since=${encodeURIComponent(since)}` : ''}`,
 );
+
+export const acceptancePolicy = (project: string) => call<{manualAcceptance: boolean}>(`/api/v1/project?project=${project}`);
+export const saveAcceptancePolicy = (project: string, manualAcceptance: boolean) => call<{manualAcceptance: boolean}>(`/api/v1/project?project=${project}`, {method:'PATCH',body:JSON.stringify({manualAcceptance})});

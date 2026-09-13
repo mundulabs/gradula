@@ -130,7 +130,7 @@ gradula start <CARD> [--tree]    --tree creates a branch and a worktree
                [--anyway "why"]  start a card that waits on another
 gradula link <CARD> <needs|blocks|part-of|resembles|touches> <CARD>
 gradula sync [--since <ref>]     send commits carrying "Plan: CARD" as evidence
-gradula gates [--commands]       run the gates; green moves the card to done
+gradula gates [--commands]       run the gates; record verification for acceptance
 gradula wave [<VENTURE>]         what can go side by side right now
 gradula heralds                  who speaks outward, and about what
 gradula herald --template <name> --chat <id> --token <t> [--every daily|weekly --hour 7]
@@ -369,3 +369,12 @@ Planned scope uses repository-relative files or folders. Shared files/folders wa
 
 
 Ordinary herald bursts are grouped by distinct card: repeated changes to one card retain its latest detailed message. A confirmed GitHub pre-start billing/budget failure is identified in the internal pipeline message as requiring local PR verification; it never turns failed or skipped checks green. The repository owns verification policy and execution, not Gradula. Device login exits unsuccessfully when not approved and stores the issued credentials with owner-only permissions.
+
+
+## Acceptance, Git and deployment
+
+Settings → **Manual acceptance required** defaults to off. When off, confirmed production delivery may complete a card whose gates pass; when on, delivery leaves unfinished work in Review for explicit acceptance. This project setting does not control GitHub merges or external deployments. It applies to new delivery observations; changing it does not reopen completed cards or retroactively accept earlier deliveries.
+
+**Accept and finish** moves reviewed work to Done without pushing, merging or deploying. Missing or failed gate evidence disables the action with an explanation. `gradula gates` records verification and no longer automatically accepts work.
+
+Card chips separate **Git dev/main** from **Deployment DEV/PROD**. Git counts show confirmed recorded commits on each branch; the lookup is bounded to the latest 100 commits per branch, so an unmatched older commit remains unconfirmed, not proven absent. Deployment chips preserve historical delivery observations and are not proof of a Git push.

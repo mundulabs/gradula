@@ -1,3 +1,4 @@
+import { acceptancePolicy, saveAcceptancePolicy } from './api';
 /**
  * The board — what is to be done.
  *
@@ -109,9 +110,12 @@ const LANE_CLASS: Record<Chip, string> = { filled: 'lane lane-on', outlined: 'la
 function LaneChips({ card, picture }: { card: Card; picture?: SystemCard | null }) {
   const chips = laneChips(card, picture);
   const shown = LANES.flatMap((lane) => { const chip = chips[lane]; return chip ? [{ lane, chip }] : []; });
-  if (!shown.length) return null;
+  const git = picture?.git;
+  const branches = (['dev','main'] as const).filter(branch => (git?.[branch] ?? 0) > 0);
+  if (!shown.length && !branches.length) return null;
   return (
     <span className="lanes">
+      {branches.map(branch => <span key={branch} className="lane" title={t('card.gitProof')}>Git {branch} · {git![branch]}/{git!.total}</span>)}
       {shown.map(({ lane, chip }) => (
         <span key={lane} className={LANE_CLASS[chip]} title={chip === 'filled' ? LANE_ON[lane] : LANE_OFF[lane]}>
           {LANE_WORD[lane]}
@@ -450,21 +454,9 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
             */}
             {card.state === 'review' ? (
               <div className="verdict-row">
-                {/*
-                  A REVIEW THE PIPELINE MADE HAS ONE ANSWER. Seen on dev, the
-                  card is on its way: production will move it to done by
-                  itself, and "approve" would only pretend that a hand did
-                  what the deployment does. What a hand CAN say here is "not
-                  like this" — send it back. A review a person asked for
-                  (the card is not on dev) keeps both answers.
-                */}
-                {card.deployed?.development
-                  ? <span className="quiet">{t('card.onItsWay')}</span>
-                  : (
-                    <button className="approve" onClick={() => run(() => move(project, card.key, 'done', t('card.approvedReason')))}>
-                      {t('card.approve')}
-                    </button>
-                  )}
+                <button className="approve" disabled={busy || !!card.gate && card.gateStanding !== 'green'} onClick={() => run(() => move(project, card.key, 'done', t('card.approvedReason')))}>
+                  {t('card.approve')}
+                </button>
                 <button className="reject" onClick={() => {
                   const why = window.prompt(t('card.sendBackWhy'));
                   if (why === null) return;
@@ -472,7 +464,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                 }}>
                   {t('card.sendBack')}
                 </button>
-                {card.gate ? <span className="quiet">{t('card.gateProves')}</span> : card.deployed?.development ? null : <span className="quiet">{t('card.gateMissing')}</span>}
+                <span className="quiet">{t(card.gate && card.gateStanding !== 'green' ? (card.gateStanding === 'red' ? 'card.gateFailed' : 'card.gatePending') : 'card.acceptMeaning')}</span>
               </div>
             ) : null}
 
@@ -704,6 +696,8 @@ function KeySection({ project }: { project: string }) {
 }
 
 function Settings({ project, close }: { project: string; close: () => void }) {
+  const [manualAcceptance, setManualAcceptance] = useState<boolean | null>(null);
+  useEffect(() => { acceptancePolicy(project).then(p => setManualAcceptance(p.manualAcceptance)).catch(e => setError(e.message)); }, [project]);
   const [tab, setTab] = useState<'channels' | 'reports' | 'access'>('channels');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -784,6 +778,10 @@ function Settings({ project, close }: { project: string; close: () => void }) {
 
   return (
     <Dialog title={t('nav.settings')} close={close} wide busy={busy} dirty={!!draft && JSON.stringify(draft) !== draftBase.current}>
+      <section className="work-reservation">
+        <label className="acceptance-toggle"><input type="checkbox" checked={manualAcceptance === true} disabled={busy || manualAcceptance === null} onChange={e => { const value = e.target.checked; perform(async () => { const saved = await saveAcceptancePolicy(project, value); setManualAcceptance(saved.manualAcceptance); }); }} /> {t('settings.manualAcceptance')}</label>
+        <p className="hint">{t('settings.manualAcceptanceWhy')}</p>
+      </section>
       <nav className="settings-tabs" aria-label={t('nav.settings')}>
         {(['channels', 'reports', 'access'] as const).map((one) => <button type="button" key={one} aria-pressed={tab === one} onClick={() => setTab(one)}>{t(`settings.${one}`)}</button>)}
       </nav>

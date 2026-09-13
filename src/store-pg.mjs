@@ -436,6 +436,7 @@ alter table project  add column if not exists people jsonb not null default '{}'
 -- cannot search, and neither reader can fix it alone.
 alter table project  add column if not exists language text;
 -- How a card becomes public: 'hand' (someone publishes it) or 'done' (whatever reaches production, incidents excepted).
+alter table project add column if not exists manual_acceptance boolean not null default false;
 alter table project  add column if not exists publish text;
 -- The ladder's style: squares, circles, diamonds (spec.mjs, LADDER_STYLES).
 alter table project  add column if not exists ladder text;
@@ -520,7 +521,7 @@ export async function createPgStore(url, { schema = null } = {}) {
     projects: {
       async create({ key, name, repo = null }) {
         const { rows } = await q(
-          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, created',
+          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created',
           [mintId(), key, name, repo],
         );
         return { ...rows[0], created: iso(rows[0].created) };
@@ -534,7 +535,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         return { project: key, removed: rowCount };
       },
       async get(key) {
-        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, created from project where key = $1', [key]);
+        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created from project where key = $1', [key]);
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       /**
@@ -576,7 +577,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         try {
           await client.query('begin');
           const { rows } = await client.query(
-            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, created',
+            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created',
             [oldKey, newKey],
           );
           if (!rows[0]) { await client.query('rollback'); return null; }
@@ -601,7 +602,7 @@ export async function createPgStore(url, { schema = null } = {}) {
       async patch(key, changes) {
         const sets = [];
         const values = [];
-        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish'], ['ladder', 'ladder']]) {
+        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish'], ['ladder', 'ladder'], ['manualAcceptance', 'manual_acceptance']]) {
           if (changes[name] !== undefined) { values.push(changes[name]); sets.push(`${column} = $${values.length}`); }
         }
         // A map, not a column of its own: an alias is a word about a word.
@@ -609,13 +610,13 @@ export async function createPgStore(url, { schema = null } = {}) {
         if (!sets.length) return store.projects.get(key);
         values.push(key);
         const { rows } = await q(
-          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, ladder, created`,
+          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created`,
           values,
         );
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       async list() {
-        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, created from project order by key');
+        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created from project order by key');
         return rows.map((row) => ({ ...row, created: iso(row.created) }));
       },
     },

@@ -291,7 +291,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     async getProject(key) {
       const project = await store.projects.get(String(key ?? '').toUpperCase());
       if (!project) throw missing(`There is no project ${key}.`);
-      return { ...project, ladder: CARD_STYLE };
+      return { ...project, manualAcceptance: project.manualAcceptance === true, ladder: CARD_STYLE };
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */
@@ -396,6 +396,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         // Computed, never stored: a flag saying "running" is wrong at the
         // first closed laptop, and afterwards nobody knows which one.
         running: isRunning(item.heartbeat),
+        gateStanding: await this.gateStanding(item),
         warnings: workWarnings(item, items),
         blockedBy: blocked.map((id) => byId.get(id)?.key).filter(Boolean),
         links: links.map((link) => ({
@@ -529,6 +530,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     async patchProject(key, changes, actor = 'admin') {
       const project = await this.getProject(key);
       const next = {};
+      if (changes.manualAcceptance !== undefined) {
+        if (typeof changes.manualAcceptance !== 'boolean') throw bad('manualAcceptance', 'manualAcceptance must be boolean.');
+        next.manualAcceptance = changes.manualAcceptance;
+      }
       if (changes.name !== undefined) next.name = text(changes.name, 120, 'name');
       if (changes.repo !== undefined) next.repo = changes.repo === null ? null : String(changes.repo).slice(0, 200);
       // Aliases: which names mean the same person. DECLARED, never guessed —
@@ -1780,6 +1785,14 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      */
     async arrived(key, environment, sha) {
       const item = await findItem(key);
+      const project = await store.projects.get(item.project);
+      if (environment === 'production' && project.manualAcceptance === true) {
+        if (['ideas','ready','making'].includes(item.state)) {
+          await this.moveItem(key, 'review', 'dokploy', 'Production delivered; manual acceptance is required.');
+          return 'review';
+        }
+        return null;
+      }
       const reason = `seen on ${environment} (${String(sha).slice(0, 7)})`;
       if (environment === 'development' && ['ideas', 'ready', 'making'].includes(item.state)) {
         await this.moveItem(key, 'review', 'dokploy', reason);
