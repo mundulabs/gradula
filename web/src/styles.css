@@ -427,7 +427,6 @@ button[disabled] { opacity: 0.45; cursor: default; }
 .group .card:hover { border-color: var(--line-light); }
 /* The bond's reason shows in the rim, not in a badge: a badge would be a
    second thing to read, and the shape already said it. */
-.group-file > div { --group: var(--waiting); }
 .group-venture > div { --group: var(--proposal); }
 .group { position: relative; }
 .group::before {
@@ -543,7 +542,6 @@ a.sha:hover { color: var(--ink); border-bottom-color: var(--ink); }
   font: 11px var(--mono); color: var(--muted);
   letter-spacing: 0.02em;
 }
-.group-file .bond { color: var(--waiting); }
 .group-venture .bond { color: var(--proposal); }
 
 /* A bond too wide to melt keeps its sentence and its rim, and lets the cards

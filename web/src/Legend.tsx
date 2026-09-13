@@ -87,10 +87,7 @@ export default function Legend({ close }: { close: () => void }) {
           <span className="legend-card group-sample group-venture" />
           <span className="legend-why">{t('legend.ventureWhy')}</span>
         </div>
-        <div className="legend-row">
-          <span className="legend-card group-sample group-file" />
-          <span className="legend-why">{t('legend.fileWhy')}</span>
-        </div>
+
 
         <h3>{t('legend.kinds')}</h3>
         <p className="quiet">{t('legend.kindsWhy')}</p>

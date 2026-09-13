@@ -1,51 +1,20 @@
-/**
- * Which cards belong together — and how sure we are.
- *
- * The board already computes this as a fact; it just never showed it. Two
- * cards that name the SAME FILE are not similar, they are in each other's way,
- * and that is the hard finding the cartographer reports. Two cards that hang
- * under the same venture belong together because a person said so.
- *
- * The melt makes exactly that visible: bonded cards flow into one silhouette.
- * The motion is the information — see motion.ts for the law. A gooey edge
- * because gooey edges look good would be the decoration that law forbids.
- *
- * Pure: cards and links in, groups out.
+/** Explicit part-of relationships organize the board. Shared files are
+ * overlap evidence, not a product hierarchy; they remain in collision checks.
  */
 import type { Card } from './api';
 
-export type Bond = { reason: 'file' | 'venture'; detail: string };
+export type Bond = { reason: 'venture'; detail: string };
 export type Group = { cards: Card[]; bond: Bond | null };
-
-/** Cards keyed by what they touch, so a shared file finds its pair in one pass. */
-function byFile(cards: Card[]): Map<string, Card[]> {
-  const found = new Map<string, Card[]>();
-  for (const card of cards) {
-    for (const file of card.files ?? []) {
-      if (!found.has(file)) found.set(file, []);
-      found.get(file)!.push(card);
-    }
-  }
-  return found;
-}
 
 /**
  * Group the cards of ONE column. Grouping across columns would be a lie: two
  * cards in different states are not doing the same thing, whatever they share.
  *
- * A card belongs to at most one group — the first bond wins, and file beats
- * venture because a shared file is a fact and a venture is an intention.
+ * A card belongs to at most one explicit parent group.
  */
-export function group(cards: Card[], parentOf: Map<string, string> = new Map()): Group[] {
+export function group(cards: Card[], parentOf: Map<string, string> = new Map(), titles: Map<string, string> = new Map()): Group[] {
   const taken = new Set<string>();
   const groups: Group[] = [];
-
-  for (const [file, sharing] of byFile(cards)) {
-    const free = sharing.filter((c) => !taken.has(c.key));
-    if (free.length < 2) continue;
-    for (const card of free) taken.add(card.key);
-    groups.push({ cards: free, bond: { reason: 'file', detail: file } });
-  }
 
   const byVenture = new Map<string, Card[]>();
   for (const card of cards) {
@@ -58,7 +27,7 @@ export function group(cards: Card[], parentOf: Map<string, string> = new Map()):
   for (const [venture, part] of byVenture) {
     if (part.length < 2) continue;
     for (const card of part) taken.add(card.key);
-    groups.push({ cards: part, bond: { reason: 'venture', detail: venture } });
+    groups.push({ cards: part, bond: { reason: 'venture', detail: titles.get(venture)?.trim() ? `${titles.get(venture)} · ${venture}` : venture } });
   }
 
   // Everything else stands alone. A group of one is not a group — it would

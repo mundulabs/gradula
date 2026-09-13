@@ -1,42 +1,29 @@
-/**
- * Which cards belong together. The melt draws exactly this, so getting it
- * wrong draws a relationship that does not exist — and a board that invents
- * connections is worse than one that shows none.
- *
- * The rule lives in TypeScript on the board; this checks the shape of the law
- * the same way tests/motion.test.mjs does, because a design review cannot
- * answer "does this bond mean anything" by looking.
- */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { group, parentsFrom } from '../web/src/bonds.ts';
 
-import { LINK_KINDS } from '../src/spec.mjs';
+const card = (key, files = []) => ({ key, files, title: key, state: 'review' });
 
-const law = readFileSync(new URL('../web/src/bonds.ts', import.meta.url), 'utf8');
-
-test('a bond is drawn only for a fact the board actually has', () => {
-  // `file` comes from what a runner really touched; `venture` from a link a
-  // person laid. Anything else would be a guess with a nice edge on it.
-  const reasons = /export type Bond = \{ reason: ([^;]+);/.exec(law)[1]
-    .split('|').map((s) => s.trim().replace(/'/g, ''));
-  assert.deepEqual(reasons.sort(), ['file', 'venture']);
+test('shared instructions, manifests and source files do not invent a hierarchy', () => {
+  const cards = [card('MDLA-3', ['AGENTS.md', 'Cargo.toml', 'src/lib.rs']), card('MDLA-4', ['AGENTS.md', 'Cargo.toml', 'src/lib.rs'])];
+  assert.deepEqual(group(cards), cards.map((c) => ({ cards: [c], bond: null })));
 });
 
-test('the venture bond reads a link kind that exists', () => {
-  const kind = /link\.kind !== '([a-z-]+)'/.exec(law)[1];
-  assert.ok(LINK_KINDS.includes(kind), `"${kind}" is not a link kind`);
+test('explicit parent groups use their title and preserve card membership and order', () => {
+  const cards = [card('MDLA-3'), card('MDLA-4'), card('MDLA-5')];
+  const parents = parentsFrom([
+    { kind: 'part-of', from: 'MDLA-3', to: 'MDLA-1' },
+    { kind: 'part-of', from: 'MDLA-5', to: 'MDLA-1' },
+    { kind: 'touches', from: 'MDLA-4', to: 'MDLA-1' },
+  ]);
+  assert.deepEqual(group(cards, parents, new Map([['MDLA-1', 'Native performance']])), [
+    { cards: [cards[0], cards[2]], bond: { reason: 'venture', detail: 'Native performance · MDLA-1' } },
+    { cards: [cards[1]], bond: null },
+  ]);
+  assert.equal(group(cards, parents)[0].bond.detail, 'MDLA-1');
 });
 
-test('a group of one is not a group', () => {
-  // Drawing a bond around a single card says something untrue — and costs a
-  // filter for nothing.
-  assert.match(law, /length < 2/, 'the law refuses pairs of one');
-  const guards = [...law.matchAll(/\.length < 2/g)];
-  assert.equal(guards.length, 2, 'both kinds of bond refuse a group of one');
-});
-
-test('grouping stays inside one column', () => {
-  assert.match(law, /Grouping across columns would be a lie/,
-    'the reason is written down, so nobody helpfully removes the limit');
+test('a single visible child stays ungrouped even when siblings exist in another column', () => {
+  const cards = [card('MDLA-3')];
+  assert.deepEqual(group(cards, new Map([['MDLA-3', 'MDLA-1'], ['MDLA-4', 'MDLA-1']])), [{ cards, bond: null }]);
 });

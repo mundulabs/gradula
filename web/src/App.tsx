@@ -1032,8 +1032,7 @@ function Door() {
 
 /**
  * A bond. Cards that belong together flow into one silhouette — the melt IS
- * the information: a shared file is a collision waiting to happen, and two
- * cards under one venture are one piece of work in two hands.
+ * the information: cards explicitly assigned to one venture share a purpose.
  *
  * A group of one gets no liquid at all. Drawing a bond around a single card
  * would say something untrue, and it would cost a filter for nothing.
@@ -1053,7 +1052,7 @@ function Bond({ group, open, justChanged, picture }: {
       signal={signalOf(k, justChanged.has(k.key))} picture={picture.get(k.key) ?? null} />
   ));
   if (!group.bond) return <>{cards}</>;
-  const why = `${t(group.bond.reason === 'file' ? 'bond.file' : 'bond.venture')} ${group.bond.detail}`;
+  const why = `${t('bond.venture')} ${group.bond.detail}`;
   /*
    * A GROUP OF EIGHTEEN IS NOT A GROUP.
    *
@@ -1074,7 +1073,7 @@ function Bond({ group, open, justChanged, picture }: {
    * three columns silently folded is a board that lies about what is on it.
    */
   if (group.cards.length > MELT_AT_MOST) return (
-    <div className={group.bond.reason === 'file' ? 'group wide group-file' : 'group wide group-venture'}>
+    <div className={'group wide group-venture'}>
       <button className="bond fold" aria-expanded={!folded} onClick={() => setFolded(!folded)}>
         <span className="chevron" aria-hidden="true">{folded ? '▸' : '▾'}</span>
         {why} · {group.cards.length}
@@ -1086,7 +1085,7 @@ function Bond({ group, open, justChanged, picture }: {
     // Written out, not composed: a class name you cannot grep is one no test
     // finds either — and that is exactly how rules are orphaned. That was the
     // cause three times last night.
-    <div className={group.bond.reason === 'file' ? 'group group-file' : 'group group-venture'}>
+    <div className={'group group-venture'}>
       {/*
         THE BOND SAYS WHY, ON THE BOARD.
         It stood in a `title` — a tooltip nobody hovers. What one saw was a
@@ -1389,7 +1388,7 @@ export default function App() {
       <div className="board" aria-busy={loading}>
         {COLUMN_NAMES.map((column) => {
           const inside = cards.filter((k) => k.state === column.state);
-          const groups = group(inside, parentsFrom(bonds));
+          const groups = group(inside, parentsFrom(bonds), new Map(cards.map((card) => [card.key, card.title])));
           return (
             <section className="column" key={column.state} data-selected={mobileColumn === column.state}>
               <header><h2>{column.name}</h2><span className="number">{inside.length}</span></header>
