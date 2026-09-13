@@ -169,7 +169,7 @@ gradula project [--alias "david=David Bläsing"] [--language de|en]
 A commit whose message contains `Plan: KEY-42` becomes evidence on that card
 through `gradula sync` (or automatically, once `gradula hook` is installed).
 
-`gradula brief KEY` is the prompt-sized handoff for modern IDE chats: current goal, state, labels, gate, reservation and next command. `gradula resume KEY` adds only the local risk that matters when a chat died or work is stale: matching worktree, dirty file count, commits not on `dev`, and the last few relevant chronicle lines. Use `show` when a person wants the full card; use `brief`/`resume` when an agent needs to continue without dragging the whole board into context.
+`gradula brief KEY` is the prompt-sized handoff for modern IDE chats: current goal, state, labels, gate, reservation and next command. `gradula resume KEY` adds only the local risk that matters when a chat died or work is stale: matching worktree, dirty file count, commits not on `dev`, and the last few relevant chronicle lines. Use `show` when a person wants the full card; use `brief`/`resume` when an agent needs to continue without dragging the whole board into context. `gradula health` also flags open cards that grew beyond a compact handoff or whose chronicle became noisy; it names them for cleanup without blocking work.
 
 ### The life of a card, after the code
 

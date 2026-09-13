@@ -21,6 +21,7 @@ import { strangers } from './language.mjs';
 
 const OPEN = (card) => !['done', 'ice'].includes(card.state);
 const days = (iso, now) => (iso ? (now - new Date(iso).getTime()) / 86_400_000 : Infinity);
+const tooLong = (text, limit) => String(text ?? '').replace(/\s+/g, ' ').trim().length > limit;
 
 /**
  * @param cards every card of the project
@@ -73,6 +74,23 @@ export function findings(cards, links = [], entries = [], { now = Date.now(), qu
   add('quiet', `open cards untouched for ${quiet} days`,
     cards.filter((c) => OPEN(c) && days(touched.get(c.key) ?? c.created, now) > quiet).map((c) => c.key),
     'not an accusation, a question: is this still wanted?');
+
+  // A card may carry detail, but it should not become the prompt. Long
+  // cards make every handoff expensive; the fix is a linked doc or a shorter
+  // acceptance paragraph, not deleting history.
+  add('too-long', 'open cards with too much text for a default handoff',
+    cards.filter((c) => OPEN(c) && (tooLong(c.title, 140) || tooLong(c.text, 1200))).map((c) => c.key),
+    'keep the card brief; put durable detail in docs and let brief/resume carry the handoff');
+
+  const entriesByCard = new Map();
+  for (const entry of entries) {
+    const key = byId.get(entry.item)?.key;
+    if (!key) continue;
+    entriesByCard.set(key, (entriesByCard.get(key) ?? 0) + 1);
+  }
+  add('noisy-history', 'open cards with a noisy chronicle',
+    cards.filter((c) => OPEN(c) && (entriesByCard.get(c.key) ?? 0) > 40).map((c) => c.key),
+    'the full chronicle is still there, but agents should resume from brief evidence, not every small move');
 
   // A card with no label at all cannot be found, cannot be filtered, and
   // counts towards nothing on the pulse. The rule fills both axes at creation

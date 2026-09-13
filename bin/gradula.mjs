@@ -538,6 +538,7 @@ switch (command) {
       console.log(`\n  gradula move ${card.key} ready     the yes — then start`);
     }
     console.log(`\n  ${link('open on the board', onBoard(card.key))}${process.stdout.isTTY ? '' : `: ${onBoard(card.key)}`}`);
+    console.log(`  chat handoff: gradula brief ${card.key}  ·  stale/local resume: gradula resume ${card.key}`);
     break;
   }
 

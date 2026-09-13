@@ -57,6 +57,23 @@ test('there is no health score', () => {
   }
 });
 
+
+test('data hygiene flags cards that became prompt-sized', () => {
+  const long = 'word '.repeat(260);
+  const out = findings([k('A', { text: long }), k('B', { gate: { kind: 'test', call: 'x' }, module: ['panels'] })], [], [], { now });
+  const found = out.find((f) => f.id === 'too-long');
+  assert.deepEqual(found.cards, ['A']);
+  assert.match(found.why, /brief/);
+});
+
+test('data hygiene flags noisy chronicles without deleting history', () => {
+  const card = k('A', { gate: { kind: 'test', call: 'x' }, module: ['panels'] });
+  const entries = Array.from({ length: 41 }, (_, i) => ({ item: 'A', verb: 'said', actor: 'david', at: new Date(now - i).toISOString() }));
+  const found = findings([card], [], entries, { now }).find((f) => f.id === 'noisy-history');
+  assert.deepEqual(found.cards, ['A']);
+  assert.match(found.why, /resume/);
+});
+
 test('who did what comes from the chronicle — and the person stands before the machine', () => {
   const cards = [k('A'), k('B')];
   const entries = [
