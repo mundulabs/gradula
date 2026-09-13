@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtempSync,rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {execFileSync,spawn} from 'node:child_process';
+import {createServer} from 'node:http';
+import {fileURLToPath} from 'node:url';
+import {createMemoryStore} from '../src/store.mjs';
+import {createGradula} from '../src/gradula.mjs';
+import {createApi} from '../src/api.mjs';
+import {workSession} from '../src/work-session.mjs';
+
+test('CLI defaults to an isolated worktree and its session can work and release', async t => {
+ const dir=mkdtempSync(join(tmpdir(),'gradula-isolation-'));
+ t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git(['init','-b','dev']);git(['-c','user.name=Test','-c','user.email=test@example.invalid','commit','--allow-empty','-m','Initial']);
+ const store=createMemoryStore(),g=createGradula(store);await g.createProject({key:'PRB',name:'Test'});
+ const card=await g.addItem('PRB',{kind:'task',title:'Isolated change'},'test');const auth=await store.tokens.mint({project:'PRB',name:'test'});
+ const server=createServer(createApi(g));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const env={...process.env,GRADULA_URL:`http://127.0.0.1:${server.address().port}`,GRADULA_TOKEN:auth.token,GRADULA_AGENT_TOKEN:'',GRADULA_SESSION:'',CODEX_THREAD_ID:''};
+ const cli=fileURLToPath(new URL('../bin/gradula.mjs',import.meta.url));
+ const run=(args,cwd=dir)=>new Promise((resolve,reject)=>{let output='';const child=spawn(process.execPath,[cli,...args],{cwd,env});child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);child.on('error',reject);child.on('close',code=>code===0?resolve(output):reject(Error(output)));});
+ const output=await run(['start',card.key,'--files','src/audio']);assert.match(output,/Worktree:/);
+ const tree=join(dir,'.worktrees','plan',card.key);
+ assert.equal(git(['branch','--show-current']),'dev');
+ assert.equal(execFileSync('git',['branch','--show-current'],{cwd:tree,encoding:'utf8'}).trim(),`codex/${card.key}`);
+ assert.equal(git(['status','--porcelain']),'','the worktree does not pollute tracked work');
+ assert.notEqual(workSession(env,dir),workSession(env,tree));
+ assert.equal((await g.getItem(card.key)).reservation.session,workSession(env,tree));
+ await run(['work',card.key,'--',process.execPath,'-e','process.exit(0)'],tree);
+ assert.equal((await g.getItem(card.key)).reservation,null);
+ assert.equal((await g.getItem(card.key)).state,'making');
+});

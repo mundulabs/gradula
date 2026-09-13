@@ -55,6 +55,8 @@ web/                 the board (Vite + React); web/src/vocabulary.ts imports src
 12. **Nothing above the migration block in `src/store-pg.mjs` may name a
     column that only a migration creates** (`tests/migration.test.mjs`).
 
+13. **A card has one active work reservation per authenticated session.** Start with planned files, keep the heartbeat alive, and require a recorded reason for an active takeover. Expiry means unknown activity, not completed work (`tests/reservations.test.mjs`).
+
 ## Checking
 
 ```bash

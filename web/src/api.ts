@@ -29,6 +29,8 @@ export type Card = {
   /** Computed, never stored: a runner's lease is fresh. */
   running: boolean;
   heartbeat: string | null;
+  reservation?: { owner: string; session: string; actor: string; until: string; files: string[] } | null;
+  warnings?: { card: string; actor: string | null; activity: string; level: string; files: string[]; modules: string[] }[];
   due: string | null;
   created?: string;
   /** When the chronicle last said anything about this card. */
@@ -106,11 +108,14 @@ const root = (() => {
 
 export class NotSignedIn extends Error {}
 
+export const workSession = sessionStorage.getItem('gradula-work-session') || crypto.randomUUID();
+sessionStorage.setItem('gradula-work-session', workSession);
+
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${root}${path}`, {
     ...init,
     credentials: 'include',
-    headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
+    headers: { 'X-Gradula-Session': workSession, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });
   if (response.status === 401 || response.status === 403) throw new NotSignedIn();
   const body = await response.json().catch(() => null);
@@ -163,10 +168,12 @@ export const decide = (project: string, key: string, outcome: string, reason: st
 export const move = (project: string, key: string, state: State, reason?: string) =>
   call<Card>(`/api/v1/cards/${key}/move?project=${project}`, { method: 'POST', body: JSON.stringify({ state, reason: reason ?? null }) });
 
-export const start = (project: string, key: string, anyway?: string) =>
-  call<Card & { warnings: { card: string; files: string[] }[] }>(`/api/v1/cards/${key}/start?project=${project}`, {
-    method: 'POST', ...(anyway ? { body: JSON.stringify({ anyway }) } : {}),
+export const start = (project: string, key: string, anyway?: string, takeover?: string, files?: string[]) =>
+  call<Card>(`/api/v1/cards/${key}/start?project=${project}`, {
+    method: 'POST', body: JSON.stringify({ anyway, takeover, files }),
   });
+export const beatWork = (project: string, key: string) => call<{until:string; warnings:Card['warnings']}>(`/api/v1/cards/${key}/beat?project=${project}`, {method:'POST'});
+export const releaseWork = (project: string, key: string) => call<Card>(`/api/v1/cards/${key}/release-work?project=${project}`, {method:'POST'});
 
 // --- Settings: heralds and reports ----------------------------------------
 

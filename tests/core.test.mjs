@@ -153,6 +153,7 @@ test('a branch names its card — but only the exact shape', () => {
   // knows the card. Guessing from arbitrary names is how evidence lands on the
   // wrong card, and that is worse than no evidence at all.
   assert.equal(cardOfBranch('plan/MDLA-3'), 'MDLA-3');
+  assert.equal(cardOfBranch('codex/MDLA-3'), 'MDLA-3');
   assert.equal(cardOfBranch('plan/mdla-3'), 'MDLA-3', 'case does not matter');
   assert.equal(cardOfBranch('feature/fix-MDLA-3'), null, 'a mention is not a claim');
   assert.equal(cardOfBranch('plan/MDLA-3-again'), null);

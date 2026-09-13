@@ -51,6 +51,7 @@ export function shapeItem(row) {
     visibility: row.visibility ?? 'internal',
     // The runner's lease. Null until someone starts; stale by itself afterwards.
     heartbeat: row.heartbeat ?? null,
+    reservation: row.reservation ?? null,
     due: row.due ?? null,
     files: row.files ?? [],
     source: row.source ?? 'human',
@@ -199,6 +200,7 @@ export function createMemoryStore() {
           runner: fields.runner ?? 'here',
           visibility: fields.visibility ?? 'internal',
           heartbeat: null,
+          reservation: null,
           due: fields.due ?? null,
           files: fields.files ?? [],
           source: fields.source ?? 'human',

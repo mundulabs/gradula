@@ -55,6 +55,7 @@ const asItem = (row) => row && shapeItem({
   level: row.level ?? null,
   visibility: row.visibility ?? 'internal',
   heartbeat: iso(row.heartbeat),
+  reservation: row.reservation ?? null,
   // A `date` comes back as a JS Date, and String() turns that into
   // "Wed Sep 16" — but a day here is the string YYYY-MM-DD, or nothing sorts
   // any more and a comparison with "today" reads wrongly.
@@ -415,6 +416,7 @@ alter table card     add column if not exists level text;
 alter table card     add column if not exists visibility text not null default 'internal';
 -- A runner's lease. Null until somebody starts; it goes stale by itself.
 alter table card     add column if not exists heartbeat timestamptz;
+alter table card add column if not exists reservation jsonb;
 -- A date something should stand by. Only a milestone or a venture carries one
 -- sensibly — a task with a deadline is a task with pressure.
 alter table card     add column if not exists due date;
@@ -685,7 +687,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         for (const [name, column] of Object.entries(columns)) {
           if (changes[name] !== undefined) { values.push(changes[name]); sets.push(`${column} = $${values.length}`); }
         }
-        for (const name of ['gate', 'suggestions']) {
+        for (const name of ['gate', 'suggestions', 'reservation']) {
           if (changes[name] !== undefined) {
             values.push(changes[name] === null ? null : JSON.stringify(changes[name]));
             sets.push(`${name} = $${values.length}::jsonb`);
@@ -695,9 +697,9 @@ export async function createPgStore(url, { schema = null } = {}) {
         values.push(key);
         const where = [`key = $${values.length}`];
         for (const [field, value] of Object.entries(expected)) {
-          if (!['title', 'text', 'person', 'gate'].includes(field)) throw new Error('Unsupported comparison field');
-          values.push(field === 'gate' && value !== null ? JSON.stringify(value) : value);
-          where.push(`${field} is not distinct from $${values.length}::${field === 'gate' ? 'jsonb' : 'text'}`);
+          if (!['title', 'text', 'person', 'gate', 'reservation', 'state'].includes(field)) throw new Error('Unsupported comparison field');
+          values.push(['gate', 'reservation'].includes(field) && value !== null ? JSON.stringify(value) : value);
+          where.push(`${field} is not distinct from $${values.length}::${['gate', 'reservation'].includes(field) ? 'jsonb' : 'text'}`);
         }
         const { rows } = await q(`update card set ${sets.join(', ')}, changed = now() where ${where.join(' and ')} returning *`, values);
         return asItem(rows[0]) ?? null;

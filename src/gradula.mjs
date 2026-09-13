@@ -17,8 +17,10 @@
  * model thinks lands in `suggestions` and waits for a hand.
  */
 
+import { randomUUID } from 'node:crypto';
+import { plannedPaths, activeReservation, workWarnings } from './reservations.mjs';
 import { labelsFor, mergeLabels, normalizeVocabulary, areaOf } from './labels.mjs';
-import { cycleWith, blockedBy, collisions } from './links.mjs';
+import { cycleWith, blockedBy, filesOf } from './links.mjs';
 import { suggestions as cartograph } from './cartographer.mjs';
 import { wave, ripe, coverage } from './wave.mjs';
 import { messages, linkify, TEMPLATES, VOICES, VISIBILITIES } from './heralds.mjs';
@@ -391,6 +393,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         // Computed, never stored: a flag saying "running" is wrong at the
         // first closed laptop, and afterwards nobody knows which one.
         running: isRunning(item.heartbeat),
+        warnings: workWarnings(item, items),
         blockedBy: blocked.map((id) => byId.get(id)?.key).filter(Boolean),
         links: links.map((link) => ({
           id: link.id,
@@ -941,7 +944,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const touched = await store.events.lastTouched(project.key);
       const out = [];
       for (const card of cards) {
-        if (isRunning(card.heartbeat, now)) continue;
+        if (card.reservation || isRunning(card.heartbeat, now)) continue;
         const last = new Date(touched.get(card.id) ?? card.created ?? now).getTime();
         const idle = (now - last) / 3_600_000;
         if (idle < hours) continue;
@@ -1017,10 +1020,14 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         .filter((e) => e.verb === 'evidenced' && e.data?.kind === 'commit')
         .map((e) => ({ hash: e.data.ref, note: e.data.comment ?? null, url: github.commitUrl(connection.repo, e.data.ref) }));
 
-      const branch = `plan/${item.key}`;
-      const standing = await github.branchStanding(
+      let branch = `codex/${item.key}`;
+      let standing = await github.branchStanding(
         { ...connection, branch }, fetchImpl ? { fetchImpl } : {},
       );
+      if (standing.ok && standing.exists === false) {
+        const legacy = await github.branchStanding({ ...connection, branch: `plan/${item.key}` }, fetchImpl ? { fetchImpl } : {});
+        if (legacy.ok && legacy.exists) { standing = legacy; branch = `plan/${item.key}`; }
+      }
       return { repo: connection.repo, branch, branchUrl: github.branchUrl(connection.repo, branch), evidence, ...standing };
     },
 
@@ -1356,7 +1363,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
             : `The gate has not run yet (${call}). Run it — gradula gates — or change the gate; a hand does not stand in for it.`);
         }
       }
-      await store.items.patch(item.key, { state: target });
+      await store.items.patch(item.key, { state: target, ...(target !== 'making' ? { reservation: null, heartbeat: null } : {}) });
       await note(item, actor, 'moved', { from: item.state, to: target, reason });
       if (target === 'done') await this.closeInSentry(item, actor);
       /* the board's rule: what reaches done is public — incidents excepted, and only what is not public already */
@@ -1448,13 +1455,29 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * It writes NO chronicle line. A log with a heartbeat in every minute is
      * not a log any more.
      */
-    async beat(key, actor) {
+    async beat(key, actor, { owner = actor, session = actor } = {}) {
       const item = await findItem(key);
-      await store.items.patch(item.key, { heartbeat: new Date().toISOString() });
-      return { card: item.key, until: new Date(Date.now() + RUNNING_MS).toISOString() };
+      const reservation = item.reservation;
+      if (!reservation) throw new Refusal(409, 'not-reserved', 'Start this card before sending a heartbeat.');
+      if (reservation.owner !== owner || reservation.session !== session) throw new Refusal(409, 'reserved', `This card belongs to ${reservation.actor}. Start with an explicit takeover reason.`);
+      if (!activeReservation(reservation) || item.state !== 'making') throw new Refusal(409, 'expired', 'The reservation expired. Start the card again before continuing.');
+      const until = new Date(Date.now() + RUNNING_MS).toISOString();
+      const changed = await store.items.patch(key, { reservation: { ...reservation, until }, heartbeat: new Date().toISOString() }, { expected: { reservation, state: 'making' } });
+      if (!changed) throw new Refusal(409, 'reservation-changed', 'The reservation changed. Refresh before continuing.');
+      return { card: key, until, warnings: workWarnings(changed, await store.items.list(item.project, { state: 'making' })) };
     },
 
-    async startItem(key, actor, { anyway = null } = {}) {
+    async releaseWork(key, actor, { owner = actor, session = actor } = {}) {
+      const item = await findItem(key);
+      if (!item.reservation) return this.getItem(key);
+      if (item.reservation.owner !== owner || item.reservation.session !== session) throw new Refusal(409, 'reserved', 'Only the owning session can release its reservation.');
+      const changed = await store.items.patch(key, { reservation: null, heartbeat: null }, { expected: { reservation: item.reservation } });
+      if (!changed) throw new Refusal(409, 'reservation-changed', 'The reservation changed. Refresh before continuing.');
+      await note(changed, actor, 'changed', { fields: ['reservation'], reservation: 'released' });
+      return this.getItem(key);
+    },
+
+    async startItem(key, actor, { anyway = null, takeover = null, files = null, workspaceReason = null, owner = actor, session = actor } = {}) {
       const item = await findItem(key);
       /*
        * AN IDEA IS NOT AN ORDER, AND ICE IS OFF THE BOARD.
@@ -1468,7 +1491,17 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         throw new Refusal(409, 'not-ready', `${item.key} is in ${item.state}. Move it to ready first — that move is the yes, and the chronicle names who gave it.`);
       }
       const running = (await store.items.list(item.project, { state: 'making' })).filter((r) => r.id !== item.id);
-      const warnings = collisions(item, running);
+      let paths;
+      try { paths = files === null ? (item.reservation?.files ?? filesOf(item)) : plannedPaths(files); }
+      catch (error) { throw bad('files', error.message); }
+      if (typeof session !== 'string' || !session.trim() || session.length > 200) throw bad('session', 'A session identifier of at most 200 characters is required.');
+      const localReason = workspaceReason === null ? null : text(workspaceReason, 500, 'workspaceReason');
+      const previous = item.reservation;
+      const same = previous?.owner === owner && previous?.session === session;
+      const handover = takeover === null ? null : text(takeover, 500, 'takeover');
+      if (activeReservation(previous) && !same && !handover) throw new Refusal(409, 'reserved', `${key} is reserved by ${previous.actor} until ${previous.until}. Take over only with a reason.`);
+      const reservation = { owner, session, actor, files: paths, until: new Date(Date.now() + RUNNING_MS).toISOString(), id: same ? previous.id : randomUUID() };
+      const warnings = workWarnings({ ...item, reservation }, running);
       const blocked = (await this.getItem(item.key)).blockedBy;
       /*
        * BLOCKED MEANS BLOCKED — unless somebody says why not.
@@ -1485,8 +1518,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (blocked.length && !why) {
         throw new Refusal(409, 'blocked', `${item.key} waits on ${blocked.join(', ')}. Finish those first — or start anyway with a reason; the reason stands in the chronicle.`);
       }
-      await store.items.patch(item.key, { state: 'making' });
-      await note(item, actor, 'started', { warnings, blockedBy: blocked, ...(blocked.length && why ? { anyway: why } : {}) });
+      const claimed = await store.items.patch(item.key, { state: 'making', reservation, heartbeat: new Date().toISOString() }, { expected: { reservation: previous, state: item.state } });
+      if (!claimed) throw new Refusal(409, 'reservation-changed', 'Another session changed this card. Refresh and check its reservation.');
+      await note(claimed, actor, 'started', { warnings, blockedBy: blocked, reservation: { actor, session, files: paths }, ...(localReason ? { workspaceReason: localReason } : {}), ...(handover ? { takeover: handover, previousActor: previous?.actor } : {}), ...(blocked.length && why ? { anyway: why } : {}) });
       return { ...(await this.getItem(item.key)), warnings };
     },
 

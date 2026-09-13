@@ -30,6 +30,7 @@ async function start2({ heraldKinds, staticFiles } = {}) {
     const res = await fetch(`${base}${path}`, {
       ...init,
       headers: {
+        'X-Gradula-Session': 'test-session',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(actor ? { 'X-Gradula-Actor': actor } : {}),
@@ -164,7 +165,7 @@ test('start announces who touches the same file', async (t) => {
 
   const second = await call('/api/v1/cards/PRB-2/start', { method: 'POST', token, actor: 'felix' });
   assert.equal(second.body.state, 'making', 'the warning stops nobody');
-  assert.deepEqual(second.body.warnings, [{ card: 'PRB-1', files: [file] }]);
+  assert.deepEqual(second.body.warnings, [{ card: 'PRB-1', files: [file], actor: 'david (the test)', activity: 'active', modules: [], level: 'files' }]);
 });
 
 test('another project does not exist — 404, not 403', async (t) => {
@@ -524,6 +525,7 @@ test('a runner leases the card by beating, and the lease expires by itself', asy
   })).body;
   assert.equal(card.running, false, 'a fresh card is not running');
 
+  await call(`/api/v1/cards/${card.key}/start`, { method: 'POST', token });
   const beat = await call(`/api/v1/cards/${card.key}/beat`, { method: 'POST', token, actor: 'david' });
   assert.equal(beat.status, 200);
   assert.equal(beat.body.card, card.key);
@@ -791,6 +793,7 @@ test('a card left lying goes back to ready by itself, and says why', async (t) =
   for (const card of [left.body.key, held.body.key]) {
     await call(`/api/v1/cards/${card}/move`, { method: 'POST', token, actor: 'david', body: { state: 'making' } });
   }
+  await call(`/api/v1/cards/${held.body.key}/start`, { method: 'POST', token, actor: 'a runner' });
   await call(`/api/v1/cards/${held.body.key}/beat`, { method: 'POST', token, actor: 'a runner' });
 
   assert.deepEqual(await gradula.releaseStalled('PRB'), [], 'nothing is a day old yet');
@@ -1247,4 +1250,15 @@ test('an admin can empty a project; a project key cannot, and the house stays', 
   assert.ok(await gradula.getProject('WIPE'), 'the project stays');
   const next = await gradula.addItem('WIPE', { kind: 'idea', title: 'again' }, 'test');
   assert.equal(next.number, 1, 'numbering starts over');
+});
+
+test('reservation ownership uses credentials and sessions, never the claimed actor', async t => {
+  const {call,token,close}=await start2();t.after(close);
+  const second=(await call('/api/admin/projects/PRB/keys',{method:'POST',token:ADMIN,body:{name:'second'}})).body.token;
+  const card=(await call('/api/v1/cards',{method:'POST',token,body:{kind:'task',title:'Exclusive'}})).body;
+  assert.equal((await call(`/api/v1/cards/${card.key}/start`,{method:'POST',token,actor:'same'})).status,200);
+  assert.equal((await call(`/api/v1/cards/${card.key}/beat`,{method:'POST',token:second,actor:'same'})).status,409);
+  assert.equal((await call(`/api/v1/cards/${card.key}/start`,{method:'POST',token,headers:{'X-Gradula-Session':'another'}})).status,409);
+  assert.equal((await call(`/api/v1/cards/${card.key}/start`,{method:'POST',token:second,body:{takeover:'Agreed with owner'}})).status,200);
+  assert.equal((await call(`/api/v1/cards/${card.key}/beat`,{method:'POST',token})).status,409);
 });

@@ -16,6 +16,7 @@
  * else.
  */
 
+import { randomUUID } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { config, handOf, coderOf } from '../src/hand.mjs';
 import { ladderOf, CARD_STYLE } from '../src/spec.mjs';
@@ -23,6 +24,7 @@ import { ladderOf, CARD_STYLE } from '../src/spec.mjs';
 // The same reader the CLI uses (src/hand.mjs) — and this server is a
 // machine's door by definition, so it takes the agent key when there is one.
 const env = config();
+const session = env.GRADULA_SESSION || env.CODEX_THREAD_ID || randomUUID();
 const base = (env.GRADULA_URL ?? 'http://127.0.0.1:3200').replace(/\/+$/, '');
 const { token, actor } = handOf(env, { machine: true });
 
@@ -34,7 +36,7 @@ async function api(path, { method = 'GET', body } = {}) {
   if (!token) throw new Error('GRADULA_TOKEN is missing — without a project key there is nothing to do here.');
   const res = await fetch(`${base}${path}`, {
     method,
-    headers: {
+    headers: { 'X-Gradula-Session': session,
       Authorization: `Bearer ${token}`,
       ...(actor ? { 'X-Gradula-Actor': actor } : {}),
       ...(coderOf(env) ? { 'X-Gradula-Coder': coderOf(env) } : {}),
@@ -108,9 +110,19 @@ export const TOOLS = [
   },
   {
     name: 'plan_start',
-    description: 'Begin a card: the state becomes making, and the answer says who else is touching the same files right now. Refused for a card in ideas or ice (a person moves it to ready first — that move is the yes) and for a card that waits on another; the way through a block is `anyway`, a sentence saying why, which stands in the chronicle beside the start.',
-    inputSchema: { type: 'object', properties: { card: { type: 'string' }, anyway: { type: 'string', description: 'Why start although the card waits on another. Only with a real reason.' } }, required: ['card'] },
-    run: (args) => api(`/api/v1/cards/${key(args.card)}/start`, { method: 'POST', body: args.anyway ? { anyway: args.anyway } : {} }),
+    description: 'Reserve and begin a card for this MCP session. Supply planned repository-relative files or folders; the answer includes owner and overlap warnings. Another active session requires an explicit takeover reason. Use plan_beat every 25 seconds while working and plan_release_work when finished. Use an isolated task branch/worktree for code edits. Refused for a card in ideas or ice (a person moves it to ready first — that move is the yes) and for a card that waits on another; the way through a block is `anyway`, a sentence saying why, which stands in the chronicle beside the start.',
+    inputSchema: { type: 'object', properties: { card: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, takeover: { type: 'string' }, anyway: { type: 'string', description: 'Why start although the card waits on another. Only with a real reason.' } }, required: ['card'] },
+    run: (args) => api(`/api/v1/cards/${key(args.card)}/start`, { method: 'POST', body: { anyway: args.anyway, files: args.files, takeover: args.takeover } }),
+  },
+  {
+    name: 'plan_beat', description: 'Renew this session reservation while working; returns current overlap warnings. Call every 25 seconds. Expired or transferred reservations must be started again.',
+    inputSchema: { type:'object', properties:{card:{type:'string'}}, required:['card'] },
+    run: args => api(`/api/v1/cards/${key(args.card)}/beat`, {method:'POST'}),
+  },
+  {
+    name: 'plan_release_work', description: 'Release this session reservation without completing the card.',
+    inputSchema: { type:'object', properties:{card:{type:'string'}}, required:['card'] },
+    run: args => api(`/api/v1/cards/${key(args.card)}/release-work`, {method:'POST'}),
   },
   {
     name: 'plan_approve',

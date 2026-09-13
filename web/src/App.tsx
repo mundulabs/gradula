@@ -26,7 +26,7 @@ import Icon from './Icon';
 import ConfirmAction from './ConfirmAction';
 import {
   signInPath, me as readMe, projects as readProjects, cards as readCards,
-  card as readCard, system as readSystem, move, start, create, change, confirm, say, decide,
+  card as readCard, system as readSystem, move, start, beatWork, releaseWork, workSession, create, change, confirm, say, decide,
   vocabulary as readVocabulary, links as readLinks, live as liveLine,
   standing as readStanding, NotSignedIn,
   heralds as heraldsRead, myKeys, mintKey, revokeKey, type OwnKey, pendingDevices, approveDevice, denyDevice, type Device, templates as templatesRead, houseKey as houseKeyRead, HOUSE_KEY, saveHerald, dropHerald,
@@ -145,6 +145,7 @@ function CardButton({ card, open, signal, picture }: { card: Card; open: () => v
           {signal === 'working' ? 'being worked on' : signal === 'attention' ? 'needs a hand' : 'just changed'}
         </span>
       ) : null}
+      {card.reservation ? <span className="work-owner">{card.reservation.actor} · {t(Date.parse(card.reservation.until) > Date.now() ? 'work.active' : 'work.unknown')}</span> : null}
       <span className="key">
         {card.key}{card.source === 'sentry' ? ' · incident' : ''}
         {/*
@@ -290,6 +291,9 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
   const [card, setCard] = useState<Card | null>(null);
   const [editing, setEditing] = useState(false);
   const [byHand, setByHand] = useState(false);
+  const [planned, setPlanned] = useState<string | null>(null);
+  const [workReason, setWorkReason] = useState('');
+  useEffect(() => { setPlanned(null); setWorkReason(''); }, [cardKey]);
   const [draft, setDraft] = useState<{ title: string; text: string; person: string; gate: Card['gate'] } | null>(null);
   const [word, setWord] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -312,6 +316,14 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
     try { setCard(await fn()); changed(); return true; }
     catch (e) { setError(String((e as Error).message ?? e)); return false; }
     finally { lock.current = false; setBusy(false); }
+  };
+
+  const beginWork = () => {
+    if (!card) return;
+    const other = card.reservation && card.reservation.session !== workSession && Date.parse(card.reservation.until) > Date.now();
+    if ((other || card.blockedBy.length) && !workReason.trim()) { setError(t('work.reasonRequired')); return; }
+    run(() => start(project, card.key, card.blockedBy.length ? workReason.trim() : undefined, other ? workReason.trim() : undefined, planned === null ? undefined : planned.split('\n').map(p => p.trim()).filter(Boolean)));
+
   };
 
   const openToChange = () => {
@@ -349,6 +361,13 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
         {!card ? <p className="empty">{t('ui.loading')}</p> : (
           <>
             <h2>{card.title}</h2>
+            <section className="work-reservation">
+              <strong>{t('work.title')}</strong>
+              <p>{card.reservation ? `${card.reservation.actor} · ${t(Date.parse(card.reservation.until) > Date.now() ? 'work.active' : 'work.unknown')} · ${t('work.session')} ${card.reservation.session.slice(0, 8)}` : t('work.free')}</p>
+              {['ready','making'].includes(card.state) ? <label>{t('work.files')}<textarea value={planned ?? (card.reservation?.files ?? card.files).join('\n')} onChange={e => setPlanned(e.target.value)} placeholder={t('work.pathExample')} /></label> : null}
+              {(card.blockedBy.length > 0 || (card.reservation && card.reservation.session !== workSession && Date.parse(card.reservation.until) > Date.now())) ? <label>{t('work.takeoverWhy')}<input value={workReason} onChange={e => setWorkReason(e.target.value)} /></label> : null}
+              {(card.warnings ?? []).map(w => <p key={w.card}><a href={`/${w.card}`}>{w.card}</a> · {w.actor ?? t('work.unknown')} · {t(w.level === 'files' ? 'work.fileOverlap' : 'work.moduleOverlap')}: {(w.files.length ? w.files : w.modules).join(', ')} · {t(w.activity === 'active' ? 'work.active' : 'work.unknown')}</p>)}
+            </section>
             <div className="line">
               <span>{t(card.kind)}</span><span>·</span><span>{t(card.state)}</span>
               {card.person ? <><span>·</span><span>{card.person}</span></> : null}
@@ -478,17 +497,10 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
               */}
               {card.state === 'ideas' || card.state === 'ice' ? (
                 <button onClick={() => run(() => move(project, card.key, 'ready'))}>{t('card.toReady')}</button>
-              ) : card.state === 'ready' && card.blockedBy.length ? (
-                <button onClick={() => {
-                  const why = window.prompt(t('card.anywayWhy').replace('…', card.blockedBy.join(', ')));
-                  if (why === null || !why.trim()) return;
-                  run(() => start(project, card.key, why.trim()));
-                }}>
-                  {t('card.startAnyway')}
-                </button>
-              ) : card.state === 'ready' ? (
-                <button onClick={() => run(() => start(project, card.key))}>{t('card.start')}</button>
+              ) : ['ready', 'making'].includes(card.state) ? (
+                <button onClick={beginWork}>{t(card.reservation && card.reservation.session !== workSession && Date.parse(card.reservation.until) > Date.now() ? 'work.takeover' : 'card.start')}</button>
               ) : null}
+              {card.reservation?.session === workSession ? <button onClick={() => run(() => releaseWork(project, card.key))}>{t('work.release')}</button> : null}
               <button className="by-hand" aria-expanded={byHand} onClick={() => setByHand(!byHand)}>
                 {t('card.byHand')} {byHand ? '▾' : '▸'}
               </button>
@@ -1107,6 +1119,26 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProject] = useState<string>(() => localStorage.getItem('gradula.project') ?? '');
   const [cards, setCards] = useState<Card[]>([]);
+  const working = useRef(new Map<string, Card>());
+  const [, refreshActivity] = useState(0);
+  useEffect(() => { const timer = setInterval(() => refreshActivity(n => n + 1), 15000); return () => clearInterval(timer); }, []);
+  useEffect(() => {
+    for (const card of cards) {
+      if (card.reservation?.session === workSession && card.state === 'making') working.current.set(card.key, card);
+      else working.current.delete(card.key);
+    }
+  }, [cards]);
+  useEffect(() => {
+    const clock = setInterval(() => {
+      for (const [key] of working.current) {
+        beatWork(key.split('-')[0], key).then(result => {
+          setCards(before => before.map(card => card.key === key && card.reservation?.session === workSession ? { ...card, heartbeat: new Date().toISOString(), reservation: { ...card.reservation, until: result.until }, warnings: result.warnings } : card));
+        }).catch(error => { working.current.delete(key); setError(`${key}: ${error.message}`); });
+      }
+    }, 25000);
+    return () => clearInterval(clock);
+  }, []);
+
   // What has moved since I last looked. The short impulse ends by itself —
   // it is a message, not a state.
   const [justChanged, setJustChanged] = useState<Set<string>>(new Set());

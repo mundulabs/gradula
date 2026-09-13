@@ -70,7 +70,7 @@ export function mentionedKeys(text) {
 
 /**
  * The card a branch belongs to. `gradula start MDLA-3 --tree` creates the
- * branch `plan/MDLA-3`, so the branch already knows the card — and then nobody
+ * branch `codex/MDLA-3` (legacy `plan/MDLA-3` is still recognized), so the branch already knows the card — and then nobody
  * should have to type it again.
  *
  * Only this exact shape counts. A branch called `feature/fix-MDLA-3-again` is
@@ -78,6 +78,6 @@ export function mentionedKeys(text) {
  * up on the wrong card, and evidence on the wrong card is worse than none.
  */
 export function cardOfBranch(branch) {
-  const match = /^plan\/([A-Z]{2,8}-[1-9][0-9]{0,6})$/.exec(String(branch ?? '').trim().toUpperCase().replace(/^PLAN\//, 'plan/'));
+  const match = /^(?:PLAN|CODEX)\/([A-Z]{2,8}-[1-9][0-9]{0,6})$/.exec(String(branch ?? '').trim().toUpperCase());
   return match ? match[1] : null;
 }

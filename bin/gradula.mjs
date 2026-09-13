@@ -25,6 +25,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { allGates, gateLine } from '../src/gates.mjs';
 import { KINDS, ladderOf, agentKeyName, CARD_STYLE, laddersOf } from '../src/spec.mjs';
 import { config, handOf, mergeEnv, coderOf } from '../src/hand.mjs';
+import { workSession } from '../src/work-session.mjs';
 import { cardOfBranch } from '../src/ids.mjs';
 
 const HELP = `gradula — wish, board, standing
@@ -38,7 +39,9 @@ const HELP = `gradula — wish, board, standing
   gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
   gradula remove <CARD>            an idea that was only words — anything with a chronicle goes on ice
   gradula confirm <CARD>…          take over the labels a rule proposed (a hand's call)
-  gradula start <CARD> [--tree]    --tree creates a branch and a worktree
+  gradula start <CARD>             creates an isolated branch/worktree; --here "reason" stays here
+                 [--files "src/audio.rs,src/ui"] [--takeover "reason"]
+  gradula release-work <CARD>      release your session reservation without marking Done
                  [--anyway "why"]  start a card that waits on another — the sentence is the reason
   gradula link <CARD> <needs|blocks|part-of|resembles|touches> <CARD>
   gradula sync [--since <ref>] [--adopt]   send commits carrying "Plan: CARD" as evidence; --adopt gives a card to one that carries none
@@ -96,21 +99,24 @@ const base = (env.GRADULA_URL ?? 'http://127.0.0.1:3200').replace(/\/+$/, '');
 // Which hand: a person at the terminal, or a session that runs the CLI for
 // one. Same actor, its own key — the chronicle says "via" which.
 const hand = handOf(env);
+let session = workSession(env);
 
-async function call(path, { method = 'GET', body } = {}) {
+async function call(path, { method = 'GET', body, soft = false } = {}) {
   if (!hand.token) stop('No GRADULA_TOKEN — nothing happens here without a project key.');
   const res = await fetch(`${base}${path}`, {
     method,
+    ...(soft ? { signal: AbortSignal.timeout(15000) } : {}),
     headers: {
       Authorization: `Bearer ${hand.token}`,
+      'X-Gradula-Session': session,
       ...(hand.actor ? { 'X-Gradula-Actor': hand.actor } : {}),
       ...(coderOf(env) ? { 'X-Gradula-Coder': coderOf(env) } : {}),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-  }).catch((cause) => stop(`${base} does not answer (${cause.message}).`));
+  }).catch((cause) => { const message = `${base} does not answer (${cause.message}).`; if (soft) throw new Error(message); stop(message); });
   const payload = await res.json().catch(() => null);
-  if (!res.ok) stop(`${payload?.error ?? res.status}: ${payload?.line ?? 'unknown'}`);
+  if (!res.ok) { const message = `${payload?.error ?? res.status}: ${payload?.line ?? 'unknown'}`; if (soft) throw new Error(message); stop(message); }
   return payload;
 }
 
@@ -447,10 +453,12 @@ switch (command) {
 
   case 'start': {
     const key = String(words[0] ?? '').toUpperCase();
+    if (!/^[A-Z]{2,8}-[0-9]{1,7}$/.test(key)) stop('start needs a valid card key');
+    if (flags.here && (typeof flags.here !== 'string' || !flags.here.trim())) stop('--here needs a reason');
     // A blocked card opens only with a reason, and the reason is a sentence
     // — `--anyway` alone is a shrug, and the door refuses a shrug.
     const anyway = typeof flags.anyway === 'string' ? flags.anyway : null;
-    const card = await call(`/api/v1/cards/${key}/start`, { method: 'POST', body: anyway ? { anyway } : {} });
+    const card = await call(`/api/v1/cards/${key}/start`, { method: 'POST', body: { anyway, workspaceReason: typeof flags.here === 'string' ? flags.here : null, takeover: typeof flags.takeover === 'string' ? flags.takeover : null, ...(typeof flags.files === 'string' ? { files: flags.files.split(',').map(s => s.trim()) } : {}) } });
 
     // The warnings first: whoever reads them under the brief has already begun.
     if (card.blockedBy.length) console.log(`CAREFUL: ${key} waits on ${card.blockedBy.join(', ')}`);
@@ -459,29 +467,43 @@ switch (command) {
     // nobody sees at the moment of writing is a setting nobody follows.
     const speaks = await call('/api/v1/project').then((p) => p.language).catch(() => null);
     if (speaks) console.log(`Write on this board in: ${speaks}`);
-    for (const warning of card.warnings ?? []) {
-      console.log(`CAREFUL: ${warning.card} is touching the same files right now — ${warning.files.join(', ')}`);
-    }
+    for (const warning of card.warnings ?? []) console.log(`CAREFUL: ${warning.card} · ${warning.actor ?? 'unassigned'} · ${warning.activity} · ${warning.level}: ${(warning.files.length ? warning.files : warning.modules).join(', ')}`);
 
     /**
      * A tree of its own per card. The pattern already stands next door
      * (.worktrees/… with a branch per venture): two moves in one tree see
      * each other's changes and report foreign test failures.
      */
-    if (flags.tree) {
-      const branch = `plan/${key}`;
+    if (flags.here && (typeof flags.here !== 'string' || !flags.here.trim())) stop('--here needs a reason; otherwise start creates an isolated worktree.');
+    if (!flags.here) {
+      const branch = `codex/${key}`;
       const place = join('.worktrees', 'plan', key);
       try {
+        const exclude = execFileSync('git', ['rev-parse', '--git-path', 'info/exclude'], { encoding: 'utf8' }).trim();
+        const excluded = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
+        if (!excluded.split('\n').includes('/.worktrees/')) writeFileSync(exclude, `${excluded}\n/.worktrees/\n`);
         if (!existsSync(place)) {
           const zweige = execFileSync('git', ['branch', '--list', branch], { encoding: 'utf8' }).trim();
-          execFileSync('git', zweige ? ['worktree', 'add', place, branch] : ['worktree', 'add', place, '-b', branch], { stdio: 'pipe' });
+          let baseRef = 'HEAD';
+          try { execFileSync('git', ['show-ref', '--verify', '--quiet', 'refs/heads/dev']); baseRef = 'dev'; } catch { /* repositories without a dev branch use their current base */ }
+          execFileSync('git', zweige ? ['worktree', 'add', place, branch] : ['worktree', 'add', place, '-b', branch, baseRef], { stdio: 'pipe' });
         }
-        console.log(`Worktree: ${place} (Zweig ${branch})`);
+        const actualBranch = execFileSync('git', ['-C', place, 'branch', '--show-current'], { encoding: 'utf8' }).trim();
+        if (actualBranch !== branch) throw new Error(`Expected ${branch}, found ${actualBranch}; existing files were not changed.`);
+        const treeSession = workSession(env, place);
+        if (treeSession !== session) {
+          await call(`/api/v1/cards/${key}/release-work`, { method: 'POST' });
+          session = treeSession;
+          await call(`/api/v1/cards/${key}/start`, { method: 'POST', body: { anyway, files: card.reservation.files } });
+        }
+        console.log(`Worktree: ${place} (branch ${branch})`);
       } catch (error) {
-        console.error(`No worktree: ${String(error.stderr ?? error.message).trim().split('\n').pop()}`);
+        await call(`/api/v1/cards/${key}/release-work`, { method: 'POST' });
+        stop(`No worktree: ${String(error.stderr ?? error.message).trim().split('\n').pop()}`);
       }
     }
 
+    console.log(`Reservation: ${session}. Keep it alive with: gradula work ${key} (from the worktree).`);
     console.log(`\n── Brief ${card.key} ──────────────────────────────`);
     console.log(card.title);
     if (card.text) console.log(`\n${card.text}`);
@@ -575,10 +597,10 @@ switch (command) {
 
     if (!found.size) {
       console.log('No commit names a card. The line reads:  Plan: MDLA-142');
-      console.log('Or work on a branch that gradula start --tree created (plan/MDLA-142).');
+      console.log('Or work on a branch that gradula start --tree created (codex/MDLA-142).');
       break;
     }
-    if (onBranch) console.log(`On branch plan/${onBranch} — commits without a Plan line count for ${onBranch}.\n`);
+    if (onBranch) console.log(`On the task branch for ${onBranch} — commits without a Plan line count for ${onBranch}.\n`);
 
     let fresh = 0;
     for (const [card, commits] of found) {
@@ -1013,21 +1035,30 @@ switch (command) {
    *   gradula work GRD-33                 only beat, until Ctrl-C
    *   gradula work GRD-33 -- npm test     beat while that runs
    */
+  case 'release-work': {
+    const card = await call(`/api/v1/cards/${String(words[0] ?? '').toUpperCase()}/release-work`, { method: 'POST' });
+    console.log(`${card.key}: reservation released; card state unchanged.`);
+    break;
+  }
+
   case 'work': {
     const key = String(words[0] ?? '').toUpperCase();
     if (!key) stop('gradula work <CARD> [-- <command>]');
     const cut = process.argv.indexOf('--');
     const inner = cut > -1 ? process.argv.slice(cut + 1) : [];
 
+    let child;
+    let lastWarnings = '';
     const beat = async () => {
-      try { await call(`/api/v1/cards/${key}/beat`, { method: 'POST' }); }
-      catch { /* a mute beat is no reason to break off the work */ }
+      const out = await call(`/api/v1/cards/${key}/beat`, { method: 'POST', soft: true });
+      const warnings = JSON.stringify(out.warnings ?? []);
+      if (warnings !== lastWarnings && out.warnings?.length) console.error(`Work overlaps: ${warnings}`);
+      lastWarnings = warnings;
     };
     await beat();
     // Clearly more often than the lease runs out: a missed beat must not be
     // enough on its own for the card to vanish from the board.
-    const clock = setInterval(beat, 25_000);
-    clock.unref?.();
+    const clock = setInterval(() => beat().catch(error => { console.error(error.message); clearInterval(clock); if (child) child.kill('SIGTERM'); else process.exit(1); }), 25_000);
 
     console.log(`${key}: beating. The board shows it as running while this runs.`);
     if (!inner.length) {
@@ -1037,10 +1068,11 @@ switch (command) {
     }
 
     console.log(`  $ ${inner.join(' ')}`);
-    const child = spawn(inner[0], inner.slice(1), { stdio: 'inherit' });
-    const code = await new Promise((done) => child.on('close', done));
+    child = spawn(inner[0], inner.slice(1), { stdio: 'inherit' });
+    const code = await new Promise((done) => { child.on('close', done); child.on('error', error => { console.error(error.message); done(1); }); });
     clearInterval(clock);
-    console.log(code === 0 ? `\n${key}: done, and the beat has stopped.` : `\n${key}: exited ${code}.`);
+    await call(`/api/v1/cards/${key}/release-work`, { method: 'POST', soft: true }).catch(error => console.error(error.message));
+    console.log(code === 0 ? `\n${key}: command finished; the heartbeat has stopped.` : `\n${key}: exited ${code}.`);
     process.exit(code ?? 0);
   }
 

@@ -899,3 +899,11 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 .map-foot { min-width: 0; }
 .map-legend { justify-content: center; max-width: 100%; gap: 6px; }
 .map-legend .map-key-number { width: auto; height: auto; border: 0; border-radius: 0; }
+
+.work-reservation { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 12px 0; }
+.work-reservation label { display: grid; gap: 8px; }
+.work-reservation textarea { min-height: 72px; width: 100%; box-sizing: border-box; }
+.work-owner { display: block; font-size: 12px; color: var(--dim); overflow-wrap: anywhere; }
+
+.work-reservation p { margin: 10px 0; overflow-wrap: anywhere; }
+.work-reservation label { margin-top: 12px; }

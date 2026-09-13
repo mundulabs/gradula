@@ -25,7 +25,7 @@ import { LIVE_HEADERS } from './live.mjs';
 import { Refusal } from './gradula.mjs';
 import { signatureOk } from './sentry.mjs';
 import { SESSION, ATTEMPT, cookiesOf } from './auth.mjs';
-import { timingSafeEqual, createHash } from 'node:crypto';
+import { timingSafeEqual, createHash, randomUUID } from 'node:crypto';
 
 const JSON_TYPE = 'application/json; charset=utf-8';
 const MAX_BODY = 512 * 1024;
@@ -300,11 +300,12 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       return { status: 200, body: await gradula.moveItem(m[1], body.state, ctx.actor, body.reason ?? null) };
     }],
     ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/beat$/, async (_req, m, ctx) => ({
-      status: 200, body: await gradula.beat(m[1], ctx.actor),
+      status: 200, body: await gradula.beat(m[1], ctx.actor, ctx.work),
     })],
+    ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/release-work$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.releaseWork(m[1], ctx.actor, ctx.work) })],
     ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/start$/, async (req, m, ctx) => {
       const body = await readJson(req);
-      return { status: 200, body: await gradula.startItem(m[1], ctx.actor, { anyway: body.anyway ?? null }) };
+      return { status: 200, body: await gradula.startItem(m[1], ctx.actor, { ...ctx.work, anyway: body.anyway ?? null, takeover: body.takeover ?? null, files: body.files ?? null, workspaceReason: body.workspaceReason ?? null }) };
     }],
     ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/suggest$/, async (req, m, ctx) => {
       const body = await readJson(req);
@@ -599,6 +600,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
         url,
         project,
         actor: actorOf(req, token, human),
+        work: { owner: token ? `token:${token.id}` : `user:${human?.sub}`, session: String(req.headers['x-gradula-session'] ?? randomUUID()) },
         human,
         system: token?.kind === 'system',
         tokenName: token?.name ?? null,
