@@ -19,6 +19,7 @@ test('completion bursts send one summary per subscribed herald and preserve hist
     assert.match(msg.text, /3 cards completed/);
     for (const card of cards) assert.ok(msg.text.includes(`https://board.test/${card.key}`));
     assert.match(msg.text, /&amp;/);
+    assert.match(msg.text, /●●●●● done/);
   }
   for (const card of cards) assert.equal((await g.getItem(card.key)).state, 'done');
 });
@@ -30,7 +31,7 @@ test('batches isolate recipients, recover after delivery failure and bound long 
   assert.deepEqual(calls,[2,1]);
   assert.equal((await q.enqueue('a',1,async()=>{throw Error('down');})).sent,false);
   assert.equal((await q.enqueue('a',1,deliver)).sent,true);
-  const entries=Array.from({length:30},(_,i)=>({verb:'moved',to:'done',card:{key:`PRB-${i+1}`,title:'x'.repeat(300)}}));
+  const entries=Array.from({length:30},(_,i)=>({verb:'moved',to:'done',card:{key:`PRB-${i+1}`,title:'x'.repeat(300),state:'done'}}));
   const text=activitySummary(entries,'Probe');
   assert.match(text,/30 cards completed/); assert.match(text,/18 more/); assert.ok(text.length<2000);
 });
@@ -44,7 +45,7 @@ test('mixed activity folds repeated cards to their latest state without claiming
   ];
   const text = activitySummary(entries, 'Probe');
   assert.match(text, /2 cards updated/);
-  assert.match(text, /PRB-1 · review/);
+  assert.match(text, /PRB-1 ●●●◐○ review/);
   assert.equal((text.match(/PRB-1/g) ?? []).length, 1);
   assert.doesNotMatch(text, /completed|ready/);
 });
@@ -60,7 +61,8 @@ test('ordinary bursts combine before Done', async () => {
   await g.settle();
   assert.equal(sent.length,1);
   assert.match(sent[0],/2 cards updated/);
-  assert.match(sent[0],/review/);
+  assert.match(sent[0],/●●●◐○ review/);
+  assert.match(sent[0],/●◐○○○ ready/);
 });
 
 
@@ -70,10 +72,11 @@ test('several events for one card send the latest detailed message', async () =>
   await g.createProject({key:'PRB',name:'Probe'});
   await g.setHerald('PRB',{kind:'probe',name:'Workshop',chat:'a',token:'x',template:'workshop'},'human');
   const card = await g.addItem('PRB',{title:'Latest detailed title',kind:'task'},'human');
-  await g.moveItem(card.key,'review','human',{reason:'Latest review evidence'});
+  await g.moveItem(card.key,'review','human','Latest review evidence');
   await g.settle();
   assert.equal(sent.length,1);
-  assert.match(sent[0],/review/);
+  assert.match(sent[0],/●●●◐○ review/);
   assert.match(sent[0],/Latest detailed title/);
+  assert.match(sent[0],/Latest review evidence/);
   assert.doesNotMatch(sent[0],/cards updated|cards completed|•/);
 });
