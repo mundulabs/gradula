@@ -37,3 +37,23 @@ test('CLI defaults to an isolated worktree and its session can work and release'
  await run(['release-work',card.key],tree);
  assert.equal((await g.getItem(card.key)).reservation,null);
 });
+
+test('CLI can deliberately reserve work in the current checkout', async t => {
+ const dir=mkdtempSync(join(tmpdir(),'gradula-here-'));
+ t.after(()=>rmSync(dir,{recursive:true,force:true}));
+ const git=args=>execFileSync('git',args,{cwd:dir,encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
+ git(['init','-b','dev']);git(['-c','user.name=Test','-c','user.email=test@example.invalid','commit','--allow-empty','-m','Initial']);
+ const store=createMemoryStore(),g=createGradula(store);await g.createProject({key:'PRB',name:'Test'});
+ const card=await g.addItem('PRB',{kind:'task',title:'Same checkout change'},'test');const auth=await store.tokens.mint({project:'PRB',name:'test'});
+ const server=createServer(createApi(g));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));t.after(()=>new Promise(resolve=>server.close(resolve)));
+ const env={...process.env,GRADULA_URL:`http://127.0.0.1:${server.address().port}`,GRADULA_TOKEN:auth.token,GRADULA_AGENT_TOKEN:'',GRADULA_SESSION:'',CODEX_THREAD_ID:''};
+ const cli=fileURLToPath(new URL('../bin/gradula.mjs',import.meta.url));
+ const run=(args,cwd=dir)=>new Promise((resolve,reject)=>{let output='';const child=spawn(process.execPath,[cli,...args],{cwd,env});child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>output+=d);child.on('error',reject);child.on('close',code=>code===0?resolve(output):reject(Error(output)));});
+ const output=await run(['start',card.key,'--here','same developer is integrating related work','--files','src/audio']);
+ assert.doesNotMatch(output,/Worktree:/);
+ assert.match(output,new RegExp(`Reservation: ${workSession(env,dir)}\\.`));
+ assert.equal(git(['branch','--show-current']),'dev');
+ const held=await g.getItem(card.key);
+ assert.equal(held.reservation.session,workSession(env,dir));
+ assert.ok(held.history.some(e=>e.data?.workspaceReason==='same developer is integrating related work'));
+});

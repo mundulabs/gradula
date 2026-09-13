@@ -39,7 +39,8 @@ const HELP = `gradula — wish, board, standing
   gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
   gradula remove <CARD>            an idea that was only words — anything with a chronicle goes on ice
   gradula confirm <CARD>…          take over the labels a rule proposed (a hand's call)
-  gradula start <CARD>             creates an isolated branch/worktree; --here "reason" stays here
+  gradula start <CARD>             creates an isolated branch/worktree by default
+                 --here "reason"  stay in this checkout when one developer intentionally combines related work
                  [--files "src/audio.rs,src/ui"] [--takeover "reason"]
   gradula release-work <CARD>      release your session reservation without marking Done
                  [--anyway "why"]  start a card that waits on another — the sentence is the reason
@@ -470,9 +471,9 @@ switch (command) {
     for (const warning of card.warnings ?? []) console.log(`CAREFUL: ${warning.card} · ${warning.actor ?? 'unassigned'} · ${warning.activity} · ${warning.level}: ${(warning.files.length ? warning.files : warning.modules).join(', ')}`);
 
     /**
-     * A tree of its own per card. The pattern already stands next door
-     * (.worktrees/… with a branch per venture): two moves in one tree see
-     * each other's changes and report foreign test failures.
+     * A tree of its own is the default because Git is clearer that way. It is
+     * not law, though: one developer may deliberately keep related tracks in a
+     * single checkout with --here, and that reason stands in the chronicle.
      */
     if (flags.here && (typeof flags.here !== 'string' || !flags.here.trim())) stop('--here needs a reason; otherwise start creates an isolated worktree.');
     if (!flags.here) {
@@ -505,7 +506,7 @@ switch (command) {
       }
     }
 
-    console.log(`Reservation: ${session}. Keep it alive with: gradula work ${key} (from the worktree).`);
+    console.log(`Reservation: ${session}. Keep it alive with: gradula work ${key}${flags.here ? '' : ' (from the worktree)'}.`);
     console.log(`\n── Brief ${card.key} ──────────────────────────────`);
     console.log(card.title);
     if (card.text) console.log(`\n${card.text}`);
