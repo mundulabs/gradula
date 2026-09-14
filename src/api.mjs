@@ -430,7 +430,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     // Where the app has arrived. A build is not a release — see eas.mjs.
     ['GET', /^\/api\/v1\/app$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.appStanding(ctx.project) })],
     ['PUT', /^\/api\/v1\/dokploy$/, async (req, _m, ctx) => ({
-      status: 200, body: await gradula.setDokploy(ctx.project, await readJson(req)),
+      status: 200, body: await gradula.setDokploy(ctx.project, await readJson(req), { person: ctx.person }),
     })],
     /**
      * The long line. It never answers finished — which is why it does not go
@@ -607,6 +607,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
         human,
         system: token?.kind === 'system',
         tokenName: token?.name ?? null,
+        // A person: signed in, or holding their own key (not an agent's, not a system's).
+        person: !!human || token?.kind === 'human',
         needAdmin() {
           if (!adminToken) throw new Refusal(503, 'no-door', 'The admin door is not set up.');
           const raw = bearer(req);

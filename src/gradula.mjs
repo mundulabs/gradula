@@ -1561,9 +1561,20 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * it stays that way: no deploy button. Watching yes, triggering later and
      * then with a confirmation (manifest, "what deliberately does NOT stand here").
      */
-    async setDokploy(projectKey, input) {
+    async setDokploy(projectKey, input, { person = false } = {}) {
       const project = await this.getProject(projectKey);
-      const base = String(input.base ?? '').trim();
+      // `from`: the same Dokploy as another project of this house — the base
+      // and the key are copied HERE, on the server, and never travel through
+      // a terminal. Only a person's own key may do that, not an agent's.
+      let borrowed = null;
+      if (input.from) {
+        if (!person) throw new Refusal(403, 'person-only', 'Only a person copies a connection between projects.');
+        const source = await this.getProject(input.from);
+        if (source.key === project.key) throw bad('from', 'from: name another project.');
+        borrowed = await store.dokploy.get(source.key);
+        if (!borrowed?.base || !borrowed.token) throw missing(`${source.key} has no Dokploy connection to copy.`);
+      }
+      const base = String(input.base ?? borrowed?.base ?? '').trim();
       if (!/^https:\/\/[a-z0-9.-]+(\/[a-z0-9/_-]*)?$/i.test(base)) {
         throw bad('base', 'base: the Dokploy API address, e.g. https://dokploy.example.dev/api');
       }
@@ -1576,7 +1587,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       }
       const stored = await store.dokploy.set(project.key, {
         base,
-        token: input.token,
+        token: input.token || borrowed?.token,
         composeId: input.composeId ? String(input.composeId).slice(0, 120) : composes.production ?? null,
         composes,
       });

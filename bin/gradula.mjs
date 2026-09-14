@@ -80,6 +80,7 @@ const HELP = `gradula — wish, board, standing
                                  where the APP has arrived (reads EAS)
   gradula env --compose <id> --from <.env> KEY…  the server's variables from a file, then redeploy (DOKPLOY_URL/_API_TOKEN)
   gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
+                 --from MOLD --compose <id> [--compose-dev <id>]   the same Dokploy as another project; the key is copied on the server
   gradula sentry [--org <org> --project <slug>] [--base eu|us] [--token <t>]
                  [--hook-secret <s>] [--write-back [off]]
                  [--environments prod,dev|all|default]   which Sentry environments become cards
@@ -1458,7 +1459,7 @@ switch (command) {
     const set = await call('/api/v1/dokploy', {
       method: 'PUT',
       body: {
-        base: flags.base, token: flags.token, composeId: flags.compose,
+        from: flags.from, base: flags.base, token: flags.token, composeId: flags.compose,
         composes: { production: flags.compose, development: flags['compose-dev'] },
       },
     });
