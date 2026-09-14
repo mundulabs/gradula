@@ -18,7 +18,7 @@
  * ignores it.
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, chmodSync, rmSync } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
@@ -1120,7 +1120,7 @@ switch (command) {
     const marke = '# gradula';
     if (flags.off || words[0] === 'off') {
       if (existsSync(file) && readFileSync(file, 'utf8').includes(marke)) {
-        execFileSync('rm', ['-f', file]);
+        rmSync(file, { force: true });
         console.log('Hook removed.');
       } else console.log('No gradula hook here.');
       break;
