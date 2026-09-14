@@ -41,6 +41,8 @@ import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
 import { dueHeralds, CADENCES } from './schedule.mjs';
 import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, CARD_STYLE } from './spec.mjs';
+// Ways a verified task branch reaches the main line; the repository tooling acts on it.
+export const INTEGRATIONS = ['pr', 'direct'];
 import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
 import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
@@ -292,7 +294,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     async getProject(key) {
       const project = await store.projects.get(String(key ?? '').toUpperCase());
       if (!project) throw missing(`There is no project ${key}.`);
-      return { ...project, manualAcceptance: project.manualAcceptance === true, ladder: CARD_STYLE };
+      return { ...project, manualAcceptance: project.manualAcceptance === true, integration: INTEGRATIONS.includes(project.integration) ? project.integration : 'pr', ladder: CARD_STYLE };
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */
@@ -548,6 +550,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (changes.manualAcceptance !== undefined) {
         if (typeof changes.manualAcceptance !== 'boolean') throw bad('manualAcceptance', 'manualAcceptance must be boolean.');
         next.manualAcceptance = changes.manualAcceptance;
+      }
+      // How a verified task branch reaches the main line: straight onto it, or
+      // through a pull request. The repository's tooling reads this; the board
+      // itself merges nothing.
+      if (changes.integration !== undefined) {
+        if (!INTEGRATIONS.includes(changes.integration)) throw bad('integration', `integration must be one of ${INTEGRATIONS.join(', ')}.`);
+        next.integration = changes.integration;
       }
       if (changes.name !== undefined) next.name = text(changes.name, 120, 'name');
       if (changes.repo !== undefined) next.repo = changes.repo === null ? null : String(changes.repo).slice(0, 200);

@@ -266,7 +266,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
      */
     ['PATCH', /^\/api\/v1\/project$/, async (req, _m, ctx) => {
       const body = await readJson(req);
-      return { status: 200, body: await gradula.patchProject(ctx.project, { people: body.people, language: body.language, publish: body.publish, ladder: body.ladder, manualAcceptance: body.manualAcceptance }, ctx.actor) };
+      return { status: 200, body: await gradula.patchProject(ctx.project, { people: body.people, language: body.language, publish: body.publish, ladder: body.ladder, manualAcceptance: body.manualAcceptance, integration: body.integration }, ctx.actor) };
     }],
 
     ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, 2_000_000), ctx.actor) })],

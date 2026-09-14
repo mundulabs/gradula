@@ -19,6 +19,10 @@ for(const [name,build] of stores) test(`${name}: manual acceptance defaults off,
  await assert.rejects(g.moveItem(c.key,'done','reviewer'),e=>e.code==='gate-red');
  await g.patchProject('PRB',{manualAcceptance:false},'test');await g.arrived(c.key,'production','abc');assert.equal((await g.getItem(c.key)).state,'review');
  await assert.rejects(g.patchProject('PRB',{manualAcceptance:'false'},'test'));
+ assert.equal((await g.getProject('PRB')).integration,'pr');
+ await g.patchProject('PRB',{integration:'direct'},'test');
+ assert.equal((await createGradula(store).getProject('PRB')).integration,'direct');
+ await assert.rejects(g.patchProject('PRB',{integration:'merge'},'test'));
 });
 
 test('Git branch presence is shown without claiming a deployment or absent older commits',async()=>{

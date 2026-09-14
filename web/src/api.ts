@@ -321,6 +321,9 @@ export const pulse = (project: string, since?: string) => call<Pulse>(
 
 export const acceptancePolicy = (project: string) => call<{manualAcceptance: boolean}>(`/api/v1/project?project=${project}`);
 export const saveAcceptancePolicy = (project: string, manualAcceptance: boolean) => call<{manualAcceptance: boolean}>(`/api/v1/project?project=${project}`, {method:'PATCH',body:JSON.stringify({manualAcceptance})});
+export type Integration = 'pr' | 'direct';
+export const integrationPolicy = (project: string) => call<{integration: Integration}>(`/api/v1/project?project=${project}`);
+export const saveIntegrationPolicy = (project: string, integration: Integration) => call<{integration: Integration}>(`/api/v1/project?project=${project}`, {method:'PATCH',body:JSON.stringify({integration})});
 
 export type CodeGraph = {
   repository: string; digest: string; importedAt: string;

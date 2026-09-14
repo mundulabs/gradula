@@ -93,7 +93,7 @@ const HELP = `gradula — wish, board, standing
   gradula hook [off]               evidence lands on every commit, by itself
   gradula login [--project MDLA]   register THIS machine — the board mints two keys (yours, and
                                  one for the AI sessions here), no copy-paste
-  gradula project [--alias "david=David Bläsing"] [--language de|en]
+  gradula project [--alias "david=David Bläsing"] [--language de|en] [--integration direct|pr]
                                  which names mean the same person ("none" clears)
                                  and which language the CARDS are written in
 
@@ -410,6 +410,11 @@ switch (command) {
       console.log(`Cards are written in: ${after.language ?? 'whatever the writer picks'}`);
       break;
     }
+    if (typeof flags.integration === 'string') {
+      const after = await call('/api/v1/project', { method: 'PATCH', body: { integration: flags.integration } });
+      console.log(`Landing a card: ${after.integration === 'direct' ? 'directly onto the main line' : 'through a pull request'}`);
+      break;
+    }
     const claimed = [flags.alias].flat().filter((x) => typeof x === 'string');
     if (claimed.length) {
       const people = {};
@@ -428,6 +433,7 @@ switch (command) {
     const project = await call('/api/v1/project');
     console.log(`${project.key} — ${project.name}${project.repo ? ` (${project.repo})` : ''}`);
     if (project.language) console.log(`Cards are written in: ${project.language}`);
+    console.log(`Landing a card: ${project.integration === 'direct' ? 'directly onto the main line' : 'through a pull request'}`);
     const rows = Object.entries(project.people ?? {});
     if (rows.length) {
       console.log('\nOne person, one name:');
