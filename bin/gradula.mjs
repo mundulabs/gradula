@@ -1600,7 +1600,10 @@ switch (command) {
     const at = `${base}/?project=${project}`;
     console.log(`This machine: ${machine}  →  ${project}`);
     console.log(`\nApprove it on the board:\n  ${at}\n  Settings → Your keys → this machine, code ${started.code}\n`);
-    try { spawn(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open', [at], { stdio: 'ignore', detached: true }).unref(); } catch { /* a terminal without a browser is fine */ }
+    // `start` is a cmd.exe builtin, not a program; and a missing opener fails
+    // asynchronously, so the 'error' event needs a listener or node exits.
+    const opener = process.platform === 'darwin' ? ['open', [at]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', at]] : ['xdg-open', [at]];
+    try { spawn(...opener, { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); } catch { /* a terminal without a browser is fine */ }
     process.stdout.write('Waiting for approval');
 
     const until = Date.now() + 10 * 60_000;
