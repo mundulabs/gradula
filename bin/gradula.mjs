@@ -652,8 +652,13 @@ switch (command) {
         if (!excluded.split('\n').includes('/.worktrees/')) writeFileSync(exclude, `${excluded}\n/.worktrees/\n`);
         if (!existsSync(place)) {
           const zweige = execFileSync('git', ['branch', '--list', branch], { encoding: 'utf8' }).trim();
+          // Current dev means the shared one: a local dev with unpushed merges
+          // from another session must not leak into a fresh task branch.
           let baseRef = 'HEAD';
-          try { execFileSync('git', ['show-ref', '--verify', '--quiet', 'refs/heads/dev']); baseRef = 'dev'; } catch { /* repositories without a dev branch use their current base */ }
+          try { execFileSync('git', ['fetch', '--quiet', 'origin', 'dev'], { stdio: 'pipe' }); } catch { /* offline: the last known remote dev is still better than a diverged local one */ }
+          for (const ref of ['refs/remotes/origin/dev', 'refs/heads/dev']) {
+            try { execFileSync('git', ['show-ref', '--verify', '--quiet', ref]); baseRef = ref; break; } catch { /* repositories without a dev branch use their current base */ }
+          }
           execFileSync('git', zweige ? ['worktree', 'add', place, branch] : ['worktree', 'add', place, '-b', branch, baseRef], { stdio: 'pipe' });
         }
         const actualBranch = execFileSync('git', ['-C', place, 'branch', '--show-current'], { encoding: 'utf8' }).trim();
