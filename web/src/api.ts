@@ -321,3 +321,10 @@ export const pulse = (project: string, since?: string) => call<Pulse>(
 
 export const acceptancePolicy = (project: string) => call<{manualAcceptance: boolean}>(`/api/v1/project?project=${project}`);
 export const saveAcceptancePolicy = (project: string, manualAcceptance: boolean) => call<{manualAcceptance: boolean}>(`/api/v1/project?project=${project}`, {method:'PATCH',body:JSON.stringify({manualAcceptance})});
+
+export type CodeGraph = {
+  repository: string; digest: string; importedAt: string;
+  nodes: {id:string;name:string;path:string|null;kind:string;area:string;about:string}[];
+  edges: {from:string;to:string;kind:string;confidence:'EXTRACTED'|'INFERRED';reason:string;source:{path:string;line?:number}|null}[];
+};
+export const codegraph = (project:string) => call<CodeGraph|null>(`/api/v1/codegraph?project=${encodeURIComponent(project)}`);

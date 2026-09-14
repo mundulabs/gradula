@@ -1,3 +1,4 @@
+import CodeContext from './CodeContext';
 import { acceptancePolicy, saveAcceptancePolicy } from './api';
 /**
  * The board — what is to be done.
@@ -433,6 +434,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                 ? <div className="line waiting">{t('card.gateMissing')}</div>
                 : null}
             <FileRefs files={card.files ?? []} repo={repo} />
+            <CodeContext key={card.key} project={project} files={card.files ?? []} />
             {card.blockedBy.length ? <div className="line waiting">{t('card.waits')} {card.blockedBy.join(', ')}</div> : null}
             {card.permalink ? <a href={card.permalink} target="_blank" rel="noreferrer">{t('card.sentry')}</a> : null}
             {card.text ? <Prose text={card.text} open={open} /> : null}

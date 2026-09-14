@@ -1262,3 +1262,13 @@ test('reservation ownership uses credentials and sessions, never the claimed act
   assert.equal((await call(`/api/v1/cards/${card.key}/start`,{method:'POST',token:second,body:{takeover:'Agreed with owner'}})).status,200);
   assert.equal((await call(`/api/v1/cards/${card.key}/beat`,{method:'POST',token})).status,409);
 });
+
+test('codegraph door requires authentication and accepts only the project repository', async t => {
+  const {call,close,gradula,token}=await start2();t.after(close);
+  await gradula.patchProject('PRB',{repo:'team/repo'});
+  const body={schema:'gradula.codegraph.v1',repository:'team/repo',nodes:[],edges:[]};
+  assert.equal((await call('/api/v1/codegraph')).status,401);
+  assert.equal((await call('/api/v1/codegraph',{token,method:'PUT',body:{...body,repository:'other/repo'}})).status,400);
+  assert.equal((await call('/api/v1/codegraph',{token,method:'PUT',body})).status,200);
+  const result=await call('/api/v1/codegraph',{token});assert.equal(result.body.repository,'team/repo');assert.ok(result.body.importedAt);
+});

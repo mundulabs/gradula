@@ -397,3 +397,21 @@ The Workshop pipeline message also reads the `mundus/local-ci` commit status for
 its exact full Git SHA. Local verification is labelled developer-reported and
 never changes GitHub's workflow outcome or implies deployment. The same message
 is refreshed when local evidence arrives after a hosted run completes or skips.
+
+## Project code graph
+
+The project may publish a generated `gradula.codegraph.v1` snapshot with
+`gradula codegraph docs/gradula-codegraph.json`. The authenticated `PUT /api/v1/codegraph`
+requires its repository to match the board. `GET /api/v1/codegraph` returns the latest
+snapshot to authenticated project readers. Gradula does not fetch or scan the repository.
+
+The card inspector matches structured file references to graph nodes and shows their
+neighbours, searchable nodes, source links and extracted/inferred edge explanations.
+It displays the import date: this is a snapshot, not live runtime or deployment evidence.
+Source links currently use the repository's `dev` branch; they are navigation links,
+not immutable proof of the imported source revision. Graph imports never author card
+files, labels, gates or completion. A repository change hides its old graph.
+
+Snapshots are capped at 2 MB, 5,000 nodes and 20,000 edges. Postgres stores one current
+JSONB snapshot per project plus a small import chronicle (digest, actor and time).
+No additional graph database is required. Re-publishing identical content is a no-op.

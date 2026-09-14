@@ -238,6 +238,14 @@ create table if not exists project (
   counter integer not null default 0,
   created timestamptz not null default now()
 );
+create table if not exists codegraph_import (
+ project text not null references project(key) on delete cascade on update cascade,
+ digest text not null, actor text not null, at timestamptz not null
+);
+create table if not exists codegraph (
+  project text primary key references project(key) on delete cascade on update cascade,
+  snapshot jsonb not null
+);
 create table if not exists vocabulary (
   project text primary key references project(key) on delete cascade,
   module jsonb not null default '[]'::jsonb
@@ -621,6 +629,11 @@ export async function createPgStore(url, { schema = null } = {}) {
       },
     },
 
+    codegraphs: {
+      async history(key) { const {rows}=await q('select digest,actor,at from codegraph_import where project=$1 order by at',[key]); return rows.map(r=>({...r,at:iso(r.at)})); },
+      async get(key) { const {rows}=await q('select snapshot from codegraph where project=$1',[key]); return rows[0]?.snapshot ?? null; },
+      async set(key, snapshot) { await q(`with saved as (insert into codegraph(project,snapshot) values($1,$2::jsonb) on conflict(project) do update set snapshot=excluded.snapshot returning project) insert into codegraph_import(project,digest,actor,at) select project, $2::jsonb->>'digest', $2::jsonb->>'actor', ($2::jsonb->>'importedAt')::timestamptz from saved`,[key,JSON.stringify(snapshot)]); return snapshot; },
+    },
     vocab: {
       async set(projectKey, entries) {
         await q(

@@ -17,6 +17,7 @@
  * model thinks lands in `suggestions` and waits for a hand.
  */
 
+import { normalizeGraph } from './codegraph.mjs';
 import { randomUUID } from 'node:crypto';
 import { plannedPaths, activeReservation, workWarnings } from './reservations.mjs';
 import { labelsFor, mergeLabels, normalizeVocabulary, areaOf } from './labels.mjs';
@@ -295,6 +296,20 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */
+    async getCodegraph(projectKey) {
+      const project = await this.getProject(projectKey);
+      const graph = await store.codegraphs.get(project.key);
+      return graph?.repository === project.repo ? graph : null;
+    },
+    async putCodegraph(projectKey, input, actor) {
+      const project = await this.getProject(projectKey);
+      let graph;
+      try { graph = normalizeGraph(input, project.repo); } catch (error) { throw bad('codegraph', error.message); }
+      const previous = await store.codegraphs.get(project.key);
+      if (previous?.digest === graph.digest) return previous;
+      return store.codegraphs.set(project.key, {...graph, importedAt:new Date().toISOString(), actor,
+        previousDigest:previous?.digest ?? null});
+    },
     async putVocabulary(projectKey, entries) {
       await this.getProject(projectKey);
       const clean = normalizeVocabulary(entries);

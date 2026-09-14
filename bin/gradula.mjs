@@ -88,6 +88,7 @@ const HELP = `gradula — wish, board, standing
   gradula history [--after N]      what happened while you were away
   gradula report [--plain] [--period "…"] [--milestone GRD-43] [--send]
   gradula chats                    which channels the heralds can see
+  gradula codegraph <file.json>    publish a project-generated code graph snapshot
   gradula vocabulary [push]        read this repo's modules (and send them)
   gradula hook [off]               evidence lands on every commit, by itself
   gradula login [--project MDLA]   register THIS machine — the board mints two keys (yours, and
@@ -1546,6 +1547,13 @@ switch (command) {
     break;
   }
 
+  case 'codegraph': {
+    if (!words[0]) stop('Provide the project-generated graph JSON file.');
+    const graph = JSON.parse(readFileSync(resolve(words[0]), 'utf8'));
+    const saved = await call('/api/v1/codegraph', {method:'PUT', body:graph});
+    console.log(`${saved.nodes.length} nodes · ${saved.edges.length} edges · ${saved.digest.slice(0,12)}`);
+    break;
+  }
   case 'vocabulary': {
     // The list and one of its entries must not share a name — the rename gave
     // both `module`, and reading the vocabulary died on its own loop.

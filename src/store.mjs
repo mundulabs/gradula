@@ -71,6 +71,8 @@ export function shapeItem(row) {
 export function createMemoryStore() {
   const projects = new Map();
   const vocab = new Map();
+  const codegraphs = new Map();
+  const graphImports = new Map();
   const items = new Map();       // id → row
   const byKey = new Map();       // KEY → id
   const counters = new Map();    // projectKey → last number
@@ -140,6 +142,7 @@ export function createMemoryStore() {
           byKey.set(item.key, item.id);
         }
         for (const link of links.values()) if (link.project === oldKey) link.project = newKey;
+        if (codegraphs.has(oldKey)) { codegraphs.set(newKey, codegraphs.get(oldKey)); codegraphs.delete(oldKey); graphImports.set(newKey, graphImports.get(oldKey)); graphImports.delete(oldKey); }
         const counter = counters.get(oldKey);
         if (counter !== undefined) { counters.set(newKey, counter); counters.delete(oldKey); }
         return clone(row);
@@ -170,6 +173,12 @@ export function createMemoryStore() {
         counters.set(key, 0);
         return { project: key, removed: gone.length };
       },
+    },
+
+    codegraphs: {
+      async history(key) { project(key); return clone(graphImports.get(key) ?? []); },
+      async get(key) { project(key); return clone(codegraphs.get(key) ?? null); },
+      async set(key, snapshot) { project(key); codegraphs.set(key, clone(snapshot)); const log=graphImports.get(key) ?? []; log.push({digest:snapshot.digest,actor:snapshot.actor,at:snapshot.importedAt}); graphImports.set(key,log); return clone(snapshot); },
     },
 
     vocab: {
@@ -253,6 +262,7 @@ export function createMemoryStore() {
           byKey.set(item.key, item.id);
         }
         for (const link of links.values()) if (link.project === oldKey) link.project = newKey;
+        if (codegraphs.has(oldKey)) { codegraphs.set(newKey, codegraphs.get(oldKey)); codegraphs.delete(oldKey); graphImports.set(newKey, graphImports.get(oldKey)); graphImports.delete(oldKey); }
         const counter = counters.get(oldKey);
         if (counter !== undefined) { counters.set(newKey, counter); counters.delete(oldKey); }
         return clone(row);

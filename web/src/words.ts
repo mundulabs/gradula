@@ -24,6 +24,20 @@ export { LANGUAGES };
 /** The sentences of the surface. English is written out; German is the twin. */
 const SURFACE: Record<Language, Record<string, string>> = {
   en: {
+    'graph.title': 'Code context',
+    'graph.snapshot': 'Imported snapshot ·',
+    'graph.find': 'Find a file or module',
+    'graph.ticket': 'Back to ticket files',
+    'graph.neighbours': 'Connected files and modules',
+    'graph.source': 'Source',
+    'graph.explain': 'Why these are connected',
+    'graph.inferred': 'Inferred',
+    'graph.extracted': 'Extracted',
+    'graph.empty': 'No graph published for this project yet.',
+    'graph.error': 'Code context could not be loaded.',
+    'graph.unmatched': 'No graph nodes match these ticket files. Search the published graph above.',
+    'graph.limit': 'Visible nodes:',
+
     'ui.app': 'Gradula',
     'ui.loading': 'Loading…',
     'ui.retry': 'Try again',
@@ -306,6 +320,20 @@ const SURFACE: Record<Language, Record<string, string>> = {
     'card.deployed': 'deployed',
   },
   de: {
+    'graph.title': 'Code-Kontext',
+    'graph.snapshot': 'Importierter Stand ·',
+    'graph.find': 'Datei oder Modul suchen',
+    'graph.ticket': 'Zurück zu den Ticket-Dateien',
+    'graph.neighbours': 'Verknüpfte Dateien und Module',
+    'graph.source': 'Quelle',
+    'graph.explain': 'Warum diese verbunden sind',
+    'graph.inferred': 'Abgeleitet',
+    'graph.extracted': 'Ausgelesen',
+    'graph.empty': 'Für dieses Projekt wurde noch kein Graph veröffentlicht.',
+    'graph.error': 'Code-Kontext konnte nicht geladen werden.',
+    'graph.unmatched': 'Keine Graphknoten passen zu den Ticket-Dateien. Oben kann der Graph durchsucht werden.',
+    'graph.limit': 'Sichtbare Knoten:',
+
     'ui.app': 'Gradula',
     'ui.loading': 'Wird geladen…',
     'ui.retry': 'Erneut versuchen',

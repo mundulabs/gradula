@@ -75,12 +75,12 @@ async function readRaw(req) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function readJson(req) {
+async function readJson(req, maximum = MAX_BODY) {
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > MAX_BODY) throw new Refusal(413, 'too-large', 'That is too much for one card.');
+    if (size > maximum) throw new Refusal(413, 'too-large', 'That is too much for one card.');
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -268,6 +268,9 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       const body = await readJson(req);
       return { status: 200, body: await gradula.patchProject(ctx.project, { people: body.people, language: body.language, publish: body.publish, ladder: body.ladder, manualAcceptance: body.manualAcceptance }, ctx.actor) };
     }],
+
+    ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, 2_000_000), ctx.actor) })],
+    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project) })],
 
     ['PUT', /^\/api\/v1\/vocabulary$/, async (req, _m, ctx) => {
       const body = await readJson(req);

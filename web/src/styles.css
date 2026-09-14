@@ -924,3 +924,21 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 
 .work-reservation .acceptance-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .work-reservation .acceptance-toggle input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
+
+.code-context { border-top:1px solid var(--line, #34404f); margin-top:20px; padding-top:16px; }
+.code-context p { overflow-wrap:anywhere; }
+.code-context input { width:100%; margin-top:6px; }
+.code-context svg { width:100%; max-height:280px; display:block; }
+.code-context line { stroke:#596778; stroke-width:1; opacity:.55; }
+.code-context circle { fill:#69c5ed; stroke:#10151d; stroke-width:2; transition:r .2s; }
+.code-context g { cursor:pointer; }
+.code-context g:hover circle, .code-context g:focus circle { fill:#ff8a33; r:8; }
+.code-context-results { display:grid; gap:6px; max-height:240px; overflow:auto; margin:12px 0; }
+.code-context-results div { display:flex; align-items:center; gap:8px; }
+.code-context-results button { text-align:left; overflow-wrap:anywhere; flex:1; min-width:0; }
+.code-context summary { cursor:pointer; padding:12px 0; }
+@media(prefers-reduced-motion:reduce) { .code-context circle { transition:none; } }
+
+.code-context > p { margin:8px 0 14px; font-size:12px; opacity:.8; }
+.code-context h3 { margin:0 0 8px; }
+.code-context svg text { fill:#c4cdd8; font-size:9px; pointer-events:none; }
