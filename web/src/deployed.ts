@@ -44,3 +44,7 @@ export function laneChips(card: Pick<Card, 'deployed'>, picture?: Pick<SystemCar
  */
 export const commitHref = (repo: string | null | undefined, sha: string | null | undefined): string | null =>
   (repo && sha ? `https://github.com/${repo}/commit/${sha}` : null);
+
+/** A repository-relative path as a GitHub source link. */
+export const fileHref = (repo: string | null | undefined, path: string | null | undefined): string | null =>
+  (repo && path ? `https://github.com/${repo}/blob/main/${path.split('/').map(encodeURIComponent).join('/')}` : null);

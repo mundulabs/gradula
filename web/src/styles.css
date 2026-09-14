@@ -207,6 +207,20 @@ button:focus-visible, a:focus-visible { outline: 2px solid var(--proposal); outl
 }
 .label.module { border-color: var(--proposal); color: var(--proposal); }
 .label.guessed { border-style: dashed; }
+.file-refs { display: flex; flex-direction: column; gap: 8px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.file-refs h3 { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .06em; }
+.file-refs div { display: flex; flex-wrap: wrap; gap: 6px; }
+.file-refs a, .file-refs span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line-light);
+  border-radius: 4px;
+  padding: 3px 7px;
+  color: var(--faint);
+  font: 11px var(--mono);
+  text-decoration: none;
+}
+.file-refs a:hover { color: var(--proposal); border-color: var(--proposal); }
 
 .waiting { color: var(--waiting); }
 .done { color: var(--done-color); }

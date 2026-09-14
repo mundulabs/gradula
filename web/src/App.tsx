@@ -35,7 +35,7 @@ import {
   type Me, type Card, type Project, type State, type Herald, type Template, type Report, type Link,
   type Standing, type SystemCard,
 } from './api';
-import { laneChips, commitHref, LANES, type Lane, type Chip } from './deployed';
+import { laneChips, commitHref, fileHref, LANES, type Lane, type Chip } from './deployed';
 
 /** Written out, one by one — see the note where it is used. */
 const STAND_CLASS: Record<string, string> = {
@@ -91,6 +91,23 @@ function Labels({ card }: { card: Card }) {
         <span key={e} className={`label${card.module.includes(e) ? ' module' : ''}${guessed.has(e) ? ' guessed' : ''}`}>{e}</span>
       ))}
     </div>
+  );
+}
+
+function FileRefs({ files, repo }: { files: string[]; repo: string | null }) {
+  if (!files.length) return null;
+  return (
+    <section className="file-refs" aria-label={t('card.files')}>
+      <h3>{t('card.files')}</h3>
+      <div>
+        {files.map((file) => {
+          const href = fileHref(repo, file);
+          return href
+            ? <a key={file} href={href} target="_blank" rel="noreferrer">{file}</a>
+            : <span key={file}>{file}</span>;
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -415,6 +432,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
               : ['making', 'review'].includes(card.state)
                 ? <div className="line waiting">{t('card.gateMissing')}</div>
                 : null}
+            <FileRefs files={card.files ?? []} repo={repo} />
             {card.blockedBy.length ? <div className="line waiting">{t('card.waits')} {card.blockedBy.join(', ')}</div> : null}
             {card.permalink ? <a href={card.permalink} target="_blank" rel="noreferrer">{t('card.sentry')}</a> : null}
             {card.text ? <Prose text={card.text} open={open} /> : null}
