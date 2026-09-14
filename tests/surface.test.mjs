@@ -16,7 +16,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
-import { STATES, KINDS, VERBS, LIVE_VERBS, TARGETS, LINK_KINDS, GATE_KINDS, SOURCES, VISIBILITIES, WORDS, AGENT_KEY_KIND } from '../src/spec.mjs';
+import { STATES, KINDS, VERBS, LIVE_VERBS, TARGETS, LINK_KINDS, GATE_KINDS, SOURCES, VISIBILITIES, WORDS, AGENT_KEY_KIND, INTEGRATIONS } from '../src/spec.mjs';
 import { CADENCES } from '../src/schedule.mjs';
 
 const here = new URL('../web/src/', import.meta.url);
@@ -256,7 +256,7 @@ test('no sentence stands bare in the markup', () => {
 test('the gate kinds the board offers are the ones the service knows', () => {
   const app = readFileSync(new URL('../web/src/App.tsx', import.meta.url), 'utf8');
   const listed = [...app.matchAll(/<option value="([a-zäöü-]+)"/g)].map((m) => m[1]);
-  const known = new Set([...GATE_KINDS, ...KINDS, ...STATES, ...VISIBILITIES, ...CADENCES, 'human', 'plain']);
+  const known = new Set([...GATE_KINDS, ...KINDS, ...STATES, ...VISIBILITIES, ...CADENCES, ...INTEGRATIONS, 'human', 'plain']);
   const strays = listed.filter((one) => !known.has(one));
   assert.deepEqual(strays, [], 'the service answers 400 for these — and the board would look merely broken');
 });

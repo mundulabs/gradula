@@ -63,6 +63,8 @@ export const LINK_KINDS = ['needs', 'blocks', 'part-of', 'resembles', 'touches',
 export const LINK_SOURCES = ['human', 'rule', 'model'];
 
 /** What a gate can check. Without one, a card never travels on its own. */
+// Ways a verified task branch reaches the main line; the repository tooling acts on it.
+export const INTEGRATIONS = ['pr', 'direct'];
 export const GATE_KINDS = ['test', 'command', 'file', 'url'];
 
 /** Where a card comes from. `sentry` is why it carries a fingerprint. */
