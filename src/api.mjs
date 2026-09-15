@@ -244,12 +244,12 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['POST', /^\/api\/v1\/device\/([0-9A-Z]{26})\/approve$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.approveDevice(ctx.project, m[1], ctx.human) })],
     ['POST', /^\/api\/v1\/device\/([0-9A-Z]{26})\/deny$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.denyDevice(ctx.project, m[1], ctx.human) })],
 
-    ['GET', /^\/api\/v1\/keys$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.ownKeys(ctx.project, ctx.human) })],
+    ['GET', /^\/api\/v1\/keys$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.ownKeys(ctx.project, ctx.human, { holder: ctx.holder }) })],
     ['POST', /^\/api\/v1\/keys$/, async (req, _m, ctx) => {
       const body = await readJson(req);
       return { status: 201, body: await gradula.mintOwnKey(ctx.project, body.name, ctx.human, { holder: ctx.holder }) };
     }],
-    ['DELETE', /^\/api\/v1\/keys\/([0-9A-Z]{26})$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.revokeOwnKey(ctx.project, m[1], ctx.human) })],
+    ['DELETE', /^\/api\/v1\/keys\/([0-9A-Z]{26})$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.revokeOwnKey(ctx.project, m[1], ctx.human, { holder: ctx.holder }) })],
 
     ['GET', /^\/api\/v1\/projects$/, async (_req, _m, ctx) => {
       if (!ctx.human) throw new Refusal(403, 'humans-only', 'This list exists only for signed-in people.');

@@ -2132,14 +2132,21 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return { token, entry: rest };
     },
 
-    async ownKeys(projectKey, human) {
-      if (!human?.sub) throw new Refusal(403, 'humans-only', 'Only a signed-in person has keys of their own.');
+    /** The person behind a request: signed in, or holding a key they own (their own or their agent's). */
+    personOf(human, holder) {
+      if (human?.sub) return { sub: String(human.sub), name: String(human.name) };
+      if (holder?.owner && (holder.kind === 'human' || holder.kind === AGENT_KEY_KIND)) return { sub: String(holder.owner), name: String(holder.ownerName ?? holder.name) };
+      return null;
+    },
+    async ownKeys(projectKey, human, { holder = null } = {}) {
+      const person = this.personOf(human, holder);
+      if (!person) throw new Refusal(403, 'humans-only', 'Only a signed-in person, or a key a person owns, has keys of their own.');
       const project = await this.getProject(projectKey);
-      return (await store.tokens.list(project.key)).filter((k) => k.owner === String(human.sub) && !k.revokedAt);
+      return (await store.tokens.list(project.key)).filter((k) => k.owner === person.sub && !k.revokedAt);
     },
 
-    async revokeOwnKey(projectKey, id, human) {
-      const mine = await this.ownKeys(projectKey, human);
+    async revokeOwnKey(projectKey, id, human, { holder = null } = {}) {
+      const mine = await this.ownKeys(projectKey, human, { holder });
       if (!mine.some((k) => k.id === String(id))) throw missing('There is no such key of yours.');
       await store.tokens.revoke(String(id));
       return { revoked: true };

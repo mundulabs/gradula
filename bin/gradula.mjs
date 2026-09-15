@@ -96,6 +96,7 @@ const HELP = `gradula — wish, board, standing
                                  one for the AI sessions here), no copy-paste
   gradula project [--alias "david=David Bläsing"] [--language de|en] [--integration direct|pr]
   gradula key <name>               mint a named service key with your own key (shown once; the owner is you)
+  gradula key --list | --revoke <name>
                                  which names mean the same person ("none" clears)
                                  and which language the CARDS are written in
 
@@ -404,7 +405,9 @@ switch (command) {
 
   case 'key': {
     const name = words[0];
-    if (!name) stop('Which name? gradula key mundus-docs');
+    if (flags.list) { const keys = await call('/api/v1/keys'); console.log(keys.map((k) => `${k.id}  ${k.kind.padEnd(6)} ${k.name}`).join('\n') || 'No keys.'); break; }
+    if (typeof flags.revoke === 'string') { const keys = await call('/api/v1/keys'); const hit = keys.find((k) => k.name === flags.revoke || k.id === flags.revoke); if (!hit) stop(`No key of yours named ${flags.revoke}.`); await call(`/api/v1/keys/${hit.id}`, { method: 'DELETE' }); console.log(`Revoked ${hit.name}.`); break; }
+    if (!name) stop('Which name? gradula key mundus-docs   (--list · --revoke <name>)');
     const made = await call('/api/v1/keys', { method: 'POST', body: { name } });
     // Shown once, on purpose: the board never returns it again.
     console.log(made.token);
