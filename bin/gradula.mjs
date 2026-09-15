@@ -95,6 +95,7 @@ const HELP = `gradula — wish, board, standing
   gradula login [--project MDLA]   register THIS machine — the board mints two keys (yours, and
                                  one for the AI sessions here), no copy-paste
   gradula project [--alias "david=David Bläsing"] [--language de|en] [--integration direct|pr]
+  gradula key <name>               mint a named service key with your own key (shown once; the owner is you)
                                  which names mean the same person ("none" clears)
                                  and which language the CARDS are written in
 
@@ -400,6 +401,16 @@ switch (command) {
   case '-h':
     console.log(HELP);
     break;
+
+  case 'key': {
+    const name = words[0];
+    if (!name) stop('Which name? gradula key mundus-docs');
+    const made = await call('/api/v1/keys', { method: 'POST', body: { name } });
+    // Shown once, on purpose: the board never returns it again.
+    console.log(made.token);
+    console.error(`Key ${name} minted for ${made.entry?.ownerName ?? 'you'}; shown once, store it where the service reads it.`);
+    break;
+  }
 
   case 'project': {
     // `--alias "david=David Bläsing"` — which names mean the same person.

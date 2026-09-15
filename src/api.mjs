@@ -247,7 +247,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['GET', /^\/api\/v1\/keys$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.ownKeys(ctx.project, ctx.human) })],
     ['POST', /^\/api\/v1\/keys$/, async (req, _m, ctx) => {
       const body = await readJson(req);
-      return { status: 201, body: await gradula.mintOwnKey(ctx.project, body.name, ctx.human) };
+      return { status: 201, body: await gradula.mintOwnKey(ctx.project, body.name, ctx.human, { holder: ctx.holder }) };
     }],
     ['DELETE', /^\/api\/v1\/keys\/([0-9A-Z]{26})$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.revokeOwnKey(ctx.project, m[1], ctx.human) })],
 
@@ -609,6 +609,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
         tokenName: token?.name ?? null,
         // A person: signed in, or holding their own key (not an agent's, not a system's).
         person: !!human || token?.kind === 'human',
+        holder: token ? { kind: token.kind, owner: token.owner ?? null, ownerName: token.ownerName ?? null, name: token.name } : null,
         needAdmin() {
           if (!adminToken) throw new Refusal(503, 'no-door', 'The admin door is not set up.');
           const raw = bearer(req);

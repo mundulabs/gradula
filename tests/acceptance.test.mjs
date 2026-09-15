@@ -31,3 +31,15 @@ test('Git branch presence is shown without claiming a deployment or absent older
  assert.deepEqual(doc.cards[0].git,{repo:'o/r',total:2,dev:1,main:null});
  assert.deepEqual(doc.cards[0].deployed,{development:null,production:null});
 });
+
+test('a person\'s own key mints a named service key; an agent key may not', async () => {
+  const store = createMemoryStore(); const g = createGradula(store);
+  await g.createProject({ key: 'PRB', name: 'Test' });
+  const person = { kind: 'human', owner: 'u1', ownerName: 'David', name: 'laptop' };
+  const made = await g.mintOwnKey('PRB', 'docs', null, { holder: person });
+  assert.ok(made.token); assert.equal(made.entry.kind, 'system'); assert.equal(made.entry.owner, 'u1'); assert.equal(made.entry.name, 'docs');
+  await assert.rejects(g.mintOwnKey('PRB', 'x', null, { holder: { kind: 'agent', owner: 'u1' } }), (e) => e.code === 'humans-only');
+  await assert.rejects(g.mintOwnKey('PRB', 'x', null, { holder: { kind: 'system', owner: 'u1' } }), (e) => e.code === 'humans-only');
+  await assert.rejects(g.mintOwnKey('PRB', 'x', null), (e) => e.code === 'humans-only');
+  assert.equal((await store.tokens.verify(made.token)).kind, 'system');
+});
