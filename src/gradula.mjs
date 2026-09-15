@@ -2116,14 +2116,17 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * to nobody (a rule, a docs site).
      */
     async mintOwnKey(projectKey, name, human, { holder = null } = {}) {
-      // A signed-in person, or a person's own key acting for its owner: a
-      // service (the docs bridge, a runner) gets a key of its own, named,
-      // owned by the person who minted it — never an agent's or a system's key.
-      const person = human?.sub ? { sub: String(human.sub), name: String(human.name) } : holder?.kind === 'human' && holder.owner ? { sub: String(holder.owner), name: String(holder.ownerName ?? holder.name) } : null;
-      if (!person) throw new Refusal(403, 'humans-only', 'Only a signed-in person, or a person\'s own key, mints a key.');
+      // A signed-in person, or a key that belongs to a person — their own or
+      // the one their agent sessions hold: a service (the docs bridge, a
+      // runner) gets a key of its own, named, owned by that person. The record
+      // says which hand minted it. A system key owns nobody and mints nothing.
+      const owned = holder && holder.owner && (holder.kind === 'human' || holder.kind === AGENT_KEY_KIND);
+      const person = human?.sub ? { sub: String(human.sub), name: String(human.name) } : owned ? { sub: String(holder.owner), name: String(holder.ownerName ?? holder.name) } : null;
+      if (!person) throw new Refusal(403, 'humans-only', 'Only a signed-in person, or a key a person owns, mints a key.');
       const project = await this.getProject(projectKey);
+      const via = holder?.kind === AGENT_KEY_KIND ? ` (${holder.name})` : '';
       const { token, entry } = await store.tokens.mint({
-        project: project.key, name: text(name, 80, 'name'), createdBy: person.name, kind: holder ? 'system' : 'human', owner: person.sub, ownerName: person.name,
+        project: project.key, name: text(name, 80, 'name'), createdBy: person.name + via, kind: holder ? 'system' : 'human', owner: person.sub, ownerName: person.name,
       });
       const { hash, ...rest } = entry;
       return { token, entry: rest };
