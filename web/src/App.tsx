@@ -1,5 +1,5 @@
 import CodeContext from './CodeContext';
-import { acceptancePolicy, saveAcceptancePolicy } from './api';
+import { acceptancePolicy, saveAcceptancePolicy, integrationPolicy, saveIntegrationPolicy, type Integration } from './api';
 /**
  * The board — what is to be done.
  *
@@ -718,6 +718,8 @@ function KeySection({ project }: { project: string }) {
 function Settings({ project, close }: { project: string; close: () => void }) {
   const [manualAcceptance, setManualAcceptance] = useState<boolean | null>(null);
   useEffect(() => { acceptancePolicy(project).then(p => setManualAcceptance(p.manualAcceptance)).catch(e => setError(e.message)); }, [project]);
+  const [integration, setIntegration] = useState<Integration | null>(null);
+  useEffect(() => { integrationPolicy(project).then(p => setIntegration(p.integration)).catch(e => setError(e.message)); }, [project]);
   const [tab, setTab] = useState<'channels' | 'reports' | 'access'>('channels');
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
@@ -801,6 +803,13 @@ function Settings({ project, close }: { project: string; close: () => void }) {
       <section className="work-reservation">
         <label className="acceptance-toggle"><input type="checkbox" checked={manualAcceptance === true} disabled={busy || manualAcceptance === null} onChange={e => { const value = e.target.checked; perform(async () => { const saved = await saveAcceptancePolicy(project, value); setManualAcceptance(saved.manualAcceptance); }); }} /> {t('settings.manualAcceptance')}</label>
         <p className="hint">{t('settings.manualAcceptanceWhy')}</p>
+        <label className="integration-choice">{t('settings.integration')}
+          <select value={integration ?? 'pr'} disabled={busy || integration === null} onChange={e => { const value = e.target.value as Integration; perform(async () => { const saved = await saveIntegrationPolicy(project, value); setIntegration(saved.integration); }); }}>
+            <option value="pr">{t('settings.integrationPr')}</option>
+            <option value="direct">{t('settings.integrationDirect')}</option>
+          </select>
+        </label>
+        <p className="hint">{t('settings.integrationWhy')}</p>
       </section>
       <nav className="settings-tabs" aria-label={t('nav.settings')}>
         {(['channels', 'reports', 'access'] as const).map((one) => <button type="button" key={one} aria-pressed={tab === one} onClick={() => setTab(one)}>{t(`settings.${one}`)}</button>)}

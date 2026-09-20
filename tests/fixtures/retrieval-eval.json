@@ -1,0 +1,216 @@
+{
+  "version": 1,
+  "description": "Thirty repository-navigation questions with manually identified source files. Development set, not held-out coding tasks.",
+  "cases": [
+    {
+      "id": 1,
+      "query": "Authentication and sign in",
+      "expected": [
+        "src/auth.mjs"
+      ]
+    },
+    {
+      "id": 2,
+      "query": "Read the project environment credentials",
+      "expected": [
+        "src/hand.mjs"
+      ]
+    },
+    {
+      "id": 3,
+      "query": "Detect the active coding assistant",
+      "expected": [
+        "src/hand.mjs"
+      ]
+    },
+    {
+      "id": 4,
+      "query": "HTTP routes and request authorization",
+      "expected": [
+        "src/api.mjs"
+      ]
+    },
+    {
+      "id": 5,
+      "query": "The in-memory store contract",
+      "expected": [
+        "src/store.mjs"
+      ]
+    },
+    {
+      "id": 6,
+      "query": "Postgres migrations and database storage",
+      "expected": [
+        "src/store-pg.mjs"
+      ]
+    },
+    {
+      "id": 7,
+      "query": "Work reservations and overlapping files",
+      "expected": [
+        "src/reservations.mjs"
+      ]
+    },
+    {
+      "id": 8,
+      "query": "Schedule parallel work without conflicts",
+      "expected": [
+        "src/wave.mjs"
+      ]
+    },
+    {
+      "id": 9,
+      "query": "Prevent dependency cycles",
+      "expected": [
+        "src/links.mjs"
+      ]
+    },
+    {
+      "id": 10,
+      "query": "Infer module labels from vocabulary paths",
+      "expected": [
+        "src/labels.mjs"
+      ]
+    },
+    {
+      "id": 11,
+      "query": "Execute verification gates",
+      "expected": [
+        "src/gates.mjs"
+      ]
+    },
+    {
+      "id": 12,
+      "query": "Find stale cards without a heartbeat",
+      "expected": [
+        "src/health.mjs"
+      ]
+    },
+    {
+      "id": 13,
+      "query": "Project activity pace and energy",
+      "expected": [
+        "src/pulse.mjs"
+      ]
+    },
+    {
+      "id": 14,
+      "query": "Combine deployment and error sources",
+      "expected": [
+        "src/system.mjs"
+      ]
+    },
+    {
+      "id": 15,
+      "query": "Expo EAS builds and submissions",
+      "expected": [
+        "src/eas.mjs"
+      ]
+    },
+    {
+      "id": 16,
+      "query": "Dokploy deployment status",
+      "expected": [
+        "src/dokploy.mjs"
+      ]
+    },
+    {
+      "id": 17,
+      "query": "Sentry incident fingerprints and environments",
+      "expected": [
+        "src/sentry.mjs"
+      ]
+    },
+    {
+      "id": 18,
+      "query": "Filter public notifications",
+      "expected": [
+        "src/heralds.mjs"
+      ]
+    },
+    {
+      "id": 19,
+      "query": "Send Telegram messages",
+      "expected": [
+        "src/telegram.mjs"
+      ]
+    },
+    {
+      "id": 20,
+      "query": "Daily and weekly notification schedules",
+      "expected": [
+        "src/schedule.mjs"
+      ]
+    },
+    {
+      "id": 21,
+      "query": "Serve static files safely",
+      "expected": [
+        "src/static.mjs"
+      ]
+    },
+    {
+      "id": 22,
+      "query": "Generate release notes",
+      "expected": [
+        "src/releases.mjs"
+      ]
+    },
+    {
+      "id": 23,
+      "query": "Generate an HTML activity report",
+      "expected": [
+        "src/report.mjs"
+      ]
+    },
+    {
+      "id": 24,
+      "query": "GitHub branch and commit comparison",
+      "expected": [
+        "src/github.mjs"
+      ]
+    },
+    {
+      "id": 25,
+      "query": "Normalize actor names and aliases",
+      "expected": [
+        "src/people.mjs"
+      ]
+    },
+    {
+      "id": 26,
+      "query": "normalizeGraph",
+      "expected": [
+        "src/codegraph.mjs"
+      ]
+    },
+    {
+      "id": 27,
+      "query": "contextOptions",
+      "expected": [
+        "src/context.mjs"
+      ]
+    },
+    {
+      "id": 28,
+      "query": "workSession",
+      "expected": [
+        "src/work-session.mjs"
+      ]
+    },
+    {
+      "id": 29,
+      "query": "parseItemKey",
+      "expected": [
+        "src/ids.mjs"
+      ]
+    },
+    {
+      "id": 30,
+      "query": "activeReservation",
+      "expected": [
+        "src/reservations.mjs"
+      ]
+    }
+  ]
+}

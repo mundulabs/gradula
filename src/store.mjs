@@ -72,6 +72,7 @@ export function createMemoryStore() {
   const projects = new Map();
   const vocab = new Map();
   const codegraphs = new Map();
+  const graphVersions = new Map();
   const graphImports = new Map();
   const items = new Map();       // id → row
   const byKey = new Map();       // KEY → id
@@ -101,7 +102,7 @@ export function createMemoryStore() {
     projects: {
       async create({ key, name, repo = null }) {
         if (projects.has(key)) throw Object.assign(new Error(`Project ${key} already exists`), { code: 'taken' });
-        const row = { id: mintId(), key, name, repo, people: {}, language: null, publish: null, ladder: null, manualAcceptance: false, created: now() };
+        const row = { id: mintId(), key, name, repo, people: {}, language: null, publish: null, ladder: null, manualAcceptance: false, integration: 'pr', created: now() };
         projects.set(key, row);
         counters.set(key, 0);
         return clone(row);
@@ -142,6 +143,7 @@ export function createMemoryStore() {
           byKey.set(item.key, item.id);
         }
         for (const link of links.values()) if (link.project === oldKey) link.project = newKey;
+        if (graphVersions.has(oldKey)) { graphVersions.set(newKey,graphVersions.get(oldKey));graphVersions.delete(oldKey); }
         if (codegraphs.has(oldKey)) { codegraphs.set(newKey, codegraphs.get(oldKey)); codegraphs.delete(oldKey); graphImports.set(newKey, graphImports.get(oldKey)); graphImports.delete(oldKey); }
         const counter = counters.get(oldKey);
         if (counter !== undefined) { counters.set(newKey, counter); counters.delete(oldKey); }
@@ -156,6 +158,7 @@ export function createMemoryStore() {
         if (changes.people !== undefined) row.people = changes.people;
         if (changes.language !== undefined) row.language = changes.language;
         if (changes.manualAcceptance !== undefined) row.manualAcceptance = changes.manualAcceptance;
+        if (changes.integration !== undefined) row.integration = changes.integration;
         if (changes.publish !== undefined) row.publish = changes.publish;
         if (changes.ladder !== undefined) row.ladder = changes.ladder;
         return clone(row);
@@ -177,8 +180,18 @@ export function createMemoryStore() {
 
     codegraphs: {
       async history(key) { project(key); return clone(graphImports.get(key) ?? []); },
-      async get(key) { project(key); return clone(codegraphs.get(key) ?? null); },
-      async set(key, snapshot) { project(key); codegraphs.set(key, clone(snapshot)); const log=graphImports.get(key) ?? []; log.push({digest:snapshot.digest,actor:snapshot.actor,at:snapshot.importedAt}); graphImports.set(key,log); return clone(snapshot); },
+      async get(key, revision = null) { project(key); return clone(revision ? graphVersions.get(key)?.get(revision) ?? null : codegraphs.get(key) ?? null); },
+      async set(key, snapshot) {
+        project(key);
+        if(codegraphs.get(key)?.digest===snapshot.digest)return clone(codegraphs.get(key));
+        codegraphs.set(key, clone(snapshot));
+        if (snapshot.revision && snapshot.dirty===false) {
+          const versions=graphVersions.get(key) ?? new Map();versions.delete(snapshot.revision);versions.set(snapshot.revision,clone(snapshot));
+          while(versions.size>8) versions.delete(versions.keys().next().value);
+          graphVersions.set(key,versions);
+        }
+        const log=graphImports.get(key) ?? [];log.push({digest:snapshot.digest,actor:snapshot.actor,at:snapshot.importedAt});graphImports.set(key,log);return clone(snapshot);
+      },
     },
 
     vocab: {
@@ -262,6 +275,7 @@ export function createMemoryStore() {
           byKey.set(item.key, item.id);
         }
         for (const link of links.values()) if (link.project === oldKey) link.project = newKey;
+        if (graphVersions.has(oldKey)) { graphVersions.set(newKey,graphVersions.get(oldKey));graphVersions.delete(oldKey); }
         if (codegraphs.has(oldKey)) { codegraphs.set(newKey, codegraphs.get(oldKey)); codegraphs.delete(oldKey); graphImports.set(newKey, graphImports.get(oldKey)); graphImports.delete(oldKey); }
         const counter = counters.get(oldKey);
         if (counter !== undefined) { counters.set(newKey, counter); counters.delete(oldKey); }
@@ -324,7 +338,7 @@ export function createMemoryStore() {
         events.push(row);
         return clone(row);
       },
-      async of(itemId) { return clone(events.filter((e) => e.item === itemId)); },
+      async of(itemId, {limit=null,verbs=null}={}) { const rows=events.filter((e) => e.item === itemId && (!verbs || verbs.includes(e.verb))); return clone(limit===null?rows:rows.slice(-Math.max(1,Math.min(40,limit)))); },
       /** The cards a commit already stands on as evidence — so a commit is adopted once, never twice. */
       async byRef(projectKey, ref) {
         const short = String(ref).slice(0, 12);

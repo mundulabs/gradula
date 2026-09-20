@@ -18,6 +18,9 @@
  */
 
 import { normalizeGraph } from './codegraph.mjs';
+import { contextOptions, retrieveContext, graphFreshness } from './context.mjs';
+import { attachKnowledge, pathsOverlap } from './knowledge.mjs';
+import { tokens as queryTokens } from './retrieval.mjs';
 import { randomUUID } from 'node:crypto';
 import { plannedPaths, activeReservation, workWarnings } from './reservations.mjs';
 import { labelsFor, mergeLabels, normalizeVocabulary, areaOf } from './labels.mjs';
@@ -40,7 +43,7 @@ import { findings, whoDidWhat } from './health.mjs';
 import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
 import { dueHeralds, CADENCES } from './schedule.mjs';
-import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, CARD_STYLE } from './spec.mjs';
+import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, CARD_STYLE, INTEGRATIONS } from './spec.mjs';
 import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
 import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
@@ -292,14 +295,43 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     async getProject(key) {
       const project = await store.projects.get(String(key ?? '').toUpperCase());
       if (!project) throw missing(`There is no project ${key}.`);
-      return { ...project, manualAcceptance: project.manualAcceptance === true, ladder: CARD_STYLE };
+      return { ...project, manualAcceptance: project.manualAcceptance === true, integration: INTEGRATIONS.includes(project.integration) ? project.integration : 'pr', ladder: CARD_STYLE };
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */
-    async getCodegraph(projectKey) {
+    async getCodegraph(projectKey, revision = null) {
       const project = await this.getProject(projectKey);
-      const graph = await store.codegraphs.get(project.key);
+      if (revision && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) throw bad('revision','Expected a full source SHA');
+      const graph = (revision ? await store.codegraphs.get(project.key,revision) : null) ?? await store.codegraphs.get(project.key);
       return graph?.repository === project.repo ? graph : null;
+    },
+    async getContext(projectKey, input) {
+      const project = await this.getProject(projectKey);
+      let options;
+      try { options = contextOptions(input); } catch (error) { throw bad('context', error.message); }
+      // The card is in a query parameter, so the router's path guard cannot help.
+      if (options.card && !options.card.startsWith(`${project.key}-`)) throw missing('That card does not exist.');
+      const graph=await this.getCodegraph(project.key,options.revision);
+      if(options.detail==='paths' && !options.card)return retrieveContext(graph,null,options);
+      const cards = await store.items.list(project.key,{limit:500});
+      const links=await store.links.list(project.key);
+      const card = options.card ? await findItem(options.card) : null;
+      if (card && card.project!==project.key) throw missing('That card does not exist.');
+      if (card) {
+        const blocked=blockedBy(links,cards).get(card.id) ?? [];
+        card.blockedBy=blocked.map(id=>cards.find(c=>c.id===id)?.key).filter(Boolean);
+        card.blockedByIncomplete=cards.length===500;
+      }
+      if(options.detail==='paths')return retrieveContext(graph,card,options);
+      const result=retrieveContext(graph,card,{...options,maxBytes:options.maxBytes-1400});
+      const paths=[...options.files,...result.nodes.map(n=>n.path).filter(Boolean)];
+      const terms=queryTokens(options.q);
+      const linkedIds=new Set(card ? links.filter(l=>l.from===card.id || l.to===card.id).flatMap(l=>[l.from,l.to]) : []);
+      const related=cards.filter(c=>c.key!==card?.key && (linkedIds.has(c.id) || (c.files ?? []).some(path=>paths.some(p=>pathsOverlap(path,p))) || terms.length && terms.some(term=>queryTokens(c.title).includes(term))))
+        .sort((a,b)=>Number(linkedIds.has(b.id))-Number(linkedIds.has(a.id)) || Number(b.kind==='decision')-Number(a.kind==='decision') || a.key.localeCompare(b.key)).slice(0,3);
+      if(card)related.unshift(card);
+      const histories=new Map(await Promise.all(related.map(async c=>[c.key,await store.events.of(c.id,{limit:12,verbs:['evidenced','decided','deployed']})])));
+      return attachKnowledge(result,related,histories,{maxBytes:options.maxBytes,scanned:cards.length,capped:cards.length===500,links});
     },
     async putCodegraph(projectKey, input, actor) {
       const project = await this.getProject(projectKey);
@@ -548,6 +580,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (changes.manualAcceptance !== undefined) {
         if (typeof changes.manualAcceptance !== 'boolean') throw bad('manualAcceptance', 'manualAcceptance must be boolean.');
         next.manualAcceptance = changes.manualAcceptance;
+      }
+      // How a verified task branch reaches the main line: straight onto it, or
+      // through a pull request. The repository's tooling reads this; the board
+      // itself merges nothing.
+      if (changes.integration !== undefined) {
+        if (!INTEGRATIONS.includes(changes.integration)) throw bad('integration', `integration must be one of ${INTEGRATIONS.join(', ')}.`);
+        next.integration = changes.integration;
       }
       if (changes.name !== undefined) next.name = text(changes.name, 120, 'name');
       if (changes.repo !== undefined) next.repo = changes.repo === null ? null : String(changes.repo).slice(0, 200);
@@ -876,7 +915,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         store.events.all(project.key, { limit: 1000 }),
       ]);
       const edges = links.map((l) => ({ ...l, from: l.from ?? l.from_id, to: l.to ?? l.to_id }));
+      const graph = await this.getCodegraph(project.key);
       return {
+        context: {freshness:graphFreshness(graph), revision:graph?.revision ?? null, importedAt:graph?.importedAt ?? null, nodes:graph?.nodes.length ?? 0, edges:graph?.edges.length ?? 0},
         findings: findings(cards, edges, entries, { quiet, language: project.language ?? null }),
         people: whoDidWhat(entries, cards, { aliases: project.people ?? {} }),
         cards: cards.length,
@@ -1554,9 +1595,20 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * it stays that way: no deploy button. Watching yes, triggering later and
      * then with a confirmation (manifest, "what deliberately does NOT stand here").
      */
-    async setDokploy(projectKey, input) {
+    async setDokploy(projectKey, input, { person = false } = {}) {
       const project = await this.getProject(projectKey);
-      const base = String(input.base ?? '').trim();
+      // `from`: the same Dokploy as another project of this house — the base
+      // and the key are copied HERE, on the server, and never travel through
+      // a terminal. Only a person's own key may do that, not an agent's.
+      let borrowed = null;
+      if (input.from) {
+        if (!person) throw new Refusal(403, 'person-only', 'Only a person copies a connection between projects.');
+        const source = await this.getProject(input.from);
+        if (source.key === project.key) throw bad('from', 'from: name another project.');
+        borrowed = await store.dokploy.get(source.key);
+        if (!borrowed?.base || !borrowed.token) throw missing(`${source.key} has no Dokploy connection to copy.`);
+      }
+      const base = String(input.base ?? borrowed?.base ?? '').trim();
       if (!/^https:\/\/[a-z0-9.-]+(\/[a-z0-9/_-]*)?$/i.test(base)) {
         throw bad('base', 'base: the Dokploy API address, e.g. https://dokploy.example.dev/api');
       }
@@ -1569,7 +1621,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       }
       const stored = await store.dokploy.set(project.key, {
         base,
-        token: input.token,
+        token: input.token || borrowed?.token,
         composeId: input.composeId ? String(input.composeId).slice(0, 120) : composes.production ?? null,
         composes,
       });
@@ -2097,24 +2149,38 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * a key is ignored. The admin door still exists for machines that belong
      * to nobody (a rule, a docs site).
      */
-    async mintOwnKey(projectKey, name, human) {
-      if (!human?.sub) throw new Refusal(403, 'humans-only', 'Only a signed-in person mints a key of their own.');
+    async mintOwnKey(projectKey, name, human, { holder = null } = {}) {
+      // A signed-in person, or a key that belongs to a person — their own or
+      // the one their agent sessions hold: a service (the docs bridge, a
+      // runner) gets a key of its own, named, owned by that person. The record
+      // says which hand minted it. A system key owns nobody and mints nothing.
+      const owned = holder && holder.owner && (holder.kind === 'human' || holder.kind === AGENT_KEY_KIND);
+      const person = human?.sub ? { sub: String(human.sub), name: String(human.name) } : owned ? { sub: String(holder.owner), name: String(holder.ownerName ?? holder.name) } : null;
+      if (!person) throw new Refusal(403, 'humans-only', 'Only a signed-in person, or a key a person owns, mints a key.');
       const project = await this.getProject(projectKey);
+      const via = holder?.kind === AGENT_KEY_KIND ? ` (${holder.name})` : '';
       const { token, entry } = await store.tokens.mint({
-        project: project.key, name: text(name, 80, 'name'), createdBy: human.name, kind: 'human', owner: String(human.sub), ownerName: String(human.name),
+        project: project.key, name: text(name, 80, 'name'), createdBy: person.name + via, kind: holder ? 'system' : 'human', owner: person.sub, ownerName: person.name,
       });
       const { hash, ...rest } = entry;
       return { token, entry: rest };
     },
 
-    async ownKeys(projectKey, human) {
-      if (!human?.sub) throw new Refusal(403, 'humans-only', 'Only a signed-in person has keys of their own.');
+    /** The person behind a request: signed in, or holding a key they own (their own or their agent's). */
+    personOf(human, holder) {
+      if (human?.sub) return { sub: String(human.sub), name: String(human.name) };
+      if (holder?.owner && (holder.kind === 'human' || holder.kind === AGENT_KEY_KIND)) return { sub: String(holder.owner), name: String(holder.ownerName ?? holder.name) };
+      return null;
+    },
+    async ownKeys(projectKey, human, { holder = null } = {}) {
+      const person = this.personOf(human, holder);
+      if (!person) throw new Refusal(403, 'humans-only', 'Only a signed-in person, or a key a person owns, has keys of their own.');
       const project = await this.getProject(projectKey);
-      return (await store.tokens.list(project.key)).filter((k) => k.owner === String(human.sub) && !k.revokedAt);
+      return (await store.tokens.list(project.key)).filter((k) => k.owner === person.sub && !k.revokedAt);
     },
 
-    async revokeOwnKey(projectKey, id, human) {
-      const mine = await this.ownKeys(projectKey, human);
+    async revokeOwnKey(projectKey, id, human, { holder = null } = {}) {
+      const mine = await this.ownKeys(projectKey, human, { holder });
       if (!mine.some((k) => k.id === String(id))) throw missing('There is no such key of yours.');
       await store.tokens.revoke(String(id));
       return { revoked: true };

@@ -924,6 +924,7 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 
 .work-reservation .acceptance-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; }
 .work-reservation .acceptance-toggle input { width: 18px; height: 18px; margin: 0; flex: 0 0 auto; }
+.work-reservation .integration-choice { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 
 .code-context { border-top:1px solid var(--line, #34404f); margin-top:20px; padding-top:16px; }
 .code-context p { overflow-wrap:anywhere; }

@@ -246,6 +246,13 @@ create table if not exists codegraph (
   project text primary key references project(key) on delete cascade on update cascade,
   snapshot jsonb not null
 );
+create table if not exists codegraph_revision (
+  project text not null references project(key) on delete cascade on update cascade,
+  revision text not null,
+  snapshot jsonb not null,
+  imported_at timestamptz not null default now(),
+  primary key(project,revision)
+);
 create table if not exists vocabulary (
   project text primary key references project(key) on delete cascade,
   module jsonb not null default '[]'::jsonb
@@ -445,6 +452,7 @@ alter table project  add column if not exists people jsonb not null default '{}'
 alter table project  add column if not exists language text;
 -- How a card becomes public: 'hand' (someone publishes it) or 'done' (whatever reaches production, incidents excepted).
 alter table project add column if not exists manual_acceptance boolean not null default false;
+alter table project add column if not exists integration text not null default 'pr';
 alter table project  add column if not exists publish text;
 -- The ladder's style: squares, circles, diamonds (spec.mjs, LADDER_STYLES).
 alter table project  add column if not exists ladder text;
@@ -529,7 +537,7 @@ export async function createPgStore(url, { schema = null } = {}) {
     projects: {
       async create({ key, name, repo = null }) {
         const { rows } = await q(
-          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created',
+          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
           [mintId(), key, name, repo],
         );
         return { ...rows[0], created: iso(rows[0].created) };
@@ -543,7 +551,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         return { project: key, removed: rowCount };
       },
       async get(key) {
-        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created from project where key = $1', [key]);
+        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created from project where key = $1', [key]);
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       /**
@@ -585,7 +593,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         try {
           await client.query('begin');
           const { rows } = await client.query(
-            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created',
+            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
             [oldKey, newKey],
           );
           if (!rows[0]) { await client.query('rollback'); return null; }
@@ -610,7 +618,7 @@ export async function createPgStore(url, { schema = null } = {}) {
       async patch(key, changes) {
         const sets = [];
         const values = [];
-        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish'], ['ladder', 'ladder'], ['manualAcceptance', 'manual_acceptance']]) {
+        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish'], ['ladder', 'ladder'], ['manualAcceptance', 'manual_acceptance'], ['integration', 'integration']]) {
           if (changes[name] !== undefined) { values.push(changes[name]); sets.push(`${column} = $${values.length}`); }
         }
         // A map, not a column of its own: an alias is a word about a word.
@@ -618,21 +626,36 @@ export async function createPgStore(url, { schema = null } = {}) {
         if (!sets.length) return store.projects.get(key);
         values.push(key);
         const { rows } = await q(
-          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created`,
+          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created`,
           values,
         );
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       async list() {
-        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", created from project order by key');
+        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created from project order by key');
         return rows.map((row) => ({ ...row, created: iso(row.created) }));
       },
     },
 
     codegraphs: {
       async history(key) { const {rows}=await q('select digest,actor,at from codegraph_import where project=$1 order by at',[key]); return rows.map(r=>({...r,at:iso(r.at)})); },
-      async get(key) { const {rows}=await q('select snapshot from codegraph where project=$1',[key]); return rows[0]?.snapshot ?? null; },
-      async set(key, snapshot) { await q(`with saved as (insert into codegraph(project,snapshot) values($1,$2::jsonb) on conflict(project) do update set snapshot=excluded.snapshot returning project) insert into codegraph_import(project,digest,actor,at) select project, $2::jsonb->>'digest', $2::jsonb->>'actor', ($2::jsonb->>'importedAt')::timestamptz from saved`,[key,JSON.stringify(snapshot)]); return snapshot; },
+      async get(key,revision=null) { const {rows}=await q(revision ? 'select snapshot from codegraph_revision where project=$1 and revision=$2' : 'select snapshot from codegraph where project=$1',revision?[key,revision]:[key]); return rows[0]?.snapshot ?? null; },
+      async set(key, snapshot) {
+        await q(`with saved as (
+          insert into codegraph(project,snapshot) values($1,$2::jsonb)
+          on conflict(project) do update set snapshot=excluded.snapshot
+          where codegraph.snapshot->>'digest' is distinct from excluded.snapshot->>'digest' returning project
+        ), archived as (
+          insert into codegraph_revision(project,revision,snapshot)
+          select project,$2::jsonb->>'revision',$2::jsonb from saved
+          where $2::jsonb->>'revision' is not null and $2::jsonb->>'dirty' = 'false'
+          on conflict(project,revision) do update set snapshot=excluded.snapshot,imported_at=clock_timestamp()
+        ) insert into codegraph_import(project,digest,actor,at)
+          select project,$2::jsonb->>'digest',$2::jsonb->>'actor',($2::jsonb->>'importedAt')::timestamptz from saved`,[key,JSON.stringify(snapshot)]);
+        await q(`delete from codegraph_revision where project=$1 and revision not in
+          (select revision from codegraph_revision where project=$1 order by imported_at desc,revision limit 8)`,[key]);
+        return this.get(key);
+      },
     },
     vocab: {
       async set(projectKey, entries) {
@@ -796,8 +819,13 @@ export async function createPgStore(url, { schema = null } = {}) {
           actor: row.actor, verb: row.verb, data: row.data, at: iso(row.at),
         }));
       },
-      async of(itemId) {
-        const { rows } = await q('select * from history where card = $1 order by seq asc', [itemId]);
+      async of(itemId, {limit=null,verbs=null}={}) {
+        const values=[itemId];let where='card = $1';
+        if(verbs){values.push(verbs);where+=` and verb = any($${values.length}::text[])`;}
+        const order=limit===null?'asc':'desc';
+        const tail=limit===null?'':` limit $${values.push(Math.max(1,Math.min(40,limit)))}`;
+        const { rows } = await q(`select * from history where ${where} order by seq ${order}${tail}`,values);
+        if(limit!==null)rows.reverse();
         return rows.map((row) => ({ id: row.id, item: row.card, actor: row.actor, verb: row.verb, data: row.data, at: iso(row.at) }));
       },
       /**

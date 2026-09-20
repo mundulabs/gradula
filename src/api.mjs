@@ -21,6 +21,7 @@
  */
 
 import { sessionKeyName } from './spec.mjs';
+import { GRAPH_LIMITS } from './codegraph.mjs';
 import { LIVE_HEADERS } from './live.mjs';
 import { Refusal } from './gradula.mjs';
 import { signatureOk } from './sentry.mjs';
@@ -244,12 +245,12 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['POST', /^\/api\/v1\/device\/([0-9A-Z]{26})\/approve$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.approveDevice(ctx.project, m[1], ctx.human) })],
     ['POST', /^\/api\/v1\/device\/([0-9A-Z]{26})\/deny$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.denyDevice(ctx.project, m[1], ctx.human) })],
 
-    ['GET', /^\/api\/v1\/keys$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.ownKeys(ctx.project, ctx.human) })],
+    ['GET', /^\/api\/v1\/keys$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.ownKeys(ctx.project, ctx.human, { holder: ctx.holder }) })],
     ['POST', /^\/api\/v1\/keys$/, async (req, _m, ctx) => {
       const body = await readJson(req);
-      return { status: 201, body: await gradula.mintOwnKey(ctx.project, body.name, ctx.human) };
+      return { status: 201, body: await gradula.mintOwnKey(ctx.project, body.name, ctx.human, { holder: ctx.holder }) };
     }],
-    ['DELETE', /^\/api\/v1\/keys\/([0-9A-Z]{26})$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.revokeOwnKey(ctx.project, m[1], ctx.human) })],
+    ['DELETE', /^\/api\/v1\/keys\/([0-9A-Z]{26})$/, async (_req, m, ctx) => ({ status: 200, body: await gradula.revokeOwnKey(ctx.project, m[1], ctx.human, { holder: ctx.holder }) })],
 
     ['GET', /^\/api\/v1\/projects$/, async (_req, _m, ctx) => {
       if (!ctx.human) throw new Refusal(403, 'humans-only', 'This list exists only for signed-in people.');
@@ -266,11 +267,23 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
      */
     ['PATCH', /^\/api\/v1\/project$/, async (req, _m, ctx) => {
       const body = await readJson(req);
-      return { status: 200, body: await gradula.patchProject(ctx.project, { people: body.people, language: body.language, publish: body.publish, ladder: body.ladder, manualAcceptance: body.manualAcceptance }, ctx.actor) };
+      return { status: 200, body: await gradula.patchProject(ctx.project, { people: body.people, language: body.language, publish: body.publish, ladder: body.ladder, manualAcceptance: body.manualAcceptance, integration: body.integration }, ctx.actor) };
     }],
 
-    ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, 2_000_000), ctx.actor) })],
-    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project) })],
+    ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, GRAPH_LIMITS.bytes), ctx.actor) })],
+    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project,ctx.url.searchParams.get('revision')) })],
+    ['GET', /^\/api\/v1\/context$/, async (_req, _m, ctx) => {
+      const q = ctx.url.searchParams;
+      return {status:200, body:await gradula.getContext(ctx.project, {
+        q:q.get('q') ?? '', card:q.get('card'), files:q.getAll('file'), revision:q.get('revision'),
+        mode:q.get('mode') ?? undefined, detail:q.get('detail') ?? undefined, from:q.get('from') ?? undefined, to:q.get('to') ?? undefined,
+        depth:q.has('depth') ? Number(q.get('depth')) : undefined,
+        includeInferred:q.has('includeInferred') ? q.get('includeInferred')==='true' ? true : q.get('includeInferred')==='false' ? false : 'invalid' : undefined,
+        localDirty:q.has('localDirty') ? q.get('localDirty')==='true' ? true : q.get('localDirty')==='false' ? false : 'invalid' : undefined,
+        limit:q.has('limit') ? Number(q.get('limit')) : undefined,
+        maxBytes:q.has('maxBytes') ? Number(q.get('maxBytes')) : undefined,
+      })};
+    }],
 
     ['PUT', /^\/api\/v1\/vocabulary$/, async (req, _m, ctx) => {
       const body = await readJson(req);
@@ -430,7 +443,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     // Where the app has arrived. A build is not a release — see eas.mjs.
     ['GET', /^\/api\/v1\/app$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.appStanding(ctx.project) })],
     ['PUT', /^\/api\/v1\/dokploy$/, async (req, _m, ctx) => ({
-      status: 200, body: await gradula.setDokploy(ctx.project, await readJson(req)),
+      status: 200, body: await gradula.setDokploy(ctx.project, await readJson(req), { person: ctx.person }),
     })],
     /**
      * The long line. It never answers finished — which is why it does not go
@@ -607,6 +620,9 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
         human,
         system: token?.kind === 'system',
         tokenName: token?.name ?? null,
+        // A person: signed in, or holding their own key (not an agent's, not a system's).
+        person: !!human || token?.kind === 'human',
+        holder: token ? { kind: token.kind, owner: token.owner ?? null, ownerName: token.ownerName ?? null, name: token.name } : null,
         needAdmin() {
           if (!adminToken) throw new Refusal(503, 'no-door', 'The admin door is not set up.');
           const raw = bearer(req);

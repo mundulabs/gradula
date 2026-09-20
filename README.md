@@ -123,6 +123,8 @@ gradula new [<kind>] "<title>" [--text "…"]   kinds: idea, task, venture, mile
                     [--gate test:tests/x.test.mjs] [--person david] [--file path]
 gradula show <CARD>
 gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
+gradula context [query] [--card CARD] [--files path,path] [--limit 8] [--max-bytes 8000]
+                                 bounded code/document lookup with checkout revision comparison
 gradula resume <CARD>            brief plus local workspace risk and recent evidence
 gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
 gradula approve <CARD>           the review says yes — done, with a reason
@@ -180,7 +182,7 @@ through `gradula sync` (or automatically, once `gradula hook` is installed).
 | --- | --- | --- |
 | evidence | the push hook / `gradula sync` | `evidenced` — one note per commit that names the card (`Plan: KEY`) |
 | deployed, per environment | Dokploy + GitHub, read by the system picture | `deployed` — once per lane, the first time the card is seen inside the deployed head (`{ environment, sha, at }`, hand `dokploy`) |
-| done | a hand — `gradula approve`, or the gate | `moved` to `done`; the gate proves, the deployment only reports |
+| done | manual acceptance, or eligible confirmed production delivery | `moved` to `done`; configured gates must pass, and manual acceptance policy may keep delivered work in Review |
 | resolved in Sentry | the board, when the card is an incident and the connection allows writing back | `resolved in Sentry` |
 | seen elsewhere | the Sentry hook, when an incident that already has a card happens again in an environment the connection does not watch (`dev`, `local`) | `seen` — one line per sighting (`{ environment, count }`); the card does not move and is never resurrected |
 
@@ -262,8 +264,8 @@ spends at most 40 GitHub calls (branch listings are held a minute, compares
 forever): what does not fit stays `null`, and `sources.github` says
 `ok (deployed: 3 cards past the budget …)` — or `ok (deployed unknown: no
 token)` when the connection has none. The first time a card is seen deployed in
-a lane, one `deployed` note lands on it (see the CLI's lifecycle table); no
-state moves.
+a lane, one `deployed` note lands on it (see the CLI's lifecycle table).
+Card transitions follow the acceptance policy described below.
 
 A connection that is not set up yields an empty list AND says so in `sources`,
 so a page can say what it is not seeing instead of pretending. Dokploy watches
@@ -406,12 +408,120 @@ requires its repository to match the board. `GET /api/v1/codegraph` returns the 
 snapshot to authenticated project readers. Gradula does not fetch or scan the repository.
 
 The card inspector matches structured file references to graph nodes and shows their
-neighbours, searchable nodes, source links and extracted/inferred edge explanations.
-It displays the import date: this is a snapshot, not live runtime or deployment evidence.
-Source links currently use the repository's `dev` branch; they are navigation links,
-not immutable proof of the imported source revision. Graph imports never author card
-files, labels, gates or completion. A repository change hides its old graph.
+neighbours, source links and extracted/inferred edge explanations. Clean versioned
+snapshots link to their exact source commit; legacy/dirty snapshots use GitHub HEAD
+for navigation only. Graph imports never author card files, labels or completion.
+Changing the project repository hides snapshots belonging to the previous repository.
 
-Snapshots are capped at 2 MB, 5,000 nodes and 20,000 edges. Postgres stores one current
-JSONB snapshot per project plus a small import chronicle (digest, actor and time).
-No additional graph database is required. Re-publishing identical content is a no-op.
+Snapshots are bounded to 8 MB, 20,000 nodes and 80,000 edges. PostgreSQL stores the
+current JSONB graph and up to eight recent clean revision snapshots; memory obeys
+the same contract. A supplied checkout SHA selects its retained snapshot, falling
+back to an explicitly mismatched current snapshot when unavailable. Import history
+is retained. Re-publishing identical content is idempotent, including concurrent
+requests. No graph database or hosted model is required.
+
+### Code context for agents
+
+Start with a small file lookup; expand only when relationships or evidence matter:
+
+```bash
+gradula context "authentication"
+gradula context "normalizeGraph" --detail evidence
+gradula context --mode explain --from src/codegraph.mjs
+gradula context --mode impact --from src/auth.mjs --depth 3
+gradula context --mode path --from src/api.mjs --to src/store.mjs --depth 4
+gradula context --card GRD-69
+```
+
+MCP `plan_context` accepts the same fields through `GET /api/v1/context`. Search
+uses field-weighted BM25, camel-case/plural normalization, a small explicit alias
+vocabulary and file diversity. Exact symbol/path lookups avoid unrelated matches.
+`detail=paths` is the default for search without a card: IDs, paths and lines.
+`detail=evidence` expands source ranges, descriptions, explained relationships and
+related work. Card-based requests default to evidence. Known files can still be read
+directly; use local `rg` when the graph misses a concept.
+
+`explain`, `impact` and `path` traverse source-backed extracted relationships by
+default. `--include-inferred` explicitly allows inferred or unreferenced edges.
+Impact follows incoming dependencies and contained declarations. Traversal is bounded
+at 1,000 visited nodes and depth 1–6; responses distinguish found, unresolved,
+not-found-within-the-inspected-component, and bounded results. Ambiguous symbol
+names require exact IDs. `outputTruncated` reports a path or neighbourhood that
+did not fit the response budget; an omitted edge is not proof of no dependency.
+
+The response defaults to eight nodes and at most 8,000 serialized UTF-8 bytes,
+including metadata and a newline. `--limit` accepts 1–20; `--max-bytes` accepts
+4,096–24,000. Omission counts disclose reductions. Bytes are not tokenizer counts,
+and the MCP protocol envelope is additional. The service keeps four compiled
+retrieval indexes in a bounded cache, invalidated by graph digest.
+
+Evidence context joins declared file scope to live cards, linked decisions, gates
+and recorded commit/run/deployment events. Every event retains its ID, actor and
+time. It scans at most 500 cards, inspects up to four related cards and the latest
+12 relevant evidence events per card, then returns at most three events per card
+within the shared byte budget. Coverage reports possible omissions. A configured
+gate is not a passing test; an imported test is not a passing test; an event is a
+recorded claim, not independent verification. Full history remains available via
+`show`/`plan_card`. Retrieval never deletes or rewrites it.
+
+Publishers may include a full `revision`, `dirty`, `generator`, node content hashes,
+source line ranges, aliases and coverage. The local publisher reports unresolved
+calls rather than pretending to have a complete runtime graph. The CLI sends HEAD
+and detects local edits; MCP callers provide `revision` and `localDirty` when known.
+Freshness is missing, unknown, dirty, local-dirty, unchecked, matching or different.
+A clean matching revision still says nothing about tests or deployment. `health`
+also reports graph availability/provenance separately from card hygiene.
+
+### Rebuild, watch and publish
+
+After `npm ci`, scan Gradula locally with no model calls:
+
+```bash
+npm run --silent codegraph:build > /tmp/gradula-codegraph.json
+node tools/codegraph.mjs --publish
+npm run codegraph:watch
+```
+
+The publisher defaults to this checkout. `--root /path/to/project` explicitly scans
+another local project and reads that project's configuration. The service never
+fetches source repositories. Clean scans read immutable Git blobs; dirty scans use
+tracked working-tree source (including staged additions) and cannot be published by
+the watcher. Symlinks, credentials/configuration files, lockfiles, untracked code,
+non-JS/TS languages, PDF and media are outside the scanner's scope. Markdown prose
+and source comments are part of the published metadata.
+
+The TypeScript checker resolves declarations, aliases/re-exports, static calls,
+constructors and heritage; literal imports link modules, test imports are tagged,
+and Markdown sections/citations link documentation to source. Resolution uses
+NodeNext over the supplied repository files, not external packages or custom
+project tsconfig aliases. Unresolved calls remain unknown. Sources have content
+hashes; the long-running watcher reuses unchanged syntax trees, rebuilds dependent
+relationships and removes deleted files/edges. This is incremental parsing with a
+full relationship relink, not an incremental database delta protocol. A fresh process
+performs a cold scan. Failed scans/publishes retain the previous published snapshot.
+
+`--watch --publish` polls every five seconds (`--interval` in milliseconds), runs
+one scan/upload at a time and reports changed results/errors. It requires a clean
+checkout and checks context-v2 server capabilities before uploading. SIGINT/SIGTERM
+stop it. It does not install a daemon or change Git hooks implicitly.
+
+The repository workflow `.github/workflows/codegraph.yml` publishes clean `main`
+and `dev` pushes. Deploy the context-v2 server first, then configure repository
+variable `GRADULA_URL` and secret `GRADULA_GRAPH_TOKEN` with a dedicated project key.
+Absent configuration produces an explicit warning and no upload. Never put a token
+in the graph or repository. The workflow and local watcher are alternatives.
+
+### Retrieval evaluation
+
+```bash
+npm run --silent codegraph:eval > /tmp/retrieval-eval.json
+npm run --silent codegraph:eval -- --check
+```
+
+The 30-question development set compares bounded graph lookup with a deterministic
+`rg` baseline over the same tracked corpus. Audit reports and evaluation inputs are
+excluded from retrieval. Results include expected files, misses, recall@8, actual
+`cl100k_base` response-token counts, local retrieval timings and cold/warm indexing
+statistics. `--check` requires recall >= 0.90 and mean response size <= 500 tokens.
+This is a regression probe, not a held-out benchmark or a measure of end-to-end
+coding success. See [retrieval validation](docs/retrieval-validation.md).
