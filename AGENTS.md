@@ -18,6 +18,8 @@ src/labels.mjs       labels from rules: module (from the vocabulary) and stack
 src/links.mjs        links, cycle check, blocked computation, collisions — pure
 src/wave.mjs         what can go side by side, and what is ripe — pure
 src/cartographer.mjs proposals: same file, similar title, a bundle — pure
+src/context.mjs      bounded source/document retrieval from a published graph — pure
+tools/codegraph.mjs  local AST/document publisher for this repository (not the service)
 src/heralds.mjs      the filter and the sentence that leaves the house — pure
 src/telegram.mjs     the first herald: introduce itself, say something
 src/gates.mjs        the runner: file, url, test, command
@@ -56,6 +58,8 @@ web/                 the board (Vite + React); web/src/vocabulary.ts imports src
     column that only a migration creates** (`tests/migration.test.mjs`).
 
 13. **A card has one active work reservation per authenticated session.** Start with planned files, keep the heartbeat alive, and require a recorded reason for an active takeover. Expiry means unknown activity, not completed work (`tests/reservations.test.mjs`).
+
+14. **Retrieve context, not the whole graph or chronicle.** Use `gradula context "symbol or topic" --card KEY` or MCP `plan_context` for file discovery when a snapshot is available; inspect freshness, read the selected source, and fall back to local `rg` for missing/stale context (`tests/context.test.mjs`).
 
 ## Checking
 

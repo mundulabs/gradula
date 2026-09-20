@@ -123,6 +123,8 @@ gradula new [<kind>] "<title>" [--text "…"]   kinds: idea, task, venture, mile
                     [--gate test:tests/x.test.mjs] [--person david] [--file path]
 gradula show <CARD>
 gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
+gradula context [query] [--card CARD] [--files path,path] [--limit 8] [--max-bytes 8000]
+                                 bounded code/document lookup with checkout revision comparison
 gradula resume <CARD>            brief plus local workspace risk and recent evidence
 gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
 gradula approve <CARD>           the review says yes — done, with a reason
@@ -180,7 +182,7 @@ through `gradula sync` (or automatically, once `gradula hook` is installed).
 | --- | --- | --- |
 | evidence | the push hook / `gradula sync` | `evidenced` — one note per commit that names the card (`Plan: KEY`) |
 | deployed, per environment | Dokploy + GitHub, read by the system picture | `deployed` — once per lane, the first time the card is seen inside the deployed head (`{ environment, sha, at }`, hand `dokploy`) |
-| done | a hand — `gradula approve`, or the gate | `moved` to `done`; the gate proves, the deployment only reports |
+| done | manual acceptance, or eligible confirmed production delivery | `moved` to `done`; configured gates must pass, and manual acceptance policy may keep delivered work in Review |
 | resolved in Sentry | the board, when the card is an incident and the connection allows writing back | `resolved in Sentry` |
 | seen elsewhere | the Sentry hook, when an incident that already has a card happens again in an environment the connection does not watch (`dev`, `local`) | `seen` — one line per sighting (`{ environment, count }`); the card does not move and is never resurrected |
 
@@ -262,8 +264,8 @@ spends at most 40 GitHub calls (branch listings are held a minute, compares
 forever): what does not fit stays `null`, and `sources.github` says
 `ok (deployed: 3 cards past the budget …)` — or `ok (deployed unknown: no
 token)` when the connection has none. The first time a card is seen deployed in
-a lane, one `deployed` note lands on it (see the CLI's lifecycle table); no
-state moves.
+a lane, one `deployed` note lands on it (see the CLI's lifecycle table).
+Card transitions follow the acceptance policy described below.
 
 A connection that is not set up yields an empty list AND says so in `sources`,
 so a page can say what it is not seeing instead of pretending. Dokploy watches
@@ -415,3 +417,51 @@ files, labels, gates or completion. A repository change hides its old graph.
 Snapshots are capped at 2 MB, 5,000 nodes and 20,000 edges. Postgres stores one current
 JSONB snapshot per project plus a small import chronicle (digest, actor and time).
 No additional graph database is required. Re-publishing identical content is a no-op.
+
+### Code context for agents
+
+`gradula context "normalizeGraph"`, `gradula context --card GRD-69`, and MCP
+`plan_context` call the same authenticated `GET /api/v1/context` door. It returns
+a compact card summary, ranked source paths, and one-hop relationships with their
+published confidence and source references. Exact paths and declared card scope
+rank ahead of lexical matches. Search covers names, paths and short descriptions;
+it is not semantic search or a complete call graph. Missing results require local
+search, not a conclusion that the code does not exist.
+
+The response defaults to eight nodes and at most 8,000 serialized UTF-8 bytes,
+including metadata and a newline. `--limit` accepts 1–20 and `--max-bytes` accepts
+4,096–24,000. Omission counts and `cardTruncated` disclose reductions. These are
+byte budgets, not tokenizer measurements; the MCP protocol envelope is additional.
+Full card history stays in the chronicle and is available through `show`/`plan_card`.
+Do not delete history to shrink an agent prompt.
+
+Publishers may include `revision` (full commit SHA), `dirty` (boolean) and node
+`line` (positive source line). Missing provenance remains unknown. The CLI sends
+local HEAD automatically, or an explicit `--revision SHA`; MCP callers supply
+their checkout SHA. Freshness is `missing`, `unknown`, `dirty`, `unchecked`,
+`matching`, or `different`. A matching HEAD says nothing about uncommitted local
+edits, remote branch freshness, test results or deployment. Confidence tags are
+publisher claims, not independently verified proof. `health` also reports graph
+availability/provenance separately from card hygiene.
+
+To rebuild **Gradula's own** source index locally, after `npm ci`:
+
+```bash
+npm run --silent codegraph:build > /tmp/gradula-codegraph.json
+node bin/gradula.mjs codegraph /tmp/gradula-codegraph.json
+```
+
+The local publisher scans this checkout's tracked JavaScript/TypeScript and
+Markdown files, including staged additions. It skips symlinks and never reads
+credentials, foreign repositories, PDF/media, or untracked source. TypeScript's
+parser extracts top-level declarations and literal relative module references;
+explicit document paths become citation edges. Syntax errors and graph size
+limits fail the build. No model calls are made. It records HEAD and dirty status;
+use a clean committed checkout for a revision-matching snapshot. Import only
+after the server supports provenance fields; older servers discard them. A fresh
+scan replaces derived graph data only, never cards, history or acceptance.
+
+This is a manual full rebuild. Incremental refresh, semantic document extraction,
+cross-language symbol resolution and production publishing automation remain
+separate work. See the [retrieval audit](docs/audit-2026-09-20.md) for measured
+coverage and limits.

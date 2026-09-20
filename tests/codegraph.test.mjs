@@ -4,6 +4,13 @@ import {normalizeGraph} from '../src/codegraph.mjs';
 import {createMemoryStore} from '../src/store.mjs';
 import {createGradula} from '../src/gradula.mjs';
 const graph=()=>({schema:'gradula.codegraph.v1',repository:'team/repo',nodes:[{id:'a',name:'A',kind:'module',path:'src/a.rs'},{id:'b',name:'B',kind:'doc',path:'docs/b.md'}],edges:[{from:'a',to:'b',kind:'documents',confidence:'EXTRACTED',reason:'Explicit source reference',source:{path:'docs/b.md',line:2}}]});
+test('source revision survives normalization and participates in the digest',()=>{
+ const legacy=normalizeGraph(graph(),'team/repo');assert.equal(legacy.revision,null);assert.equal(legacy.dirty,null);
+ const current=normalizeGraph({...graph(),revision:'a'.repeat(40),dirty:false},'team/repo');
+ assert.equal(current.revision,'a'.repeat(40));assert.equal(current.dirty,false);assert.notEqual(current.digest,legacy.digest);
+ assert.notEqual(normalizeGraph({...graph(),revision:'b'.repeat(40),dirty:false},'team/repo').digest,current.digest);
+ for(const extra of [{revision:'dev'},{revision:'abc'},{dirty:'false'}]) assert.throws(()=>normalizeGraph({...graph(),...extra},'team/repo'));
+});
 test('graph admission rejects mismatches, unsafe paths and ungrounded edges',()=>{
  for(const path of ['/Users/me/a.rs','../a.rs','docs/../../key','https://evil.test','C:\\file','a/./b']) { const x=graph();x.nodes[0].path=path;assert.throws(()=>normalizeGraph(x,'team/repo')); }
  const dangling=graph();dangling.edges[0].to='missing';assert.throws(()=>normalizeGraph(dangling,'team/repo'));

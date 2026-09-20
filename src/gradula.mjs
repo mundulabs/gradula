@@ -18,6 +18,7 @@
  */
 
 import { normalizeGraph } from './codegraph.mjs';
+import { contextOptions, retrieveContext, graphFreshness } from './context.mjs';
 import { randomUUID } from 'node:crypto';
 import { plannedPaths, activeReservation, workWarnings } from './reservations.mjs';
 import { labelsFor, mergeLabels, normalizeVocabulary, areaOf } from './labels.mjs';
@@ -300,6 +301,15 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const project = await this.getProject(projectKey);
       const graph = await store.codegraphs.get(project.key);
       return graph?.repository === project.repo ? graph : null;
+    },
+    async getContext(projectKey, input) {
+      const project = await this.getProject(projectKey);
+      let options;
+      try { options = contextOptions(input); } catch (error) { throw bad('context', error.message); }
+      // The card is in a query parameter, so the router's path guard cannot help.
+      if (options.card && !options.card.startsWith(`${project.key}-`)) throw missing('That card does not exist.');
+      const card = options.card ? await this.getItem(options.card) : null;
+      return retrieveContext(await this.getCodegraph(project.key), card, options);
     },
     async putCodegraph(projectKey, input, actor) {
       const project = await this.getProject(projectKey);
@@ -876,7 +886,9 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         store.events.all(project.key, { limit: 1000 }),
       ]);
       const edges = links.map((l) => ({ ...l, from: l.from ?? l.from_id, to: l.to ?? l.to_id }));
+      const graph = await this.getCodegraph(project.key);
       return {
+        context: {freshness:graphFreshness(graph), revision:graph?.revision ?? null, importedAt:graph?.importedAt ?? null, nodes:graph?.nodes.length ?? 0, edges:graph?.edges.length ?? 0},
         findings: findings(cards, edges, entries, { quiet, language: project.language ?? null }),
         people: whoDidWhat(entries, cards, { aliases: project.people ?? {} }),
         cards: cards.length,

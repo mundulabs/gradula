@@ -271,6 +271,14 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
 
     ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, 2_000_000), ctx.actor) })],
     ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project) })],
+    ['GET', /^\/api\/v1\/context$/, async (_req, _m, ctx) => {
+      const q = ctx.url.searchParams;
+      return {status:200, body:await gradula.getContext(ctx.project, {
+        q:q.get('q') ?? '', card:q.get('card'), files:q.getAll('file'), revision:q.get('revision'),
+        limit:q.has('limit') ? Number(q.get('limit')) : undefined,
+        maxBytes:q.has('maxBytes') ? Number(q.get('maxBytes')) : undefined,
+      })};
+    }],
 
     ['PUT', /^\/api\/v1\/vocabulary$/, async (req, _m, ctx) => {
       const body = await readJson(req);

@@ -14,7 +14,8 @@ export function normalizeGraph(input, repo) {
   const ids = new Set();
   const nodes = input.nodes.map(n => {
     const id = word(n.id, 600); if (!id || ids.has(id)) fail('Duplicate or empty node ID'); ids.add(id);
-    return {id, name:word(n.name), kind:word(n.kind, 60), area:word(n.area ?? '', 60), path:n.path ? path(n.path) : null, about:word(n.about ?? '', 10000)};
+    if (n.line != null && (!n.path || !Number.isSafeInteger(n.line) || n.line < 1)) fail('Invalid node source line');
+    return {id, name:word(n.name), kind:word(n.kind, 60), area:word(n.area ?? '', 60), path:n.path ? path(n.path) : null, line:n.line ?? null, about:word(n.about ?? '', 10000)};
   });
   const edges = input.edges.map(e => {
     if (!ids.has(e.from) || !ids.has(e.to)) fail('Edge points to a missing node');
@@ -23,6 +24,10 @@ export function normalizeGraph(input, repo) {
     if (source && e.source.line != null) {if (!Number.isSafeInteger(e.source.line) || e.source.line < 1) fail('Invalid source line');source.line=e.source.line;}
     return {from:e.from,to:e.to,kind:word(e.kind,100),confidence:e.confidence,reason:word(e.reason,2000),source};
   });
-  const graph = {schema:input.schema,repository:repo,nodes,edges};
+  // A legacy snapshot is allowed, but must never acquire a made-up revision.
+  const revision = input.revision ?? null;
+  if (revision !== null && (typeof revision !== 'string' || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision))) fail('Expected a full source commit SHA');
+  if (input.dirty != null && typeof input.dirty !== 'boolean') fail('Expected a boolean dirty flag');
+  const graph = {schema:input.schema,repository:repo,revision,dirty:input.dirty ?? null,nodes,edges};
   return {...graph,digest:createHash('sha256').update(JSON.stringify(graph)).digest('hex')};
 }

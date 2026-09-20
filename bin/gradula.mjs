@@ -19,7 +19,7 @@
  */
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, chmodSync } from 'node:fs';
-import { join, dirname, basename } from 'node:path';
+import { join, dirname, basename, resolve } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
 import { allGates, gateLine } from '../src/gates.mjs';
@@ -35,6 +35,8 @@ const HELP = `gradula — wish, board, standing
                       [--gate test:tests/x.test.mjs] [--person david] [--file path]
   gradula show <CARD>
   gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
+  gradula context [query] [--card CARD] [--files path,path] [--limit 8] [--max-bytes 8000]
+                                  bounded file/document lookup; compares local HEAD when available
   gradula resume <CARD>            brief plus local workspace risk and recent evidence
   gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
   gradula approve <CARD>           the review says yes — done, with a reason
@@ -492,6 +494,20 @@ switch (command) {
     break;
   }
 
+
+  case 'context': {
+    const query = new URLSearchParams();
+    if (words.length) query.set('q', words.join(' '));
+    if (flags.card) query.set('card', String(flags.card).toUpperCase());
+    for (const file of String(flags.files ?? '').split(',').filter(Boolean)) query.append('file', file);
+    if (flags.limit != null) query.set('limit', String(flags.limit));
+    if (flags['max-bytes'] != null) query.set('maxBytes', String(flags['max-bytes']));
+    let revision = flags.revision;
+    if (!revision) { try { revision = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8', stdio:['ignore','pipe','ignore']}).trim(); } catch { /* no checkout */ } }
+    if (revision) query.set('revision', String(revision));
+    console.log(JSON.stringify(await call(`/api/v1/context?${query}`)));
+    break;
+  }
 
   case 'brief':
   case 'resume': {
@@ -1360,6 +1376,7 @@ switch (command) {
         console.log(`     ${f.why}`);
       }
     }
+    if (now.context) console.log(`Code context: ${now.context.freshness} · ${now.context.nodes} nodes · ${now.context.edges} edges${now.context.revision ? ` · ${now.context.revision}` : ''}`);
     if (now.people.length > 1) {
       console.log('\nWho is where:');
       for (const p of now.people) {
