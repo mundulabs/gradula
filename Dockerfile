@@ -1,3 +1,12 @@
+# Source analysis runs at build time, over immutable Git objects.
+FROM node:22-alpine AS sourcegraph
+RUN apk add --no-cache git
+WORKDIR /source
+COPY package.json package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY . .
+RUN git config remote.origin.url https://github.com/mundulabs/gradula.git && node tools/hosted-graph.mjs /tmp/gradula-source-graph.json
+
 # Gradula — two layers: build the board, then the service.
 FROM node:22-alpine AS board
 WORKDIR /board/web
@@ -22,6 +31,8 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
+COPY --from=sourcegraph /tmp/gradula-source-graph.json ./source-graph.json
+ENV GRADULA_HOSTED_GRAPH=/app/source-graph.json
 COPY src ./src
 COPY bin ./bin
 COPY mcp ./mcp

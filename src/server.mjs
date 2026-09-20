@@ -17,6 +17,7 @@ import { createLive } from './live.mjs';
 import { createSystemPoll } from './system.mjs';
 import { withoutKey as telegramError } from './telegram.mjs';
 import { watch } from './watch.mjs';
+import { importHostedGraph } from './hosted-graph.mjs';
 
 const port = Number(process.env.PORT ?? 3200);
 const host = process.env.HOST ?? '0.0.0.0';
@@ -58,6 +59,20 @@ const poll = { current: null };
 const live = createLive({ onPresence: (projectKey, count) => poll.current?.presence(projectKey, count) });
 const gradula = createGradula(store, { origin: process.env.PUBLIC_ORIGIN ?? null, live, houseKey: process.env.TELEGRAM_BOT_TOKEN || null });
 poll.current = createSystemPoll({ gradula, live });
+// Failure retains the last valid graph and is visible in deployment logs.
+// Retry only this image's artifact; never scan developer checkouts here.
+if (process.env.GRADULA_HOSTED_GRAPH) {
+  let pending = false;
+  const publish = async () => {
+    if (pending) return;
+    pending = true;
+    try { await importHostedGraph(gradula, {path:process.env.GRADULA_HOSTED_GRAPH}); clearInterval(retry); }
+    catch (error) { console.error(`[gradula] hosted graph unavailable: ${error.message}`); }
+    finally { pending = false; }
+  };
+  const retry = setInterval(publish, 60_000); retry.unref();
+  void publish();
+}
 
 /**
  * The sign-in is optional: without its four values it does not exist, and the

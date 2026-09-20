@@ -18,41 +18,39 @@ the generated `docs/gradula-codegraph.json`, local query tool `tools/codegraph.p
 and a hosted documentation service. Reuse that native graph. Gradula's TypeScript
 scanner does not provide Rust compiler coverage.
 
-## Current refresh status
+## Hosted refresh
 
-The first GitHub Actions publication could not start: GitHub reported failed
-account payments or a spending limit. The source-graph workflow was disabled to
-avoid repeated failed jobs. Its dedicated GRD project secret and URL variable are
-configured. After billing is resolved it can be enabled with
-`gh workflow enable codegraph.yml --repo mundulabs/gradula` and dispatched on main.
+Gradula's image build scans immutable Git objects at its source HEAD and bundles
+one graph artifact. The running service imports that artifact into its own GRD
+project, after verifying the repository and revision. It retries failed imports
+every minute until successful and retains the last accepted graph on failure.
+The runtime image contains no Git checkout or compiler dependency.
 
-The proposed local LaunchAgents were **not installed**: automatic approval review
-required explicit authorization for persistent cross-project publishing. There
-are no new login-started publishers and no background publisher added to developer
-setup. Prepared installation instructions are not evidence of a running service.
-Until an automatic path is enabled, snapshots are refreshed explicitly.
+Mundus's existing docs deployment verifies its generated native graph against a
+digest of the committed inputs and stamps the deployed revision at image build.
+The docs service publishes through its existing project credential, retries
+failures and exposes authenticated publication status. Updating a source input
+requires regenerating the graph before pushing. A stale artifact fails the image
+build instead of being labelled as current. Both pipelines run on deployments;
+neither requires a login-started service on developer laptops.
 
-For Gradula, run `node tools/codegraph.mjs --ref origin/main --fetch --publish`.
-For Mundus, verify its generated native graph with `python3 tools/docs_graph.py
---check` and publish through `node tools/dev.mjs codegraph path/to/snapshot.json`.
-Revision metadata may identify a clean commit only after verifying the graph
-against that commit; the legacy generated format alone has no source SHA.
+The source-graph GitHub Actions workflow remains disabled because the account's
+billing/spending restriction prevented jobs from starting. Its project secret is
+configured, but hosted publication is the selected refresh path. Do not enable
+a second competing publisher without a reason.
 
-## Developer setup and the intended shared workflow
+## Developer setup
 
-Mundus's `node tools/setup.mjs` installs/updates Gradula and the developer login;
-it does not install a perpetual publisher. Developers can retrieve compact
-context through `node tools/dev.mjs context "topic"` or MCP `plan_context`.
-Inspect freshness and read the selected source. Use local search when a graph is
-missing or differs from the checkout.
+Mundus's `node tools/setup.mjs` installs/updates Gradula and the developer login.
+Use `node tools/dev.mjs context "topic"` or MCP `plan_context` for unfamiliar code.
+Gradula developers use `node bin/gradula.mjs context "topic"`. Inspect freshness
+and read the selected source. Use local search when a graph is missing or differs
+from the checkout. No perpetual local publisher is installed by setup.
 
-For a team, publication belongs in a project-owned CI or deployment pipeline:
-one source snapshot per committed revision, queried by every developer. The
-existing hosted Mundus docs deployment is a possible integration point, but it
-currently reads board observations; automatic graph publication has not been
-added to it. No hosted publication should be claimed until it is implemented
-and verified. A local watcher remains an explicit opt-in fallback, not a new
-developer prerequisite.
+Manual recovery for Gradula remains `node tools/codegraph.mjs --ref origin/main
+--fetch --publish`. For Mundus, run its generator and normal verification first;
+the hosted artifact must pass the input digest check before receiving a revision.
+Graph publication never approves cards or proves tests passed.
 
 ## Optional local watcher behavior
 
