@@ -1,58 +1,69 @@
 # Operating source graph publishers
 
 The context-v2 service was deployed on 2026-09-20 via PR #1, dev, then the
-identical dev head on main. The production API accepted a clean GRD snapshot and
-returned matching-revision context. Existing card history was preserved.
+identical dev head on main. PR #2 added optional compact file graphs and immutable
+ref scans. The production API accepted a clean GRD snapshot and returned matching
+revision context. Existing card history was preserved.
+
+## The active projects
+
+Gradula is `GRD`, repository `mundulabs/gradula`. The native product **Mundus** is
+`MDLA`, repository `mundulabs/mundus`. `MOLD` / `mundulabs/mundula` is the legacy
+JavaScript/Expo project, not Mundus. An initial rollout probe mistakenly targeted
+that legacy checkout and published one snapshot there; it did not alter source
+or history. No ongoing publisher should target it as a substitute for Mundus.
+
+Mundus already has its own Rust/documentation generator, `tools/docs_graph.py`,
+the generated `docs/gradula-codegraph.json`, local query tool `tools/codegraph.py`
+and a hosted documentation service. Reuse that native graph. Gradula's TypeScript
+scanner does not provide Rust compiler coverage.
+
+## Current refresh status
 
 The first GitHub Actions publication could not start: GitHub reported failed
 account payments or a spending limit. The source-graph workflow was disabled to
-avoid repeated failed jobs. Its dedicated project secret and URL variable are
+avoid repeated failed jobs. Its dedicated GRD project secret and URL variable are
 configured. After billing is resolved it can be enabled with
 `gh workflow enable codegraph.yml --repo mundulabs/gradula` and dispatched on main.
-Stop the corresponding local publisher when switching to hosted publishing.
 
-## Local supervision
+The proposed local LaunchAgents were **not installed**: automatic approval review
+required explicit authorization for persistent cross-project publishing. There
+are no new login-started publishers and no background publisher added to developer
+setup. Prepared installation instructions are not evidence of a running service.
+Until an automatic path is enabled, snapshots are refreshed explicitly.
 
-A macOS user LaunchAgent can run each publisher with these arguments:
+For Gradula, run `node tools/codegraph.mjs --ref origin/main --fetch --publish`.
+For Mundus, verify its generated native graph with `python3 tools/docs_graph.py
+--check` and publish through `node tools/dev.mjs codegraph path/to/snapshot.json`.
+Revision metadata may identify a clean commit only after verifying the graph
+against that commit; the legacy generated format alone has no source SHA.
 
-```
-node /path/to/gradula/tools/codegraph.mjs --watch --publish --interval 120000 \
-  --root /path/to/project --ref origin/main --fetch \
-  --granularity symbols --config /private/project-publisher.env
-```
+## Developer setup and the intended shared workflow
 
-Use `origin/dev` and `--granularity files` for the larger Mundula repository.
-Only remote-tracking refs are fetched; local branches, dirty source and untracked
-work are not changed. Keep the publisher's config outside the repository with
-mode 0600. It contains only `GRADULA_URL`, the dedicated `GRADULA_AGENT_TOKEN`
-and the publishing actor. Neither a GitHub token nor an infrastructure admin
-credential belongs in this config.
+Mundus's `node tools/setup.mjs` installs/updates Gradula and the developer login;
+it does not install a perpetual publisher. Developers can retrieve compact
+context through `node tools/dev.mjs context "topic"` or MCP `plan_context`.
+Inspect freshness and read the selected source. Use local search when a graph is
+missing or differs from the checkout.
 
-The rollout uses LaunchAgent labels `app.gradula.codegraph.grd` and
-`app.gradula.codegraph.mold`. Configuration and logs live under
-`~/Library/Application Support/Gradula/publishers/`; the plists live under
-`~/Library/LaunchAgents/`. They start on login and restart on failure. Check with
-`launchctl print gui/$(id -u)/app.gradula.codegraph.grd` (or `.mold`), and stop with
-`launchctl bootout gui/$(id -u)/app.gradula.codegraph.grd`. These publishers depend
-on this Mac being awake, logged in and online. No source refresh is promised while
-it is offline; compare the response's revision to your checkout.
+For a team, publication belongs in a project-owned CI or deployment pipeline:
+one source snapshot per committed revision, queried by every developer. The
+existing hosted Mundus docs deployment is a possible integration point, but it
+currently reads board observations; automatic graph publication has not been
+added to it. No hosted publication should be claimed until it is implemented
+and verified. A local watcher remains an explicit opt-in fallback, not a new
+developer prerequisite.
 
-Logs report revisions, counts and publication failures, never tokens. Network or
-validation failures retain the previous successful snapshot. Unchanged refs skip
-indexing and publishing; a new commit triggers a fresh graph with syntax reuse.
-No hosted model or embeddings are involved. Restart after updating the local
-publisher code to load the new generator.
+## Optional local watcher behavior
 
-## Coverage
+`--ref origin/branch --fetch --watch --interval 120000` reads committed Git blobs
+without switching, resetting or cleaning the developer's checkout. Unchanged refs
+skip indexing and publishing. Fetch/validation/upload failures retain the last
+successful snapshot. `--config /private/publisher.env` supports a dedicated
+project credential in an owner-only file. It works only while its machine runs.
 
-The initial full Mundula graph exceeded the 8 MB limit (about 31,000 nodes and
-35 MB). Explicit file mode retained all 1,638 supported committed files and
-5,057 representative cross-file relationships within the existing limit. This
-is a file navigation and dependency graph. Symbol nodes, intra-file edges and
-individual call-site completeness are omitted and labelled in snapshot coverage.
-Unresolved calls remain counted. Gradula itself uses the detailed symbol mode.
-
-Verify with `gradula context "topic"`, `gradula context --mode impact --from
-path/to/file`, and `gradula context --card KEY`. Missing or different revisions
-require local source search. A passing publisher does not approve cards or prove
-tests passed; card acceptance remains separate.
+`--granularity files` retains every supported JS/TS/Markdown file with representative
+cross-file relationships. Symbol nodes, intra-file edges and full call-site detail
+are omitted and labelled in coverage. It is a size option for those languages,
+not a replacement for Mundus's Rust-aware generator. Static relationships are not
+runtime proof, and publication never approves cards or proves tests passed.

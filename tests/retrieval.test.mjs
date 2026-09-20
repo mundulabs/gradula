@@ -47,3 +47,11 @@ test('compact lookup omits repeated prose and reports local checkout edits',()=>
   assert.equal(result.snapshot.freshness,'local-dirty');assert.equal(result.detail,'paths');assert.equal(result.nodes.length,1);
   assert.ok(!('about' in result.nodes[0]));assert.equal(result.edges.length,0);
 });
+
+test('project-native module and document kinds resolve by path without inventing an ambiguous target',()=>{
+  const g=graph();g.nodes[0].kind='module';g.nodes[2].kind='doc';
+  assert.equal(graphWalk(g,{mode:'explain',from:'src/auth.ts'}).nodes[0].id,'a');
+  assert.equal(graphWalk(g,{mode:'path',from:'src/auth.ts',to:'docs/access.md',depth:2}).traversal.status,'found');
+  g.nodes.push({...g.nodes[0],id:'second'});
+  assert.equal(graphWalk(g,{mode:'explain',from:'src/auth.ts'}).traversal.status,'unresolved');
+});

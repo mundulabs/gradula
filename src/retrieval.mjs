@@ -54,8 +54,10 @@ export function graphWalk(graph,{mode,q,from,to,depth=2,includeInferred=false,fi
   const index=compileGraph(graph);
   const resolve = value => {
     if(index.byId.has(value))return value;
-    const path=graph.nodes.find(n=>n.path===value && ['file','document'].includes(n.kind));
-    if(path)return path.id;
+    const paths=graph.nodes.filter(n=>n.path===value);
+    const primary=paths.filter(n=>['file','document','module','doc'].includes(n.kind));
+    if(primary.length===1)return primary[0].id;
+    if(paths.length===1)return paths[0].id;
     const names=graph.nodes.filter(n=>n.name===value);
     return names.length===1?names[0].id:null;
   };
