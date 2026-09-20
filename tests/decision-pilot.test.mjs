@@ -66,6 +66,12 @@ test('real HTTP pilot endpoints authenticate and refuse cross-project feedback',
  const feedback=await fetch(`${url}/${trial.id}/feedback`,{method:'POST',headers:{Authorization:`Bearer ${b.token}`,'Content-Type':'application/json'},body:JSON.stringify({expected:'slides'})});assert.equal(feedback.status,404);
  const own=await fetch(`${url}/${trial.id}/feedback`,{method:'POST',headers:{Authorization:`Bearer ${a.token}`,'Content-Type':'application/json'},body:JSON.stringify({expected:'slides'})});assert.equal(own.status,200);
  assert.equal((await own.json()).feedback[0].authorKind,'agent');
+ for(const [kind,expectedKind] of [['agent','agent'],['human','human']]){
+  const credential=await store.tokens.mint({project:'PRB',name:kind,createdBy:'test',kind,owner:'test-owner',ownerName:'Tester'});
+  const result=await fetch(`${url}/${trial.id}/feedback`,{method:'POST',headers:{Authorization:`Bearer ${credential.token}`,'Content-Type':'application/json','X-Gradula-Actor':'human'},body:JSON.stringify({expected:'slides',authorKind:'human'})});
+  assert.equal(result.status,200);
+  assert.equal((await result.json()).feedback.at(-1).authorKind,expectedKind,'authentication determines attribution, not actor headers or submitted fields');
+ }
 });
 test('failed paid attempts persist and repeated request ids never retry the provider',async()=>{
  const store=createMemoryStore();let calls=0;
