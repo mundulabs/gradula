@@ -75,6 +75,7 @@ export function createMemoryStore() {
   const codegraphs = new Map();
   const graphVersions = new Map();
   const graphImports = new Map();
+  const decisionTrials = new Map();
   const items = new Map();       // id → row
   const byKey = new Map();       // KEY → id
   const counters = new Map();    // projectKey → last number
@@ -138,7 +139,7 @@ export function createMemoryStore() {
         for (const [id, release] of [...releases]) if (release.project === oldKey) {
           releases.delete(id); releases.set(`${newKey}:${release.id}`, release);
         }
-        for (const map of [tokens, heralds, releases, devices]) {
+        for (const map of [tokens, heralds, releases, devices, decisionTrials]) {
           for (const value of map.values()) if (value.project === oldKey) value.project = newKey;
         }
         for (const item of items.values()) {
@@ -189,6 +190,20 @@ export function createMemoryStore() {
       },
     },
 
+    decisions: {
+      async reserve(project, trial, limits) {
+        const rows=[...decisionTrials.values()].filter(t=>t.campaign===trial.campaign);
+        const previous=rows.find(t=>t.project===project&&t.requestId===trial.requestId);
+        if(previous)return {fresh:false,trial:clone(previous)};
+        if(rows.length>=limits.total||rows.filter(t=>t.project===project).length>=limits.perProject)return null;
+        const row={...clone(trial),project,feedback:[]};decisionTrials.set(row.id,row);
+        return {fresh:true,trial:clone(row)};
+      },
+      async finish(project,id,result) {const row=decisionTrials.get(id);if(!row||row.project!==project)return null;row.result=clone(result);return clone(row);},
+      async get(project,id) {const row=decisionTrials.get(id);return row?.project===project?clone(row):null;},
+      async list(project,campaign) {return clone([...decisionTrials.values()].filter(t=>t.project===project&&t.campaign===campaign));},
+      async feedback(project,id,entry) {const row=decisionTrials.get(id);if(!row||row.project!==project)return null;if(row.feedback.length>=10)throw Error('Feedback limit reached');row.feedback.push(clone(entry));return clone(row);},
+    },
     codegraphs: {
       async history(key) { project(key); return clone(graphImports.get(key) ?? []); },
       async get(key, revision = null) { project(key); return clone(revision ? graphVersions.get(key)?.get(revision) ?? null : codegraphs.get(key) ?? null); },

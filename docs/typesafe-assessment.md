@@ -1,6 +1,6 @@
 # TypeSafe / Jev assessment for Gradula
 
-Reviewed 20 September 2026. Recommendation: an optional measured pilot, not a core dependency. A user-authorized synthetic API trial was run. No production integration or private-source transmission has been enabled.
+Reviewed 20 September 2026. Recommendation: an optional measured pilot, not a core dependency. A user-authorized synthetic API trial was run. An opt-in shadow pilot is now implemented; it does not change production task decisions. See [pilot operation and limits](decision-pilot.md).
 
 ## What the claims mean
 
@@ -40,3 +40,7 @@ The reproducible command is `node --env-file=/Users/davidblaesing/gradula/.env t
 Results are in [typesafe-trial.json](typesafe-trial.json): 24/24 synthetic intent-routing cases matched the authored labels, compared with 23/24 for a simple keyword baseline. Eighteen answers met the preselected confidence threshold of 0.9; all eighteen were correct. The other six would fall back. The set includes English, German, ambiguous requests and five examples with distracting instructions inside an untrusted document field. Median end-to-end latency was 308 ms and p95 was 387 ms. The API reported 10,392 input tokens, corresponding to approximately $0.000436 at the published input price, excluding other infrastructure. This is calculated usage cost, not a reconciled invoice.
 
 The sample is tiny, authored for this trial and easy for the baseline. It establishes working authentication, valid outputs and inexpensive routing on these examples. It cannot establish calibration, robustness, production accuracy, a coding-token reduction or an advantage over the existing complete coding workflow. Do not switch core behavior on these results alone. The next useful experiment is shadow routing over a consented, human-labelled set of actual ambiguous requests.
+
+## Next evaluation
+
+The [cross-project decision pilot](decision-pilot.md) records skill selection, routing, review triage and text-intent recommendations, with persistent limits and attributed feedback. Initial synthetic results above remain separate from upcoming task results. No end-to-end savings have been established.

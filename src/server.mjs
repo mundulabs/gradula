@@ -57,7 +57,7 @@ const sentry = await watch();
  */
 const poll = { current: null };
 const live = createLive({ onPresence: (projectKey, count) => poll.current?.presence(projectKey, count) });
-const gradula = createGradula(store, { origin: process.env.PUBLIC_ORIGIN ?? null, live, houseKey: process.env.TELEGRAM_BOT_TOKEN || null });
+const gradula = createGradula(store, { origin: process.env.PUBLIC_ORIGIN ?? null, live, houseKey: process.env.TELEGRAM_BOT_TOKEN || null, decisionPilot: {apiKey:process.env.TYPESAFE_API_KEY,projects:(process.env.GRADULA_DECISION_PROJECTS||'').split(',').map(x=>x.trim()).filter(Boolean)} });
 poll.current = createSystemPoll({ gradula, live });
 // Failure retains the last valid graph and is visible in deployment logs.
 // Retry only this image's artifact; never scan developer checkouts here.
