@@ -79,7 +79,7 @@ const lower = (value) => String(value ?? '').toLowerCase();
  *
  * The underscore counts as a WORD CHARACTER. Without it `AI_APP_TOKEN` found
  * the module `ai`, because there seemed to be a boundary between "ai" and
- * "app" (measured on 2026-09-09 against MDLA-6). An identifier is a word,
+ * "app" (measured on 2026-09-09 against MDUS-6). An identifier is a word,
  * even when it carries underscores.
  */
 function mentions(haystack, word) {
@@ -172,7 +172,7 @@ export function labelsFor({ title = '', text = '', files = [], vocabulary = [] }
   const prosa = lower(proseOf(haystack));
   // A card's files are the CLEAREST hint about its module — they are paths
   // already and need not be guessed out of a sentence. (Measured against
-  // MDLA-7: a card about `apps/mundula/sentry.ts` got no module, because the
+  // MDUS-7: a card about `apps/mundula/sentry.ts` got no module, because the
   // path stood only in the `files` field, not in the text.)
   const paths = [...new Set([...pathsIn(haystack), ...files.map((d) => String(d).replace(/^\/+/, ''))])];
 

@@ -70,6 +70,7 @@ export function shapeItem(row) {
 
 export function createMemoryStore() {
   const projects = new Map();
+  const aliases = new Map();
   const vocab = new Map();
   const codegraphs = new Map();
   const graphVersions = new Map();
@@ -101,13 +102,15 @@ export function createMemoryStore() {
 
     projects: {
       async create({ key, name, repo = null }) {
-        if (projects.has(key)) throw Object.assign(new Error(`Project ${key} already exists`), { code: 'taken' });
+        if (projects.has(key) || aliases.has(key)) throw Object.assign(new Error(`Project ${key} already exists`), { code: 'taken' });
         const row = { id: mintId(), key, name, repo, people: {}, language: null, publish: null, ladder: null, manualAcceptance: false, integration: 'pr', created: now() };
         projects.set(key, row);
         counters.set(key, 0);
         return clone(row);
       },
       async get(key) { return clone(projects.get(key) ?? null); },
+      async resolve(key) { return projects.has(key) ? key : aliases.get(key) ?? null; },
+      async aliases(key) { return [...aliases].filter(([, value]) => value === key).map(([alias]) => alias); },
       async moveRuntimeConnections(from, to) {
         project(from); project(to);
         if (from === to) throw new Error('Different projects required');
@@ -117,29 +120,34 @@ export function createMemoryStore() {
         for (const [name, map] of Object.entries(sources)) if (map.has(from)) { map.set(to, map.get(from)); map.delete(from); moved.push(name); }
         return { from, to, moved };
       },
-      /**
-       * Change the key itself. That is not the same as renaming: every card
-       * key carries it, so every card moves with it.
-       *
-       * It is the only change that touches the past — a `Plan: DRM-3` line in
-       * an old commit finds no card afterwards. That is why it has a method
-       * of its own and not a branch in `patch`: whoever calls it should have
-       * known what they were doing.
-       */
-      async rekey(oldKey, newKey) {
+      /** Rename addresses while retaining stable identities and historical redirects. */
+      async rekey(oldKey, newKey, actor = 'admin') {
         const row = [...projects.values()].find((p) => p.key === oldKey);
         if (!row) return null;
-        if ([...projects.values()].some((p) => p.key === newKey)) return null;
+        if (projects.has(newKey) || aliases.has(newKey)) return null;
         // The shelf is sorted by the key — the entry has to move, not just
         // its field.
         projects.delete(oldKey);
         row.key = newKey;
         projects.set(newKey, row);
+        for (const [alias, canonical] of aliases) if (canonical === oldKey) aliases.set(alias, newKey);
+        aliases.set(oldKey, newKey);
+        for (const map of [vocab, sentry, dokploy, github, eas]) {
+          if (map.has(oldKey)) { map.set(newKey, map.get(oldKey)); map.delete(oldKey); }
+        }
+        for (const map of [tokens, heralds, releases, devices]) {
+          for (const value of map.values()) if (value.project === oldKey) value.project = newKey;
+        }
         for (const item of items.values()) {
           if (item.project !== oldKey) continue;
           byKey.delete(item.key);
           item.project = newKey;
           item.key = `${newKey}-${item.number}`;
+          const refs = new RegExp(`\\b${oldKey}-(\\d+)\\b`, 'g');
+          item.title = item.title.replace(refs, `${newKey}-$1`);
+          item.text = item.text.replace(refs, `${newKey}-$1`);
+          events.push({ id: mintId(), seq: ++seqCounter, item: item.id, actor, verb: 'changed',
+            data: { rekey: { from: `${oldKey}-${item.number}`, to: item.key } }, at: now() });
           byKey.set(item.key, item.id);
         }
         for (const link of links.values()) if (link.project === oldKey) link.project = newKey;
@@ -248,40 +256,7 @@ export function createMemoryStore() {
         }
         return null;
       },
-      async get(key) { const id = byKey.get(key); return id ? shapeItem(clone(items.get(id))) : null; },
-      /**
-       * Change the key itself. That is not the same as renaming: every card
-       * key carries it, so every card moves with it.
-       *
-       * It is the only change that touches the past — a `Plan: DRM-3` line in
-       * an old commit finds no card afterwards. That is why it has a method
-       * of its own and not a branch in `patch`: whoever calls it should have
-       * known what they were doing.
-       */
-      async rekey(oldKey, newKey) {
-        const row = [...projects.values()].find((p) => p.key === oldKey);
-        if (!row) return null;
-        if ([...projects.values()].some((p) => p.key === newKey)) return null;
-        // The shelf is sorted by the key — the entry has to move, not just
-        // its field.
-        projects.delete(oldKey);
-        row.key = newKey;
-        projects.set(newKey, row);
-        for (const item of items.values()) {
-          if (item.project !== oldKey) continue;
-          byKey.delete(item.key);
-          item.project = newKey;
-          item.key = `${newKey}-${item.number}`;
-          byKey.set(item.key, item.id);
-        }
-        for (const link of links.values()) if (link.project === oldKey) link.project = newKey;
-        if (graphVersions.has(oldKey)) { graphVersions.set(newKey,graphVersions.get(oldKey));graphVersions.delete(oldKey); }
-        if (codegraphs.has(oldKey)) { codegraphs.set(newKey, codegraphs.get(oldKey)); codegraphs.delete(oldKey); graphImports.set(newKey, graphImports.get(oldKey)); graphImports.delete(oldKey); }
-        const counter = counters.get(oldKey);
-        if (counter !== undefined) { counters.set(newKey, counter); counters.delete(oldKey); }
-        return clone(row);
-      },
-
+      async get(key) { const canonical = key.replace(/^([A-Z]{2,8})-/, (_, prefix) => `${aliases.get(prefix) ?? prefix}-`); const id = byKey.get(canonical); return id ? shapeItem(clone(items.get(id))) : null; },
       async patch(key, changes, { expected = {} } = {}) {
         const id = byKey.get(key);
         if (!id) return null;

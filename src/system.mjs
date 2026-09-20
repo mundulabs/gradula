@@ -284,6 +284,7 @@ export async function gatherSystem({
       github: gh?.repo ? gh : null,
       environments: lanes,
       cards: board.cards ?? [],
+      keyAliases: board.keyAliases ?? {},
       evidence,
       fetchImpl,
       now: now(),

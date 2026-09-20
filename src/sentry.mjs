@@ -66,9 +66,9 @@ export function signatureOk(rawBody, secret, given) {
  *
  * An internal integration is set up per ORGANISATION and has exactly one
  * webhook URL — so every project in the organisation posts to the same door.
- * The door names a board project in its path (`/hook/MDLA`), and without this
+ * The door names a board project in its path (`/hook/MDUS`), and without this
  * check a crash in `gradula` becomes a card on the Mundula board. Measured:
- * MDLA-48 was GRADULA-3.
+ * MDUS-48 was GRADULA-3.
  */
 export function projectOf(payload) {
   const issue = issueOf(payload);
@@ -123,7 +123,7 @@ const tagOf = (tags) => {
  * WHERE an issue happened: the Sentry environment (`prod`, `dev`, `local`).
  *
  * A crash from a developer's own dev build on their own phone is real, and
- * it is still not an incident on the board — MDLA-79 was exactly that, a
+ * it is still not an incident on the board — MDUS-79 was exactly that, a
  * WatchdogTermination from `dev`, taken in five times. So the environment is
  * read wherever the payload carries it: the event of an alert
  * (`data.event.environment`, or its tags as pairs), the issue itself, or

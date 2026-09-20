@@ -45,6 +45,6 @@ test('only cards that clearly speak another language are named', () => {
 });
 
 test('the title alone may be an identifier — the text counts too', () => {
-  const cards = [{ key: 'A-1', title: 'MDLA-14', text: 'Der Regler wird nicht gezeichnet und das ist schlecht' }];
+  const cards = [{ key: 'A-1', title: 'MDUS-14', text: 'Der Regler wird nicht gezeichnet und das ist schlecht' }];
   assert.deepEqual(strangers(cards, 'en'), ['A-1']);
 });

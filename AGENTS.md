@@ -13,7 +13,7 @@ then one line here.
 
 ```
 src/spec.mjs         the words (kinds, states, targets, links, gates) — ONE place
-src/ids.mjs          inner id (ULID-shaped) and card key (MDLA-142)
+src/ids.mjs          inner id (ULID-shaped) and card key (MDUS-142)
 src/labels.mjs       labels from rules: module (from the vocabulary) and stack
 src/links.mjs        links, cycle check, blocked computation, collisions — pure
 src/wave.mjs         what can go side by side, and what is ripe — pure

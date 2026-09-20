@@ -218,9 +218,9 @@ test('a commit as evidence is its own line — the hash, linked into the reposit
 
 test('everything with an address is a link: keys in a reason, hashes anywhere — never a year, never without a repository', async () => {
   const { linkify } = await import('../src/heralds.mjs');
-  const out = linkify('MDLA-3 moved → ice\nthe same commit adopted twice (fixed in 88ae5c0) — MDLA-2 is the card\ndokploy · seen on development (054935da6242) in 2026', { origin: 'https://grad.test', repo: 'acc/repo' });
-  assert.equal(out, '<a href="https://grad.test/MDLA-3">MDLA-3</a> moved → ice\nthe same commit adopted twice (fixed in <a href="https://github.com/acc/repo/commit/88ae5c0">88ae5c0</a>) — <a href="https://grad.test/MDLA-2">MDLA-2</a> is the card\ndokploy · seen on development (<a href="https://github.com/acc/repo/commit/054935da6242">054935da6242</a>) in 2026');
-  assert.equal(linkify('MDLA-3 at 88ae5c0', { origin: null, repo: null }), 'MDLA-3 at 88ae5c0', 'no address known, no link');
+  const out = linkify('MDUS-3 moved → ice\nthe same commit adopted twice (fixed in 88ae5c0) — MDUS-2 is the card\ndokploy · seen on development (054935da6242) in 2026', { origin: 'https://grad.test', repo: 'acc/repo' });
+  assert.equal(out, '<a href="https://grad.test/MDUS-3">MDUS-3</a> moved → ice\nthe same commit adopted twice (fixed in <a href="https://github.com/acc/repo/commit/88ae5c0">88ae5c0</a>) — <a href="https://grad.test/MDUS-2">MDUS-2</a> is the card\ndokploy · seen on development (<a href="https://github.com/acc/repo/commit/054935da6242">054935da6242</a>) in 2026');
+  assert.equal(linkify('MDUS-3 at 88ae5c0', { origin: null, repo: null }), 'MDUS-3 at 88ae5c0', 'no address known, no link');
 });
 
 test('the workshop hears incidents as they come in and when they come back, with how loud they were', () => {
@@ -295,10 +295,10 @@ test('file references stay copyable code without fabricated remote links', async
   const options = { origin: 'https://grad.test', repo: 'acc/repo' };
   assert.equal(linkify('Evidence: docs/portable-image-evidence.md and report.json. No push.', options),
     'Evidence: <code>docs/portable-image-evidence.md</code> and <code>report.json</code>. No push.');
-  assert.equal(linkify('src/MDLA-3/abc1234.rs:12 /Users/dev/docs/check.md', options),
-    '<code>src/MDLA-3/abc1234.rs:12</code> <code>/Users/dev/docs/check.md</code>');
-  const url = 'https://github.com/acc/repo/blob/abc1234/docs/MDLA-3.md';
+  assert.equal(linkify('src/MDUS-3/abc1234.rs:12 /Users/dev/docs/check.md', options),
+    '<code>src/MDUS-3/abc1234.rs:12</code> <code>/Users/dev/docs/check.md</code>');
+  const url = 'https://github.com/acc/repo/blob/abc1234/docs/MDUS-3.md';
   assert.equal(linkify(url, options), url, 'explicit URLs are preserved without nested card or commit links');
-  assert.equal(linkify('Read docs/check.md &amp; MDLA-3', options),
-    'Read <code>docs/check.md</code> &amp; <a href="https://grad.test/MDLA-3">MDLA-3</a>');
+  assert.equal(linkify('Read docs/check.md &amp; MDUS-3', options),
+    'Read <code>docs/check.md</code> &amp; <a href="https://grad.test/MDUS-3">MDUS-3</a>');
 });

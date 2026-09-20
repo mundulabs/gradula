@@ -83,7 +83,7 @@ export const TOOLS = [
   {
     name: 'plan_card',
     description: 'One card with its links, what blocks it and its chronicle — the full brief.',
-    inputSchema: { type: 'object', properties: { card: { type: 'string', description: 'MDLA-142, for instance' } }, required: ['card'] },
+    inputSchema: { type: 'object', properties: { card: { type: 'string', description: 'MDUS-142, for instance' } }, required: ['card'] },
     run: (args) => api(`/api/v1/cards/${key(args.card)}`).then(laddered),
   },
   {
