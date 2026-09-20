@@ -12,7 +12,8 @@ const lineAt = (ast, offset) => ast.getLineAndCharacterOfPosition(offset).line +
 const named = node => node.name && (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) ? node.name.text : null;
 const isFunction = node => ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isGetAccessorDeclaration(node) || ts.isSetAccessorDeclaration(node);
 
-export function createIndexer() {
+export function createIndexer({granularity='symbols'}={}) {
+  if (!['symbols','files'].includes(granularity)) throw new Error('Granularity must be symbols or files');
   let cache = new Map(), previousProgram;
   return {
     build(files, metadata) {
@@ -119,7 +120,11 @@ export function createIndexer() {
         visit(ast);
       }
       edges.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
-      const graph = normalizeGraph({schema:'gradula.codegraph.v1',...metadata,generator:GENERATOR,coverage:{files:files.size,unresolvedCalls:stats.unresolvedCalls,scope:'tracked JavaScript, TypeScript and Markdown; NodeNext resolution'},nodes,edges},metadata.repository);
+      const projected = granularity==='files' ? fileGraph(nodes,edges) : {nodes,edges};
+      const scope = granularity==='files'
+        ? 'file-level JS/TS/Markdown; representative cross-file edges; symbol details omitted; NodeNext'
+        : 'tracked JavaScript, TypeScript and Markdown; NodeNext resolution';
+      const graph = normalizeGraph({schema:'gradula.codegraph.v1',...metadata,generator:`${GENERATOR}/${granularity}`,coverage:{files:files.size,unresolvedCalls:stats.unresolvedCalls,scope},...projected},metadata.repository);
       // A failed parse/admission never poisons the previous successful cache.
       cache=next;previousProgram=program;
       return {graph,stats};
@@ -128,3 +133,18 @@ export function createIndexer() {
 }
 
 export const buildGraph = (files,metadata) => createIndexer().build(files,metadata).graph;
+
+/** One node for every input file, one representative source for each typed file relationship. */
+function fileGraph(nodes,edges) {
+  const paths=new Map(nodes.map(node=>[node.id,node.path]));
+  const files=nodes.filter(node=>node.kind==='file'||node.kind==='document').map(node=>({...node,about:node.about.slice(0,1200)}));
+  const relationships=new Map();
+  for(const edge of edges) {
+    const from=fileId(paths.get(edge.from)),to=fileId(paths.get(edge.to));
+    if(from===to)continue;
+    const key=JSON.stringify([from,to,edge.kind]);
+    // Input edges are sorted, so this representative is stable across input order.
+    if(!relationships.has(key))relationships.set(key,{...edge,from,to,reason:`Representative file relationship: ${edge.kind}. Read source for symbol detail.`});
+  }
+  return {nodes:files,edges:[...relationships.values()]};
+}

@@ -4,14 +4,16 @@ import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {join, resolve} from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
+import {parseEnv} from 'node:util';
 import {config, handOf} from '../src/hand.mjs';
 import {createIndexer, buildGraph} from './codegraph-index.mjs';
 export {buildGraph};
 
-export function scanRepository(root, indexer = createIndexer()) {
+export function scanRepository(root, indexer = createIndexer(), {revision: requestedRevision=null}={}) {
   const git = (...args) => execFileSync('git',args,{cwd:root,encoding:'utf8',maxBuffer:32_000_000}).trim();
-  const revision = git('rev-parse','HEAD');
-  const dirty = !!git('status','--porcelain');
+  if(requestedRevision!==null && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(requestedRevision))throw new Error('Expected a full source commit SHA');
+  const revision = requestedRevision ?? git('rev-parse','HEAD');
+  const dirty = requestedRevision===null && !!git('status','--porcelain');
   const files = new Map();
   if(!dirty) {
     // Read immutable Git objects in one batch, never a mixture of working-tree edits.
@@ -32,9 +34,9 @@ export function scanRepository(root, indexer = createIndexer()) {
   const repository = remote.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
   if (!repository) throw new Error('Expected a GitHub origin in owner/repository form');
   const result = indexer.build(files,{repository,revision,dirty});
-  if (git('rev-parse','HEAD') !== revision) throw new Error('HEAD changed during indexing; retry the scan');
+  if (requestedRevision===null && git('rev-parse','HEAD') !== revision) throw new Error('HEAD changed during indexing; retry the scan');
   // Detect edits made while reading. Never label a mixed scan as a clean revision.
-  if (!dirty && git('status','--porcelain')) throw new Error('Checkout changed during indexing; retry the scan');
+  if (requestedRevision===null && !dirty && git('status','--porcelain')) throw new Error('Checkout changed during indexing; retry the scan');
   return result;
 }
 
@@ -58,19 +60,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const args=process.argv.slice(2), watch=args.includes('--watch'), publish=args.includes('--publish');
   const value=name=>args.includes(name)?args[args.indexOf(name)+1]:null;
   const root=resolve(value('--root') ?? fileURLToPath(new URL('../',import.meta.url)));
+  const ref=value('--ref'),fetchRemote=args.includes('--fetch');
+  if(fetchRemote && (!ref || !/^origin\/[A-Za-z0-9][A-Za-z0-9_./-]*$/.test(ref)))throw new Error('--fetch requires an origin/branch ref');
   const interval=Number(value('--interval') ?? 5000);
   if (!Number.isSafeInteger(interval) || interval<1000 || interval>300000) throw new Error('Interval must be 1000–300000 ms');
-  const indexer=createIndexer(),controller=new AbortController(); let lastDigest=null, stopped=false, lastError=null;
+  const indexer=createIndexer({granularity:value('--granularity') ?? 'symbols'}),controller=new AbortController(); let lastDigest=null, lastRevision=null, stopped=false, lastError=null;
   const stop=()=>{stopped=true;controller.abort();};
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
   do {
     try {
-      const {graph,stats}=scanRepository(root,indexer);
-      if (graph.digest!==lastDigest) {
-        if (publish) await publishGraph(graph,{env:config(root)});
-        else if (!watch) process.stdout.write(`${JSON.stringify(graph)}\n`);
-        process.stderr.write(`${JSON.stringify({revision:graph.revision,dirty:graph.dirty,nodes:graph.nodes.length,edges:graph.edges.length,...stats,published:publish})}\n`);
-        lastDigest=graph.digest;
+      if(fetchRemote)execFileSync('git',['fetch','--quiet','origin',`${ref.slice(7)}:refs/remotes/${ref}`],{cwd:root,timeout:30000,stdio:['ignore','pipe','pipe']});
+      const revision=ref ? execFileSync('git',['rev-parse','--verify','--end-of-options',`${ref}^{commit}`],{cwd:root,encoding:'utf8'}).trim() : null;
+      if(revision===null || revision!==lastRevision) {
+        const {graph,stats}=scanRepository(root,indexer,{revision});
+        if (graph.digest!==lastDigest) {
+          if (publish) await publishGraph(graph,{env:value('--config') ? {...config(root),...parseEnv(readFileSync(value('--config'),'utf8'))} : config(root)});
+          else if (!watch) process.stdout.write(`${JSON.stringify(graph)}\n`);
+          process.stderr.write(`${JSON.stringify({revision:graph.revision,dirty:graph.dirty,nodes:graph.nodes.length,edges:graph.edges.length,...stats,published:publish})}\n`);
+          lastDigest=graph.digest;
+        }
+        lastRevision=revision;
       }
       lastError=null;
     } catch(error) {

@@ -102,7 +102,8 @@ metadata, so project publishers must choose their intended repository content.
 Snapshot retention is bounded to eight clean revisions and a current snapshot.
 Older checkouts fall back to an explicit mismatch. Retrieval caches four graph
 indexes; a graph is capped at 8 MB, 20,000 nodes and 80,000 edges. Larger projects
-need partitioned publishing, not silently truncated graphs. The server does not
+can use the explicit file-level publishing mode added during rollout; full symbol
+coverage beyond these limits still needs partitioned publishing. The server does not
 have a revision-sharded graph database, vector search, or a claim of complete
 cross-repository dependency analysis.
 

@@ -480,6 +480,7 @@ After `npm ci`, scan Gradula locally with no model calls:
 npm run --silent codegraph:build > /tmp/gradula-codegraph.json
 node tools/codegraph.mjs --publish
 npm run codegraph:watch
+node tools/codegraph.mjs --root /path/to/large-project --granularity files --ref origin/dev --fetch --publish
 ```
 
 The publisher defaults to this checkout. `--root /path/to/project` explicitly scans
@@ -489,6 +490,23 @@ tracked working-tree source (including staged additions) and cannot be published
 the watcher. Symlinks, credentials/configuration files, lockfiles, untracked code,
 non-JS/TS languages, PDF and media are outside the scanner's scope. Markdown prose
 and source comments are part of the published metadata.
+
+For larger repositories, `--granularity files` keeps every supported source file
+and representative compiler-resolved cross-file relationships. It omits symbol
+nodes, intra-file edges and detailed call sites; the snapshot coverage says so.
+File-mode descriptions are capped at 1,200 characters. It supports repository-wide
+navigation within the same server limits without quietly dropping files. Use the
+default `symbols` mode for detailed symbol traversal in smaller repositories.
+
+`--ref origin/dev` scans immutable committed blobs even while a developer edits
+the checkout. `--fetch` refreshes that origin branch first; it never switches,
+resets or cleans the working tree. In watch mode unchanged commit IDs skip indexing
+and publishing. A failed fetch or upload retains the last successfully published
+snapshot and is retried on the next interval. `--config /private/publisher.env`
+loads a dedicated publisher's environment file; keep it outside the source tree
+with owner-only permissions. Run a supervised publisher with `--watch --interval
+120000` when hosted CI is unavailable. It refreshes only while that machine runs;
+snapshot revision mismatch remains visible to clients.
 
 The TypeScript checker resolves declarations, aliases/re-exports, static calls,
 constructors and heritage; literal imports link modules, test imports are tagged,
