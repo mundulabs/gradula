@@ -44,3 +44,5 @@ The sample is tiny, authored for this trial and easy for the baseline. It establ
 ## Next evaluation
 
 The [cross-project decision pilot](decision-pilot.md) records skill selection, routing, review triage and text-intent recommendations, with persistent limits and attributed feedback. Initial synthetic results above remain separate from upcoming task results. No end-to-end savings have been established.
+
+Provider ownership: [the pilot now supports project-owned keys](decision-pilot.md), supplied transiently from each client project environment. An operator-funded instance key is optional; open-source use does not include our account or require TypeSafe for core retrieval.
