@@ -185,7 +185,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       const body = await readJson(req);
       return { status: 201, body: await gradula.mintToken(m[1], body.name ?? 'unnamed', 'admin', body.kind) };
     }],
-    // A clean start: DELETE …/projects/MDLA/items empties the board of that project. Admin key only,
+    // A clean start: DELETE …/projects/MDUS/items empties the board of that project. Admin key only,
     // and the project itself (people, keys, vocabulary) stays — it is the cards that go, not the house.
     ['DELETE', /^\/api\/admin\/projects\/([A-Z]{2,8})\/items$/, async (_req, m, ctx) => {
       ctx.needAdmin();
@@ -533,10 +533,10 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
 
     try {
       /*
-       * THE ADDRESS OF A CARD: `/MDLA-2`. One segment, no query string, and
+       * THE ADDRESS OF A CARD: `/MDUS-2`. One segment, no query string, and
        * the same link for a person and for a crawler.
        *
-       * It used to be `/?card=MDLA-2` for the board and `/c/MDLA-2` for a
+       * It used to be `/?card=MDUS-2` for the board and `/c/MDUS-2` for a
        * crawler, and the second was a redirect to the first — so every link
        * that ever left the house pointed at a bounce. Now the page IS the
        * address: a browser gets the board and opens the card, a crawler reads
@@ -551,6 +551,13 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
        * like any other path, and the board asks for a sign-in.
        */
       const asCard = req.method === 'GET' && /^\/[A-Z]{2,8}-[0-9]{1,7}$/.test(path);
+      if (asCard) {
+        const [prefix, number] = path.slice(1).split('-');
+        const canonical = await gradula.store.projects.resolve(prefix);
+        if (canonical && canonical !== prefix) {
+          redirect(res, `/${canonical}-${number}${url.search}`); return;
+        }
+      }
       if (asCard && staticFiles) {
         const card = await gradula.publicCard(path.slice(1)).catch(() => null);
         const safe = (text) => String(text ?? '').replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
@@ -604,9 +611,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
           const chosen = String(url.searchParams.get('project') ?? '').toUpperCase();
           const needs = !['/api/v1/me', '/api/v1/projects'].includes(path);
           if (needs) {
-            if (!chosen) throw new Refusal(400, 'no-project', 'Which project? (?project=MDLA)');
-            await gradula.getProject(chosen);
-            project = chosen;
+            if (!chosen) throw new Refusal(400, 'no-project', 'Which project? (?project=MDUS)');
+            project = (await gradula.getProject(chosen)).key;
           }
         }
       }
@@ -631,9 +637,9 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       };
 
       // A card belongs to the key's project. The path must not get around
-      // that: MDLA-1 with another project's key is a 404, not a 403 —
+      // that: MDUS-1 with another project's key is a 404, not a 403 —
       // otherwise the answer gives away that this card exists.
-      if (project && match?.[1]?.includes('-') && !match[1].startsWith(`${project}-`)) {
+      if (project && match?.[1]?.includes('-') && await gradula.store.projects.resolve(match[1].split('-')[0]) !== project) {
         throw new Refusal(404, 'no-card', `${match[1]} does not exist.`);
       }
 

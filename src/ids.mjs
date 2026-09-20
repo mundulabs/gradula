@@ -7,8 +7,8 @@
  * list without a second key is already in the right order. It is built the
  * same way as in Mundula's library; whoever reads both reads the same thing.
  *
- * The OUTER one is the card key — `MDLA-142`. That one is for speaking aloud
- * ("start MDLA-142"), so it may be short and countable. It is NOT the truth:
+ * The OUTER one is the card key — `MDUS-142`. That one is for speaking aloud
+ * ("start MDUS-142"), so it may be short and countable. It is NOT the truth:
  * it belongs to a project, and a project can be renamed. That is why every
  * link points at the inner identifier, and the key is only the way to find it.
  * only the way to find it.
@@ -44,10 +44,10 @@ export const isProjectKey = (value) => typeof value === 'string' && PROJECT_KEY.
 
 export const ITEM_KEY = /^([A-Z]{2,8})-([1-9][0-9]{0,6})$/;
 
-/** `MDLA` + 142 → `MDLA-142`. */
+/** `MDUS` + 142 → `MDUS-142`. */
 export const itemKey = (projectKey, number) => `${projectKey}-${number}`;
 
-/** `MDLA-142` → `{ project: 'MDLA', number: 142 }`, or `null`. */
+/** `MDUS-142` → `{ project: 'MDUS', number: 142 }`, or `null`. */
 export function parseItemKey(value) {
   const match = ITEM_KEY.exec(String(value ?? '').trim().toUpperCase());
   return match ? { project: match[1], number: Number(match[2]) } : null;
@@ -55,9 +55,9 @@ export function parseItemKey(value) {
 
 /**
  * Every card number standing in a text — for the links that follow by
- * themselves: whoever writes `MDLA-158` means MDLA-158. A text can contain
+ * themselves: whoever writes `MDUS-158` means MDUS-158. A text can contain
  * anything, so the border is deliberately narrow: capitals, a hyphen, digits,
- * and no word character to the left (otherwise `FOO-MDLA-1` would hold a card
+ * and no word character to the left (otherwise `FOO-MDUS-1` would hold a card
  * nobody meant).
  */
 export function mentionedKeys(text) {
@@ -69,11 +69,11 @@ export function mentionedKeys(text) {
 }
 
 /**
- * The card a branch belongs to. `gradula start MDLA-3 --tree` creates the
- * branch `codex/MDLA-3` (legacy `plan/MDLA-3` is still recognized), so the branch already knows the card — and then nobody
+ * The card a branch belongs to. `gradula start MDUS-3 --tree` creates the
+ * branch `codex/MDUS-3` (legacy `plan/MDUS-3` is still recognized), so the branch already knows the card — and then nobody
  * should have to type it again.
  *
- * Only this exact shape counts. A branch called `feature/fix-MDLA-3-again` is
+ * Only this exact shape counts. A branch called `feature/fix-MDUS-3-again` is
  * NOT a claim about a card: guessing from arbitrary names is how evidence ends
  * up on the wrong card, and evidence on the wrong card is worse than none.
  */

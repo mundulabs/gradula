@@ -162,7 +162,7 @@ for (const [name, build] of implementations) {
     const cards = await store.items.list('NEW', {});
     assert.deepEqual(cards.map((c) => c.key).sort(), ['NEW-1', 'NEW-2']);
     assert.equal((await store.items.get('NEW-1')).title, 'A card');
-    assert.equal(await store.items.get('OLD-1'), null, 'nothing is found under the old key');
+    assert.equal((await store.items.get('OLD-1')).key, 'NEW-1', 'old addresses resolve to the same renamed card');
     assert.equal((await store.items.byId(one.id)).key, 'NEW-1', 'the inner identifier did not move');
     assert.equal((await store.links.list('NEW')).length, 1, 'the links move along');
 

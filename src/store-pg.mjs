@@ -463,7 +463,7 @@ alter table sentry   add column if not exists write_back boolean not null defaul
 -- Which Sentry environments become cards (a list, "all", or null for the
 -- default: production), and how Sentry names the board's lanes. The lane map
 -- was computed in the service and never stored; a dev crash on a developer's
--- own phone became an incident card (MDLA-79) because nothing said where it
+-- own phone became an incident card (MDUS-79) because nothing said where it
 -- happened.
 alter table sentry   add column if not exists environments jsonb;
 alter table sentry   add column if not exists lanes jsonb not null default '{}'::jsonb;
@@ -486,6 +486,8 @@ begin
       r.tab, r.conname);
   end loop;
 end $$;
+-- Historical addresses cannot be reassigned to another tenant.
+create table if not exists project_alias (alias text primary key, project text not null references project(key) on update cascade on delete cascade);
 -- One incident per cause: the same foreign fingerprint may have only ONE
 -- card in the same project. That is not convenience, it is the rule without which
 -- the board drowns in its first week. It stands down here because foreign_id
@@ -536,11 +538,18 @@ export async function createPgStore(url, { schema = null } = {}) {
 
     projects: {
       async create({ key, name, repo = null }) {
-        const { rows } = await q(
-          'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
-          [mintId(), key, name, repo],
-        );
-        return { ...rows[0], created: iso(rows[0].created) };
+        const client = await pool.connect();
+        try {
+          await client.query('begin');
+          await client.query('lock table project, project_alias in share row exclusive mode');
+          if ((await client.query('select alias from project_alias where alias=$1', [key])).rowCount) throw Object.assign(new Error('Project key is a historical address'), { code: 'taken' });
+          const { rows } = await client.query(
+            'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
+            [mintId(), key, name, repo]);
+          await client.query('commit');
+          return { ...rows[0], created: iso(rows[0].created) };
+        } catch (error) { await client.query('rollback'); throw error; }
+        finally { client.release(); }
       },
       /** A clean start for one project: cards, links and history go (cascade); the project row, people and keys stay. */
       async wipe(key) {
@@ -554,17 +563,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created from project where key = $1', [key]);
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
-      /**
-       * Change the key itself — the only change that touches the past: a
-       * `Plan: DRM-3` line in an old commit finds no card afterwards. That is
-       * why it is a method of its own and not a
-       * branch in `patch`.
-       *
-       * The foreign keys migrate by themselves (on update cascade, see the
-       * migration); the card keys are text and have to be written anew. Both
-       * in ONE sequence of statements, or there is a moment in which a card
-       * points at a project that no longer exists.
-       */
+      /** Runtime connections can move separately from the project identity. */
       async moveRuntimeConnections(from, to) {
         if (from === to) throw new Error('Different projects required');
         const client = await pool.connect();
@@ -588,10 +587,22 @@ export async function createPgStore(url, { schema = null } = {}) {
         finally { client.release(); }
       },
 
-      async rekey(oldKey, newKey) {
+      async resolve(key) {
+        const { rows } = await q('select key from project where key=$1 union all select project as key from project_alias where alias=$1 limit 1', [key]);
+        return rows[0]?.key ?? null;
+      },
+      async aliases(key) {
+        const { rows } = await q('select alias from project_alias where project=$1 order by alias', [key]);
+        return rows.map(row => row.alias);
+      },
+      async rekey(oldKey, newKey, actor = 'admin') {
         const client = await pool.connect();
         try {
           await client.query('begin');
+          // Serialize namespace changes, including concurrent project creation.
+          await client.query('lock table project, project_alias in share row exclusive mode');
+          const taken = await client.query('select key from project where key=$1 union all select alias from project_alias where alias=$1', [newKey]);
+          if (taken.rowCount) { await client.query('rollback'); return null; }
           const { rows } = await client.query(
             'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
             [oldKey, newKey],
@@ -600,10 +611,15 @@ export async function createPgStore(url, { schema = null } = {}) {
           // The foreign key has already migrated (on update cascade), so the
           // cards already carry the NEW project key. Only their own key is
           // text and has to be written again.
-          await client.query(
-            `update card set key = $1 || '-' || number where project = $1`,
-            [newKey],
-          );
+          const cards = await client.query(
+            `update card set key = $1 || '-' || number,
+             title = regexp_replace(title, $2, $3, 'g'),
+             text = regexp_replace(text, $2, $3, 'g') where project = $1 returning id, key, number`,
+            [newKey, `\\y${oldKey}-([0-9]+)\\y`, `${newKey}-\\1`]);
+          for (const card of cards.rows) await client.query(
+            'insert into history (id, card, actor, verb, data) values ($1,$2,$3,$4,$5::jsonb)',
+            [mintId(), card.id, actor, 'changed', JSON.stringify({ rekey: { from: `${oldKey}-${card.number}`, to: card.key } })]);
+          await client.query('insert into project_alias(alias, project) values($1,$2)', [oldKey, newKey]);
           await client.query('commit');
           return { ...rows[0], created: iso(rows[0].created) };
         } catch (error) {
@@ -704,7 +720,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         return asItem(rows[0]) ?? null;
       },
       async get(key) {
-        const { rows } = await q('select * from card where key = $1', [key]);
+        const { rows } = await q(`select * from card where key = coalesce((select project from project_alias where alias = split_part($1, '-', 1)), split_part($1, '-', 1)) || '-' || split_part($1, '-', 2)`, [key]);
         return asItem(rows[0]) ?? null;
       },
       /** The card goes; links and chronicle follow by cascade. gradula.mjs decides whether it may. */

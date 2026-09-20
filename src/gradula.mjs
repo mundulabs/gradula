@@ -134,7 +134,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
   const pipelineHerald = createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl: defaultFetch });
   const findItem = async (key) => {
     const parsed = parseItemKey(key);
-    if (!parsed) throw bad('id', `"${key}" is not a card key (example: MDLA-142).`);
+    if (!parsed) throw bad('id', `"${key}" is not a card key (example: MDUS-142).`);
     const item = await store.items.get(`${parsed.project}-${parsed.number}`);
     if (!item) throw missing(`There is no ${key}.`);
     return item;
@@ -286,14 +286,15 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
 
     async createProject({ key, name, repo = null }, actor = 'system') {
       const projectKey = String(key ?? '').trim().toUpperCase();
-      if (!isProjectKey(projectKey)) throw bad('id', 'A project key: two to eight capital letters, MDLA for instance.');
-      if (await store.projects.get(projectKey)) throw new Refusal(409, 'duplicate', `${projectKey} already exists.`);
+      if (!isProjectKey(projectKey)) throw bad('id', 'A project key: two to eight capital letters, MDUS for instance.');
+      if (await store.projects.resolve(projectKey)) throw new Refusal(409, 'duplicate', `${projectKey} already exists.`);
       const project = await store.projects.create({ key: projectKey, name: text(name, 120, 'name'), repo: repo ? String(repo).slice(0, 300) : null });
       return { ...project, from: actor };
     },
 
     async getProject(key) {
-      const project = await store.projects.get(String(key ?? '').toUpperCase());
+      const canonical = await store.projects.resolve(String(key ?? '').toUpperCase());
+      const project = canonical ? await store.projects.get(canonical) : null;
       if (!project) throw missing(`There is no project ${key}.`);
       return { ...project, manualAcceptance: project.manualAcceptance === true, integration: INTEGRATIONS.includes(project.integration) ? project.integration : 'pr', ladder: CARD_STYLE };
     },
@@ -310,7 +311,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       let options;
       try { options = contextOptions(input); } catch (error) { throw bad('context', error.message); }
       // The card is in a query parameter, so the router's path guard cannot help.
-      if (options.card && !options.card.startsWith(`${project.key}-`)) throw missing('That card does not exist.');
+      if (options.card && await store.projects.resolve(parseItemKey(options.card)?.project) !== project.key) throw missing('That card does not exist.');
       const graph=await this.getCodegraph(project.key,options.revision);
       if(options.detail==='paths' && !options.card)return retrieveContext(graph,null,options);
       const cards = await store.items.list(project.key,{limit:500});
@@ -413,10 +414,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
        * This laid `touches`, and `touches` means "these two cards name the
        * same FILE" — it is the reason for the warning at `start`. So sixteen
        * links on the live board claimed a file collision because somebody had
-       * written "MDLA-14" in a sentence, and a warning that is usually wrong
+       * written "MDUS-14" in a sentence, and a warning that is usually wrong
        * is a warning nobody reads.
        *
-       * 2026-09-09: "part of MDLA-1" in the text also made MDLA-6 the blocked
+       * 2026-09-09: "part of MDUS-1" in the text also made MDUS-6 the blocked
        * card, although it was exactly the other way round — which is why a
        * mention claims no order either.
        */
@@ -559,17 +560,17 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
 
     /**
      * Change the project key. Kept apart from `patchProject`, because it is
-     * the only thing that touches the past — afterwards, old `Plan:` lines
-     * point at nothing.
+     * old addresses become redirects while identifiers and evidence remain intact.
      */
     async rekeyProject(oldKey, newKey, actor = 'admin') {
       const project = await this.getProject(oldKey);
       const wanted = String(newKey ?? '').trim().toUpperCase();
       if (!isProjectKey(wanted)) throw bad('key', 'Project key: two to eight capital letters.');
       if (wanted === project.key) return project;
-      if (await store.projects.get(wanted)) throw new Refusal(409, 'taken', `${wanted} already exists.`);
-      const moved = await store.projects.rekey(project.key, wanted);
+      if (await store.projects.resolve(wanted)) throw new Refusal(409, 'taken', `${wanted} already exists.`);
+      const moved = await store.projects.rekey(project.key, wanted, actor);
       if (!moved) throw new Refusal(409, 'not-moved', 'The key could not be changed.');
+      systemHeld.delete(project.key);
       return moved;
     },
 
@@ -1088,9 +1089,11 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       let standing = await github.branchStanding(
         { ...connection, branch }, fetchImpl ? { fetchImpl } : {},
       );
-      if (standing.ok && standing.exists === false) {
-        const legacy = await github.branchStanding({ ...connection, branch: `plan/${item.key}` }, fetchImpl ? { fetchImpl } : {});
-        if (legacy.ok && legacy.exists) { standing = legacy; branch = `plan/${item.key}`; }
+      const historical = await store.projects.aliases(item.project);
+      for (const candidate of [`plan/${item.key}`, ...historical.flatMap(prefix => [`codex/${prefix}-${item.number}`, `plan/${prefix}-${item.number}`])]) {
+        if (!standing.ok || standing.exists !== false) break;
+        const legacy = await github.branchStanding({ ...connection, branch: candidate }, fetchImpl ? { fetchImpl } : {});
+        if (legacy.ok && legacy.exists) { standing = legacy; branch = candidate; }
       }
       return { repo: connection.repo, branch, branchUrl: github.branchUrl(connection.repo, branch), evidence, ...standing };
     },
@@ -1526,16 +1529,16 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (reservation.owner !== owner || reservation.session !== session) throw new Refusal(409, 'reserved', `This card belongs to ${reservation.actor}. Start with an explicit takeover reason.`);
       if (!activeReservation(reservation) || item.state !== 'making') throw new Refusal(409, 'expired', 'The reservation expired. Start the card again before continuing.');
       const until = new Date(Date.now() + RUNNING_MS).toISOString();
-      const changed = await store.items.patch(key, { reservation: { ...reservation, until }, heartbeat: new Date().toISOString() }, { expected: { reservation, state: 'making' } });
+      const changed = await store.items.patch(item.key, { reservation: { ...reservation, until }, heartbeat: new Date().toISOString() }, { expected: { reservation, state: 'making' } });
       if (!changed) throw new Refusal(409, 'reservation-changed', 'The reservation changed. Refresh before continuing.');
-      return { card: key, until, warnings: workWarnings(changed, await store.items.list(item.project, { state: 'making' })) };
+      return { card: item.key, until, warnings: workWarnings(changed, await store.items.list(item.project, { state: 'making' })) };
     },
 
     async releaseWork(key, actor, { owner = actor, session = actor } = {}) {
       const item = await findItem(key);
       if (!item.reservation) return this.getItem(key);
       if (item.reservation.owner !== owner || item.reservation.session !== session) throw new Refusal(409, 'reserved', 'Only the owning session can release its reservation.');
-      const changed = await store.items.patch(key, { reservation: null, heartbeat: null }, { expected: { reservation: item.reservation } });
+      const changed = await store.items.patch(item.key, { reservation: null, heartbeat: null }, { expected: { reservation: item.reservation } });
       if (!changed) throw new Refusal(409, 'reservation-changed', 'The reservation changed. Refresh before continuing.');
       await note(changed, actor, 'changed', { fields: ['reservation'], reservation: 'released' });
       return this.getItem(key);
@@ -1740,7 +1743,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         }
         const doc = await gatherSystem({
           connections: { dokploy: dokployConnection, eas: easConnection, github: githubConnection, sentry: sentryConnection },
-          board: { ...boardNow, evidence },
+          board: { ...boardNow, evidence, keyAliases: Object.fromEntries((await store.projects.aliases(project.key)).map(alias => [alias, project.key])) },
           ...(fetchImpl ? { fetchImpl } : {}),
           now,
           ...(deployedCache ? { deployedCache } : {}),
@@ -1835,7 +1838,8 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
           // without a previous build: what reached production in the week before this release — never what came later
           if (!keys) keys = cardsBetween(cards, previous ? previous.at : new Date(Date.parse(release.at) - 7 * 86400e3).toISOString(), release.at);
         }
-        const held = { ...release, cards: keys.filter((k) => byKey.has(k)) };
+        keys = await Promise.all(keys.map(async key => (await store.items.get(key))?.key ?? key));
+        const held = { ...release, cards: [...new Set(keys.filter((k) => byKey.has(k)))] };
         await store.releases.add(projectKey, held);
         remembered.push(held);
         // memory was empty: everything is remembered, and only what is news — the newest per lane, and younger than a day — is spoken
@@ -1945,13 +1949,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (!issue) throw bad('form', 'There is no issue in this payload.');
 
       /*
-       * A DOOR FOR MDLA TAKES MDLA'S ISSUES.
+       * A DOOR FOR MDUS TAKES MDUS'S ISSUES.
        *
        * An internal Sentry integration is per ORGANISATION and carries one
        * webhook URL, so every project in it posts to the same door — and the
        * door names ONE board project in its path. Without this line a crash in
        * the `gradula` project became a card on the Mundula board, which is
-       * exactly what MDLA-48 was.
+       * exactly what MDUS-48 was.
        *
        * Only checked when the payload says which project it is: a pull hands
        * over bare issues that carry no project, and those came from the
@@ -1994,7 +1998,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
        *
        * The apps tag every event with an environment (prod, dev, local), and
        * a crash from a developer's own dev build on their own phone is real
-       * and still not the board's business: MDLA-79 (a WatchdogTermination
+       * and still not the board's business: MDUS-79 (a WatchdogTermination
        * from `dev`, taken in five times) stood in Ready like a production
        * fire. So only the connection's environments become cards — production
        * unless it says otherwise. The payload says where it happened when it

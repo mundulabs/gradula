@@ -1184,9 +1184,9 @@ export default function App() {
   // cards, three questions — which is why it is a switch and not three tools.
   const [view, setView] = useState<'board' | 'map' | 'pulse'>('board');
   /*
-   * THE ADDRESS IS THE STATE, and the address of a card is `/MDLA-2`.
+   * THE ADDRESS IS THE STATE, and the address of a card is `/MDUS-2`.
    *
-   * It was `/?card=MDLA-2`, which is a state smuggled into a query string:
+   * It was `/?card=MDUS-2`, which is a state smuggled into a query string:
    * every link that left the house pointed at a bounce, and the crawler had
    * a second address of its own. One segment, no query, and the same link for
    * a person and for a preview.

@@ -17,17 +17,17 @@ test('an identifier sorts itself by its time', () => {
 });
 
 test('a card key is read, a wrong one is not', () => {
-  assert.deepEqual(parseItemKey('MDLA-142'), { project: 'MDLA', number: 142 });
-  assert.deepEqual(parseItemKey('mdla-142'), { project: 'MDLA', number: 142 });
-  assert.equal(parseItemKey('MDLA-0'), null, 'there is no card zero');
+  assert.deepEqual(parseItemKey('MDUS-142'), { project: 'MDUS', number: 142 });
+  assert.deepEqual(parseItemKey('mdus-142'), { project: 'MDUS', number: 142 });
+  assert.equal(parseItemKey('MDUS-0'), null, 'there is no card zero');
   assert.equal(parseItemKey('M-1'), null, 'one letter is not a project');
-  assert.equal(itemKey('MDLA', 7), 'MDLA-7');
+  assert.equal(itemKey('MDUS', 7), 'MDUS-7');
 });
 
 test('named cards are found — and only the ones meant', () => {
-  assert.deepEqual(mentionedKeys('needs MDLA-158 and STR-9'), ['MDLA-158', 'STR-9']);
-  assert.deepEqual(mentionedKeys('FOO-MDLA-1'), [], 'no find in the middle of a word');
-  assert.deepEqual(mentionedKeys('MDLA-12-3'), [], 'no number with something appended');
+  assert.deepEqual(mentionedKeys('needs MDUS-158 and STR-9'), ['MDUS-158', 'STR-9']);
+  assert.deepEqual(mentionedKeys('FOO-MDUS-1'), [], 'no find in the middle of a word');
+  assert.deepEqual(mentionedKeys('MDUS-12-3'), [], 'no number with something appended');
 });
 
 test('labels come from paths, from module names and from stack words', () => {
@@ -128,35 +128,35 @@ test('prose stays prose', () => {
 });
 
 test('Sentry is infrastructure', () => {
-  // MDLA-4 arrived in production without a label: "Sentry" stood in no
+  // MDUS-4 arrived in production without a label: "Sentry" stood in no
   // vocabulary, although a card about a token and a hook is plainly infra.
   assert.deepEqual(labelsFor({ title: 'store the Sentry token and hook', text: '' }).stack, ['infra']);
 });
 
 test('an underscore separates no words', () => {
   const vocabulary = normalizeVocabulary([{ id: 'ai', paths: ['packages/ai'] }]);
-  // Measured on 2026-09-09 against MDLA-6: "AI_APP_TOKEN" fetched the module `ai`.
+  // Measured on 2026-09-09 against MDUS-6: "AI_APP_TOKEN" fetched the module `ai`.
   assert.deepEqual(labelsFor({ title: 'an AI_APP_TOKEN of our own for dev', text: '', vocabulary }).module, []);
   assert.deepEqual(labelsFor({ title: 'let the model behind ai answer', text: '', vocabulary }).module, ['ai']);
 });
 
 test("a card's files say where it belongs", () => {
   const vocabulary = normalizeVocabulary([{ id: 'mundula', paths: ['apps/mundula'] }]);
-  // Measured against MDLA-7: the path stood only in the `files` field, and
+  // Measured against MDUS-7: the path stood only in the `files` field, and
   // the card arrived without a module — although a file is the clearest hint there is.
   assert.deepEqual(labelsFor({ title: 'build in the reporting door', vocabulary }).module, []);
   assert.deepEqual(labelsFor({ title: 'build in the reporting door', files: ['apps/mundula/sentry.ts'], vocabulary }).module, ['mundula']);
 });
 
 test('a branch names its card — but only the exact shape', () => {
-  // `gradula start MDLA-3 --tree` creates `plan/MDLA-3`, so the branch already
+  // `gradula start MDUS-3 --tree` creates `plan/MDUS-3`, so the branch already
   // knows the card. Guessing from arbitrary names is how evidence lands on the
   // wrong card, and that is worse than no evidence at all.
-  assert.equal(cardOfBranch('plan/MDLA-3'), 'MDLA-3');
-  assert.equal(cardOfBranch('codex/MDLA-3'), 'MDLA-3');
-  assert.equal(cardOfBranch('plan/mdla-3'), 'MDLA-3', 'case does not matter');
-  assert.equal(cardOfBranch('feature/fix-MDLA-3'), null, 'a mention is not a claim');
-  assert.equal(cardOfBranch('plan/MDLA-3-again'), null);
+  assert.equal(cardOfBranch('plan/MDUS-3'), 'MDUS-3');
+  assert.equal(cardOfBranch('codex/MDUS-3'), 'MDUS-3');
+  assert.equal(cardOfBranch('plan/mdus-3'), 'MDUS-3', 'case does not matter');
+  assert.equal(cardOfBranch('feature/fix-MDUS-3'), null, 'a mention is not a claim');
+  assert.equal(cardOfBranch('plan/MDUS-3-again'), null);
   assert.equal(cardOfBranch('main'), null);
   assert.equal(cardOfBranch(''), null);
   assert.equal(cardOfBranch(undefined), null);

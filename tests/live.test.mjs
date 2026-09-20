@@ -22,7 +22,7 @@ test('a move reaches only the listeners of ITS project', () => {
   const live = createLive();
   const a = fakeResponse(); const b = fakeResponse();
   live.join('GRD', a);
-  live.join('MDLA', b);
+  live.join('MDUS', b);
 
   assert.equal(live.announce('GRD', { verb: 'moved', card: 'GRD-9', actor: 'david' }), 1);
   assert.equal(a.written.length, 1);

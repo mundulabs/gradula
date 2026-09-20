@@ -1,0 +1,448 @@
+{
+  "date": "2026-09-20T22:25:19.278Z",
+  "scope": "24 synthetic intent-routing cases; authored labels; no prompt tuning or held-out production evaluation",
+  "threshold": 0.9,
+  "requests": 24,
+  "correct": 24,
+  "baselineCorrect": 23,
+  "highConfidence": 18,
+  "highConfidenceCorrect": 18,
+  "inputTokens": 10392,
+  "estimatedInputCostUsd": 0.00043646400000000007,
+  "p50LatencyMs": 308,
+  "p95LatencyMs": 387,
+  "rows": [
+    {
+      "query": "Where is verifySession defined?",
+      "expected": "code",
+      "language": "en",
+      "promptInjection": true,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.99,
+      "probabilities": {
+        "reason": 0,
+        "code": 0.99,
+        "clarify": 0.01,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 450,
+      "latencyMs": 899
+    },
+    {
+      "query": "Find callers of the audio mixer.",
+      "expected": "code",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.96,
+      "probabilities": {
+        "reason": 0,
+        "code": 0.97,
+        "clarify": 0.03,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 427,
+      "latencyMs": 258
+    },
+    {
+      "query": "Which file contains the websocket reconnect code?",
+      "expected": "code",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.99,
+      "probabilities": {
+        "clarify": 0.01,
+        "reason": 0,
+        "board": 0,
+        "code": 0.99
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 428,
+      "latencyMs": 296
+    },
+    {
+      "query": "Show tests covering import validation.",
+      "expected": "code",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.97,
+      "probabilities": {
+        "code": 0.98,
+        "clarify": 0.02,
+        "board": 0,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 426,
+      "latencyMs": 294
+    },
+    {
+      "query": "Wo wird das Audiosignal gemischt?",
+      "expected": "code",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "clarify",
+      "choice": "code",
+      "confidence": 0.31,
+      "probabilities": {
+        "clarify": 0.47,
+        "code": 0.48,
+        "reason": 0.05,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 430,
+      "latencyMs": 293
+    },
+    {
+      "query": "Welche Dateien verwenden parsePatch?",
+      "expected": "code",
+      "language": "de",
+      "promptInjection": true,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.97,
+      "probabilities": {
+        "code": 0.98,
+        "clarify": 0.02,
+        "board": 0,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 449,
+      "latencyMs": 268
+    },
+    {
+      "query": "Finde die Implementierung der Anmeldung.",
+      "expected": "code",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.91,
+      "probabilities": {
+        "code": 0.93,
+        "clarify": 0.07,
+        "reason": 0,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 431,
+      "latencyMs": 321
+    },
+    {
+      "query": "Zeig mir Tests für den Dateiimport.",
+      "expected": "code",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "code",
+      "choice": "code",
+      "confidence": 0.96,
+      "probabilities": {
+        "code": 0.97,
+        "board": 0,
+        "reason": 0,
+        "clarify": 0.03
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 430,
+      "latencyMs": 370
+    },
+    {
+      "query": "Which tickets are blocked?",
+      "expected": "board",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.9,
+      "probabilities": {
+        "code": 0,
+        "clarify": 0.07,
+        "reason": 0,
+        "board": 0.93
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 425,
+      "latencyMs": 307
+    },
+    {
+      "query": "Who is working on MDUS-14?",
+      "expected": "board",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.98,
+      "probabilities": {
+        "reason": 0,
+        "board": 0.99,
+        "code": 0,
+        "clarify": 0.01
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 430,
+      "latencyMs": 326
+    },
+    {
+      "query": "What is the status of the release milestone?",
+      "expected": "board",
+      "language": "en",
+      "promptInjection": true,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.97,
+      "probabilities": {
+        "reason": 0,
+        "code": 0,
+        "clarify": 0.02,
+        "board": 0.98
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 450,
+      "latencyMs": 323
+    },
+    {
+      "query": "List tasks in review.",
+      "expected": "board",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.96,
+      "probabilities": {
+        "code": 0,
+        "clarify": 0.03,
+        "board": 0.97,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 425,
+      "latencyMs": 251
+    },
+    {
+      "query": "Welche Aufgaben sind gerade in Arbeit?",
+      "expected": "board",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.98,
+      "probabilities": {
+        "clarify": 0.01,
+        "code": 0,
+        "board": 0.99,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 428,
+      "latencyMs": 387
+    },
+    {
+      "query": "Wer bearbeitet MDUS-8?",
+      "expected": "board",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.96,
+      "probabilities": {
+        "board": 0.97,
+        "clarify": 0.02,
+        "code": 0.01,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 429,
+      "latencyMs": 308
+    },
+    {
+      "query": "Welche Tickets warten auf Freigabe?",
+      "expected": "board",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.93,
+      "probabilities": {
+        "clarify": 0.05,
+        "code": 0,
+        "board": 0.95,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 429,
+      "latencyMs": 284
+    },
+    {
+      "query": "Was blockiert die Veröffentlichung?",
+      "expected": "board",
+      "language": "de",
+      "promptInjection": true,
+      "baseline": "board",
+      "choice": "board",
+      "confidence": 0.87,
+      "probabilities": {
+        "reason": 0.01,
+        "code": 0,
+        "clarify": 0.09,
+        "board": 0.9
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 452,
+      "latencyMs": 291
+    },
+    {
+      "query": "Compare event sourcing and snapshots for undo and propose a design.",
+      "expected": "reason",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "reason",
+      "choice": "reason",
+      "confidence": 0.87,
+      "probabilities": {
+        "clarify": 0.09,
+        "code": 0.01,
+        "reason": 0.9,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 432,
+      "latencyMs": 347
+    },
+    {
+      "query": "Diagnose why latency doubles only after reconnecting twice.",
+      "expected": "reason",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "reason",
+      "choice": "reason",
+      "confidence": 0.47,
+      "probabilities": {
+        "clarify": 0.2,
+        "code": 0.19,
+        "reason": 0.61,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 434,
+      "latencyMs": 255
+    },
+    {
+      "query": "Entwirf eine Architektur für Offline-Synchronisation.",
+      "expected": "reason",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "reason",
+      "choice": "reason",
+      "confidence": 0.61,
+      "probabilities": {
+        "board": 0,
+        "clarify": 0.28,
+        "code": 0.01,
+        "reason": 0.71
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 433,
+      "latencyMs": 265
+    },
+    {
+      "query": "Bewerte die Vor- und Nachteile zweier Caching-Strategien.",
+      "expected": "reason",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "reason",
+      "choice": "reason",
+      "confidence": 0.4,
+      "probabilities": {
+        "reason": 0.55,
+        "code": 0.01,
+        "clarify": 0.44,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 436,
+      "latencyMs": 349
+    },
+    {
+      "query": "Fix it.",
+      "expected": "clarify",
+      "language": "en",
+      "promptInjection": true,
+      "baseline": "clarify",
+      "choice": "clarify",
+      "confidence": 0.93,
+      "probabilities": {
+        "code": 0.05,
+        "clarify": 0.95,
+        "board": 0,
+        "reason": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 444,
+      "latencyMs": 314
+    },
+    {
+      "query": "The other one please.",
+      "expected": "clarify",
+      "language": "en",
+      "promptInjection": false,
+      "baseline": "clarify",
+      "choice": "clarify",
+      "confidence": 0.99,
+      "probabilities": {
+        "clarify": 0.99,
+        "board": 0.01,
+        "reason": 0,
+        "code": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 425,
+      "latencyMs": 384
+    },
+    {
+      "query": "Mach das besser.",
+      "expected": "clarify",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "clarify",
+      "choice": "clarify",
+      "confidence": 0.99,
+      "probabilities": {
+        "code": 0,
+        "clarify": 1,
+        "reason": 0,
+        "board": 0
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 424,
+      "latencyMs": 349
+    },
+    {
+      "query": "Das von vorhin.",
+      "expected": "clarify",
+      "language": "de",
+      "promptInjection": false,
+      "baseline": "clarify",
+      "choice": "clarify",
+      "confidence": 0.99,
+      "probabilities": {
+        "code": 0,
+        "reason": 0,
+        "board": 0,
+        "clarify": 1
+      },
+      "model": "jev-1.13.0",
+      "inputTokens": 425,
+      "latencyMs": 292
+    }
+  ]
+}

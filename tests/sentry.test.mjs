@@ -57,8 +57,8 @@ async function start2({ fetchImpl = async () => { throw new Error('nobody may be
     return { status: res.status, body: await res.json().catch(() => null) };
   };
 
-  await call('/api/admin/projects', { method: 'POST', token: ADMIN, body: { key: 'MDLA', name: 'Mundula' } });
-  const key = await call('/api/admin/projects/MDLA/keys', { method: 'POST', token: ADMIN, body: { name: 'the test' } });
+  await call('/api/admin/projects', { method: 'POST', token: ADMIN, body: { key: 'MDUS', name: 'Mundula' } });
+  const key = await call('/api/admin/projects/MDUS/keys', { method: 'POST', token: ADMIN, body: { name: 'the test' } });
   const token = key.body.token;
   await call('/api/v1/vocabulary', { method: 'PUT', token, body: { module: VOKABULAR } });
 
@@ -158,18 +158,18 @@ test('the hook accepts only what is signed', async (t) => {
   const body = JSON.stringify({ action: 'created', data: { issue: ISSUE } });
   const signature = createHmac('sha256', HOOK).update(body, 'utf8').digest('hex');
 
-  const without = await call('/api/v1/sentry/hook/MDLA', { method: 'POST', raw: body });
+  const without = await call('/api/v1/sentry/hook/MDUS', { method: 'POST', raw: body });
   assert.equal(without.status, 401, 'without a signature, nothing');
 
-  const falsch = await call('/api/v1/sentry/hook/MDLA', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': 'a'.repeat(64) } });
+  const falsch = await call('/api/v1/sentry/hook/MDUS', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': 'a'.repeat(64) } });
   assert.equal(falsch.status, 401);
 
-  const good = await call('/api/v1/sentry/hook/MDLA', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': signature } });
+  const good = await call('/api/v1/sentry/hook/MDUS', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': signature } });
   assert.equal(good.status, 200);
   assert.equal(good.body.fresh, true);
-  assert.equal(good.body.card, 'MDLA-1');
+  assert.equal(good.body.card, 'MDUS-1');
 
-  const card = await call('/api/v1/cards/MDLA-1', { token });
+  const card = await call('/api/v1/cards/MDUS-1', { token });
   assert.equal(card.body.source, 'sentry');
   assert.deepEqual(card.body.module, ['panels']);
   assert.equal(card.body.count, 23);
@@ -180,19 +180,19 @@ test('the same crash stays ONE card — and surfaces again when it comes back', 
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, hookSecret: HOOK } });
 
-  const first = await gradula.ingestIssue('MDLA', ISSUE, 'probe');
+  const first = await gradula.ingestIssue('MDUS', ISSUE, 'probe');
   assert.equal(first.fresh, true);
 
-  const again = await gradula.ingestIssue('MDLA', { ...ISSUE, count: '41', lastSeen: '2026-09-09T08:00:00Z' }, 'probe');
+  const again = await gradula.ingestIssue('MDUS', { ...ISSUE, count: '41', lastSeen: '2026-09-09T08:00:00Z' }, 'probe');
   assert.equal(again.fresh, false);
-  assert.equal(again.card.key, 'MDLA-1', 'no second note');
+  assert.equal(again.card.key, 'MDUS-1', 'no second note');
   assert.equal(again.card.count, 41);
 
   const all = await call('/api/v1/cards', { token });
   assert.equal(all.body.length, 1);
 
-  await call('/api/v1/cards/MDLA-1/move', { method: 'POST', token, body: { state: 'done' } });
-  const back = await gradula.ingestIssue('MDLA', { ...ISSUE, count: '42' }, 'probe');
+  await call('/api/v1/cards/MDUS-1/move', { method: 'POST', token, body: { state: 'done' } });
+  const back = await gradula.ingestIssue('MDUS', { ...ISSUE, count: '42' }, 'probe');
   assert.equal(back.resurfaced, true);
   assert.equal(back.card.state, 'ready');
   // A verb the house knows: a herald filters on verbs and the board reads
@@ -211,13 +211,13 @@ test('fetching asks Sentry and creates what is missing', async (t) => {
     return { ok: true, status: 200, json: async () => [ISSUE, { ...ISSUE, id: '999', title: 'Zweiter', metadata: {} }] };
   };
 
-  const result = await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  const result = await gradula.pullSentry('MDUS', 'david', { fetchImpl });
   assert.deepEqual(result, { seen: 2, fresh: 2, again: 0 });
   assert.match(asked[0].url, /^https:\/\/de\.sentry\.io\/api\/0\/projects\/mundulabs-67\/mundula\/issues\/\?/);
   assert.match(asked[0].url, /query=is%3Aunresolved/);
   assert.equal(asked[0].auth, 'Bearer sntrys_probe');
 
-  const again2 = await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  const again2 = await gradula.pullSentry('MDUS', 'david', { fetchImpl });
   assert.deepEqual(again2, { seen: 2, fresh: 0, again: 2 }, 'fetching twice lays nothing down twice');
 });
 
@@ -225,7 +225,7 @@ test('no token means no fetching, and a wrong base is refused', async (t) => {
   const { gradula, call, token, close } = await start2();
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
-  await assert.rejects(() => gradula.pullSentry('MDLA'), /No Sentry token/);
+  await assert.rejects(() => gradula.pullSentry('MDUS'), /No Sentry token/);
 
   const wrong = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: 'http://evil.example/api/0' } });
   assert.equal(wrong.status, 400);
@@ -237,7 +237,7 @@ test('setting it a second time does not take the hook its secret', async (t) => 
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, hookSecret: HOOK, token: 'sntrys_x' } });
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'fresh', project: 'p', base: BASE_EU } });
-  const raw = await gradula.getSentry('MDLA', { raw: true });
+  const raw = await gradula.getSentry('MDUS', { raw: true });
   assert.equal(raw.org, 'fresh');
   assert.equal(raw.hookSecret, HOOK, 'otherwise a form takes the hook its key');
   assert.equal(raw.token, 'sntrys_x');
@@ -247,12 +247,12 @@ test('writing back only when it is explicitly allowed', async (t) => {
   const { gradula, call, token, close } = await start2();
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
-  await gradula.ingestIssue('MDLA', ISSUE, 'probe');
+  await gradula.ingestIssue('MDUS', ISSUE, 'probe');
 
   let angefasst = 0;
   const fetchImpl = async () => { angefasst += 1; return { ok: true, status: 200, json: async () => ({}) }; };
 
-  const card = await gradula.getItem('MDLA-1');
+  const card = await gradula.getItem('MDUS-1');
   assert.equal(await gradula.closeInSentry(card, 'david', { fetchImpl }), null, 'without permission: nothing at all');
   assert.equal(angefasst, 0);
 
@@ -265,12 +265,12 @@ test('a failure at Sentry does not hold the card up', async (t) => {
   const { gradula, call, token, close } = await start2();
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'x', writeBack: true } });
-  await gradula.ingestIssue('MDLA', ISSUE, 'probe');
-  const card = await gradula.getItem('MDLA-1');
+  await gradula.ingestIssue('MDUS', ISSUE, 'probe');
+  const card = await gradula.getItem('MDUS-1');
 
   const fetchImpl = async () => ({ ok: false, status: 500, text: async () => 'broken', json: async () => ({}) });
   assert.equal(await gradula.closeInSentry(card, 'david', { fetchImpl }), false);
-  const history = (await gradula.getItem('MDLA-1')).history.at(-1);
+  const history = (await gradula.getItem('MDUS-1')).history.at(-1);
   assert.equal(history.verb, 'Sentry did not answer', 'the failure stands in the chronicle, not in nothing');
 });
 
@@ -285,9 +285,9 @@ test('resolved does not close the card, it puts it up for review', async (t) => 
   const { gradula, call, token, close } = await start2();
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
-  await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE } }, 'probe');
+  await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE } }, 'probe');
 
-  const resolved = await gradula.ingestIssue('MDLA', { action: 'resolved', data: { issue: ISSUE } }, 'probe');
+  const resolved = await gradula.ingestIssue('MDUS', { action: 'resolved', data: { issue: ISSUE } }, 'probe');
   assert.equal(resolved.action, 'resolved');
   assert.equal(resolved.card.state, 'review', 'a person confirms, the machine does not');
   const line = resolved.card.history.at(-1);
@@ -299,12 +299,12 @@ test('archived means ice, and a regression means open again', async (t) => {
   const { gradula, call, token, close } = await start2();
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
-  await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE } }, 'probe');
+  await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE } }, 'probe');
 
-  const path = await gradula.ingestIssue('MDLA', { action: 'archived', data: { issue: ISSUE } }, 'probe');
+  const path = await gradula.ingestIssue('MDUS', { action: 'archived', data: { issue: ISSUE } }, 'probe');
   assert.equal(path.card.state, 'ice');
 
-  const rueckfall = await gradula.ingestIssue('MDLA', { action: 'unresolved', data: { issue: ISSUE } }, 'probe');
+  const rueckfall = await gradula.ingestIssue('MDUS', { action: 'unresolved', data: { issue: ISSUE } }, 'probe');
   assert.equal(rueckfall.resurfaced, true);
   assert.equal(rueckfall.card.state, 'ready');
 });
@@ -313,7 +313,7 @@ test('news about a card that does not exist is not a note', async (t) => {
   const { gradula, call, token, close } = await start2();
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
-  const nothing = await gradula.ingestIssue('MDLA', { action: 'resolved', data: { issue: ISSUE } }, 'probe');
+  const nothing = await gradula.ingestIssue('MDUS', { action: 'resolved', data: { issue: ISSUE } }, 'probe');
   assert.equal(nothing.ignored, true);
   assert.deepEqual((await call('/api/v1/cards', { token })).body, [], 'no noise');
 });
@@ -351,7 +351,7 @@ test('a pull does not reopen a closed card when nothing has happened since', asy
     permalink: 'https://mundulabs.sentry.io/issues/77/',
     metadata: { type: 'TypeError', value: 'nope' },
   };
-  const put = await gradula.ingestIssue('MDLA', issue, 'sentry');
+  const put = await gradula.ingestIssue('MDUS', issue, 'sentry');
   assert.equal(put.fresh, true);
   const key = put.card.key;
 
@@ -359,12 +359,12 @@ test('a pull does not reopen a closed card when nothing has happened since', asy
   assert.equal((await call(`/api/v1/cards/${key}`, { token })).body.state, 'done');
 
   // The same issue again, unchanged: Sentry has simply not been told.
-  const again = await gradula.ingestIssue('MDLA', issue, 'sentry');
+  const again = await gradula.ingestIssue('MDUS', issue, 'sentry');
   assert.equal(again.unchanged, true, 'nothing happened, so nothing is said');
   assert.equal((await call(`/api/v1/cards/${key}`, { token })).body.state, 'done', 'and the card stays closed');
 
   // And now it really does come back.
-  const back = await gradula.ingestIssue('MDLA', { ...issue, count: '10', lastSeen: '2026-09-09T18:00:00.000Z' }, 'sentry');
+  const back = await gradula.ingestIssue('MDUS', { ...issue, count: '10', lastSeen: '2026-09-09T18:00:00.000Z' }, 'sentry');
   assert.equal(back.resurfaced, true);
   const read = await call(`/api/v1/cards/${key}`, { token });
   assert.equal(read.body.state, 'ready', 'a crash that comes back is open again');
@@ -386,7 +386,7 @@ test('the hook door survives news about a card this board never took in', async 
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_probe', hookSecret: HOOK } });
 
   const payload = JSON.stringify({ action: 'resolved', data: { issue: { ...ISSUE, id: 'never-seen-here' } } });
-  const answered = await call('/api/v1/sentry/hook/MDLA', {
+  const answered = await call('/api/v1/sentry/hook/MDUS', {
     method: 'POST',
     raw: payload,
     headers: { 'sentry-hook-signature': createHmac('sha256', HOOK).update(payload, 'utf8').digest('hex') },
@@ -397,12 +397,12 @@ test('the hook door survives news about a card this board never took in', async 
 });
 
 /**
- * A DOOR FOR MDLA TAKES MDLA'S ISSUES.
+ * A DOOR FOR MDUS TAKES MDUS'S ISSUES.
  *
  * An internal Sentry integration is set up per ORGANISATION and carries
  * exactly one webhook URL — so every project in the organisation posts to the
  * same door, and the door names ONE board project in its path. Measured:
- * MDLA-48 on the Mundula board was GRADULA-3, a crash in the planning board
+ * MDUS-48 on the Mundula board was GRADULA-3, a crash in the planning board
  * itself.
  */
 test('a crash from another Sentry project is not made into a card here', async (t) => {
@@ -417,7 +417,7 @@ test('a crash from another Sentry project is not made into a card here', async (
     action: 'created',
     data: { issue: { ...ISSUE, id: 'from-elsewhere', project: { slug: 'gradula', name: 'Gradula' } } },
   });
-  const turned = await call('/api/v1/sentry/hook/MDLA', {
+  const turned = await call('/api/v1/sentry/hook/MDUS', {
     method: 'POST', raw: foreign,
     headers: { 'sentry-hook-signature': createHmac('sha256', HOOK).update(foreign, 'utf8').digest('hex') },
   });
@@ -431,18 +431,18 @@ test('a crash from another Sentry project is not made into a card here', async (
     action: 'created',
     data: { issue: { ...ISSUE, project: { slug: 'mundula', name: 'Mundula' } } },
   });
-  const taken = await call('/api/v1/sentry/hook/MDLA', {
+  const taken = await call('/api/v1/sentry/hook/MDUS', {
     method: 'POST', raw: mine,
     headers: { 'sentry-hook-signature': createHmac('sha256', HOOK).update(mine, 'utf8').digest('hex') },
   });
   assert.equal(taken.body.fresh, true);
-  assert.equal(taken.body.card, 'MDLA-1');
+  assert.equal(taken.body.card, 'MDUS-1');
 });
 
 /**
  * A DEV CRASH IS NOT AN INCIDENT ON THE BOARD.
  *
- * MDLA-79, 2026-09-10: a WatchdogTermination from a developer's own dev
+ * MDUS-79, 2026-09-10: a WatchdogTermination from a developer's own dev
  * build on his own phone, environment `dev`, taken in five times — an
  * incident card in Ready about a crash nobody in production ever saw. The
  * crash is real; the card is noise. So only the connection's environments
@@ -453,7 +453,7 @@ test('an issue from an environment the connection does not watch becomes no card
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
 
-  const dev = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'dev' } } }, 'probe');
+  const dev = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE, event: { environment: 'dev' } } }, 'probe');
   assert.equal(dev.ignored, true);
   assert.equal(dev.environment, 'dev');
   assert.match(dev.reason, /environment dev is not watched/);
@@ -461,9 +461,9 @@ test('an issue from an environment the connection does not watch becomes no card
   assert.deepEqual((await call('/api/v1/cards', { token })).body, [], 'and nothing was written');
 
   // The same crash from production: a card, as before.
-  const prod = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'prod' } } }, 'probe');
+  const prod = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE, event: { environment: 'prod' } } }, 'probe');
   assert.equal(prod.fresh, true);
-  assert.equal(prod.card.key, 'MDLA-1');
+  assert.equal(prod.card.key, 'MDUS-1');
 });
 
 test('with `all`, every environment becomes a card', async (t) => {
@@ -471,9 +471,9 @@ test('with `all`, every environment becomes a card', async (t) => {
   t.after(close);
   const set = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: 'all' } });
   assert.equal(set.body.environments, 'all');
-  const dev = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'dev' } } }, 'probe');
+  const dev = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE, event: { environment: 'dev' } } }, 'probe');
   assert.equal(dev.fresh, true);
-  const local = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: '2' }, event: { environment: 'local' } } }, 'probe');
+  const local = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: { ...ISSUE, id: '2' }, event: { environment: 'local' } } }, 'probe');
   assert.equal(local.fresh, true);
 });
 
@@ -482,9 +482,9 @@ test('an environment nobody can place counts as production — a card', async (t
   t.after(close);
   // No token: Sentry cannot be asked, so the environment stays unknown.
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
-  const unknown = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE } }, 'probe');
+  const unknown = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE } }, 'probe');
   assert.equal(unknown.fresh, true, 'a crash you cannot place is worse than a card you have to close');
-  assert.equal(unknown.card.key, 'MDLA-1');
+  assert.equal(unknown.card.key, 'MDUS-1');
 });
 
 test('when the hook does not say, Sentry is asked once per issue — and the answer decides', async (t) => {
@@ -498,7 +498,7 @@ test('when the hook does not say, Sentry is asked once per issue — and the ans
   t.after(close);
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
 
-  const dev = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: 'in-dev' } } }, 'probe');
+  const dev = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: { ...ISSUE, id: 'in-dev' } } }, 'probe');
   assert.equal(dev.ignored, true);
   assert.equal(dev.environment, 'dev');
   assert.equal(asked.length, 1);
@@ -506,10 +506,10 @@ test('when the hook does not say, Sentry is asked once per issue — and the ans
   assert.equal(asked[0].auth, 'Bearer sntrys_x');
 
   // The same issue again: the answer is held, Sentry is not asked twice.
-  await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: 'in-dev' } } }, 'probe');
+  await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: { ...ISSUE, id: 'in-dev' } } }, 'probe');
   assert.equal(asked.length, 1, 'once per issue id');
 
-  const prod = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: { ...ISSUE, id: 'in-prod' } } }, 'probe');
+  const prod = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: { ...ISSUE, id: 'in-prod' } } }, 'probe');
   assert.equal(prod.fresh, true);
   assert.equal(asked.length, 2);
   assert.equal((await call('/api/v1/cards', { token })).body.length, 1, 'one card: the production one');
@@ -518,7 +518,7 @@ test('when the hook does not say, Sentry is asked once per issue — and the ans
   const down = await start2({ fetchImpl: async () => ({ ok: false, status: 502, text: async () => 'bad gateway' }) });
   t.after(down.close);
   await down.call('/api/v1/sentry', { method: 'PUT', token: down.token, body: { org: 'o', project: 'p', base: BASE_EU, token: 'sntrys_x' } });
-  const blind = await down.gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE } }, 'probe');
+  const blind = await down.gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE } }, 'probe');
   assert.equal(blind.fresh, true, 'unknown is production');
 });
 
@@ -528,18 +528,18 @@ test('a foreign hook on an existing card leaves one seen line and moves nothing'
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, hookSecret: HOOK } });
 
   // The card exists — from production.
-  const made = await gradula.ingestIssue('MDLA', { action: 'created', data: { issue: ISSUE, event: { environment: 'prod' } } }, 'probe');
+  const made = await gradula.ingestIssue('MDUS', { action: 'created', data: { issue: ISSUE, event: { environment: 'prod' } } }, 'probe');
   assert.equal(made.fresh, true);
-  await call('/api/v1/cards/MDLA-1/move', { method: 'POST', token, body: { state: 'done', reason: 'fixed' } });
+  await call('/api/v1/cards/MDUS-1/move', { method: 'POST', token, body: { state: 'done', reason: 'fixed' } });
 
   // Then it happens again, on a developer's phone, with a higher count: one line, no move.
   const body = JSON.stringify({ action: 'created', data: { issue: { ...ISSUE, count: '30', lastSeen: '2026-09-10T09:00:00Z' }, event: { environment: 'dev' } } });
-  const hooked = await call('/api/v1/sentry/hook/MDLA', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': createHmac('sha256', HOOK).update(body, 'utf8').digest('hex') } });
+  const hooked = await call('/api/v1/sentry/hook/MDUS', { method: 'POST', raw: body, headers: { 'sentry-hook-signature': createHmac('sha256', HOOK).update(body, 'utf8').digest('hex') } });
   assert.equal(hooked.status, 200);
   assert.equal(hooked.body.ignored, true);
-  assert.equal(hooked.body.card, 'MDLA-1', 'the door names the card the line landed on');
+  assert.equal(hooked.body.card, 'MDUS-1', 'the door names the card the line landed on');
 
-  const card = (await call('/api/v1/cards/MDLA-1', { token })).body;
+  const card = (await call('/api/v1/cards/MDUS-1', { token })).body;
   assert.equal(card.state, 'done', 'never resurrected, never moved');
   assert.equal(card.count, 23, "the counter is production's — the dev count does not touch it");
   const seen = card.history.filter((e) => e.verb === 'seen');
@@ -556,16 +556,16 @@ test('a pull asks Sentry for the watched environments only — or for everything
 
   const asked = [];
   const fetchImpl = async (url) => { asked.push(new URL(String(url)).searchParams.getAll('environment')); return { ok: true, status: 200, json: async () => [ISSUE], text: async () => '[]' }; };
-  const pulled = await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  const pulled = await gradula.pullSentry('MDUS', 'david', { fetchImpl });
   assert.deepEqual(pulled, { seen: 1, fresh: 1, again: 0 });
   assert.deepEqual(asked, [['production', 'prod']], 'the default: production, in both spellings — and no second call to place what Sentry already filtered');
 
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: 'prod,dev' } });
-  await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  await gradula.pullSentry('MDUS', 'david', { fetchImpl });
   assert.deepEqual(asked.at(-1), ['prod', 'dev']);
 
   await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: 'all' } });
-  await gradula.pullSentry('MDLA', 'david', { fetchImpl });
+  await gradula.pullSentry('MDUS', 'david', { fetchImpl });
   assert.deepEqual(asked.at(-1), [], 'all means no filter');
 });
 
@@ -574,7 +574,7 @@ test('the connection door sets, keeps and shows the environments', async (t) => 
   t.after(close);
   const first = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU } });
   assert.deepEqual(first.body.environments, ['production', 'prod'], 'unset shows the default');
-  assert.equal((await gradula.getSentry('MDLA', { raw: true })).environments, null, 'and is stored as not said');
+  assert.equal((await gradula.getSentry('MDUS', { raw: true })).environments, null, 'and is stored as not said');
 
   const set = await call('/api/v1/sentry', { method: 'PUT', token, body: { org: 'o', project: 'p', base: BASE_EU, environments: ['prod', 'dev'], lanes: { production: 'prod', development: ['dev'] } } });
   assert.deepEqual(set.body.environments, ['prod', 'dev']);
