@@ -1,0 +1,25 @@
+# Explicit build inputs; credentials, local caches and worktrees never enter.
+**
+!package.json
+!package-lock.json
+!src/
+!src/**
+!bin/
+!bin/**
+!mcp/
+!mcp/**
+!tools/
+!tools/*.mjs
+!web/
+!web/**
+!.git/
+!.git/HEAD
+!.git/objects/
+!.git/objects/**
+!.git/refs/
+!.git/refs/**
+!.git/packed-refs
+**/node_modules
+**/.env*
+**/.gradula*
+**/dist
