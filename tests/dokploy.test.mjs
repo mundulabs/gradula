@@ -63,3 +63,21 @@ test('a deployment carries the cards its commit names, and its head line', async
   assert.deepEqual(out.deployments[1].carries, []);
   assert.equal(out.deployments[1].finishedAt, '2026-09-09T10:00:00Z');
 });
+
+test('a person copies the Dokploy connection from another project on the server; an agent may not', async () => {
+  const { createMemoryStore } = await import('../src/store.mjs');
+  const { createGradula } = await import('../src/gradula.mjs');
+  const g = createGradula(createMemoryStore());
+  await g.createProject({ key: 'MOLD', name: 'Legacy' });
+  await g.createProject({ key: 'MDLA', name: 'Mundus' });
+  await g.setDokploy('MOLD', { base: 'https://dokploy.test/api', token: 'secret', composes: { production: 'old' } }, { person: true });
+  await assert.rejects(g.setDokploy('MDLA', { from: 'MOLD', composes: { production: 'new' } }), (e) => e.code === 'person-only');
+  await assert.rejects(g.setDokploy('MDLA', { from: 'NONE', composes: { production: 'new' } }, { person: true }));
+  const set = await g.setDokploy('MDLA', { from: 'MOLD', composes: { production: 'new', development: 'new-dev' } }, { person: true });
+  assert.equal(set.base, 'https://dokploy.test/api');
+  assert.ok(!JSON.stringify(set).includes('secret'), 'the key never comes back');
+  const raw = await g.getDokploy('MDLA', { raw: true });
+  assert.equal(raw.token, 'secret');
+  assert.deepEqual(raw.composes, { production: 'new', development: 'new-dev' });
+  assert.deepEqual((await g.getDokploy('MOLD', { raw: true })).composes, { production: 'old' }, 'the source is untouched');
+});

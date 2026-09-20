@@ -18,7 +18,7 @@
  * ignores it.
  */
 
-import { readFileSync, writeFileSync, existsSync, readdirSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, chmodSync, rmSync } from 'node:fs';
 import { join, dirname, basename, resolve } from 'node:path';
 import { hostname } from 'node:os';
 import { execFileSync, spawn } from 'node:child_process';
@@ -82,6 +82,7 @@ const HELP = `gradula — wish, board, standing
                                  where the APP has arrived (reads EAS)
   gradula env --compose <id> --from <.env> KEY…  the server's variables from a file, then redeploy (DOKPLOY_URL/_API_TOKEN)
   gradula dokploy --base <api> --token <key> --compose <id> [--compose-dev <id>]
+                 --from MOLD --compose <id> [--compose-dev <id>]   the same Dokploy as another project; the key is copied on the server
   gradula sentry [--org <org> --project <slug>] [--base eu|us] [--token <t>]
                  [--hook-secret <s>] [--write-back [off]]
                  [--environments prod,dev|all|default]   which Sentry environments become cards
@@ -95,7 +96,9 @@ const HELP = `gradula — wish, board, standing
   gradula hook [off]               evidence lands on every commit, by itself
   gradula login [--project MDLA]   register THIS machine — the board mints two keys (yours, and
                                  one for the AI sessions here), no copy-paste
-  gradula project [--alias "david=David Bläsing"] [--language de|en]
+  gradula project [--alias "david=David Bläsing"] [--language de|en] [--integration direct|pr]
+  gradula key <name>               mint a named service key with your own key (shown once; the owner is you)
+  gradula key --list | --revoke <name>
                                  which names mean the same person ("none" clears)
                                  and which language the CARDS are written in
 
@@ -402,6 +405,18 @@ switch (command) {
     console.log(HELP);
     break;
 
+  case 'key': {
+    const name = words[0];
+    if (flags.list) { const keys = await call('/api/v1/keys'); console.log(keys.map((k) => `${k.id}  ${k.kind.padEnd(6)} ${k.name}`).join('\n') || 'No keys.'); break; }
+    if (typeof flags.revoke === 'string') { const keys = await call('/api/v1/keys'); const hit = keys.find((k) => k.name === flags.revoke || k.id === flags.revoke); if (!hit) stop(`No key of yours named ${flags.revoke}.`); await call(`/api/v1/keys/${hit.id}`, { method: 'DELETE' }); console.log(`Revoked ${hit.name}.`); break; }
+    if (!name) stop('Which name? gradula key mundus-docs   (--list · --revoke <name>)');
+    const made = await call('/api/v1/keys', { method: 'POST', body: { name } });
+    // Shown once, on purpose: the board never returns it again.
+    console.log(made.token);
+    console.error(`Key ${name} minted for ${made.entry?.ownerName ?? 'you'}; shown once, store it where the service reads it.`);
+    break;
+  }
+
   case 'project': {
     // `--alias "david=David Bläsing"` — which names mean the same person.
     // Declared, never guessed: a board that folds similar spellings together
@@ -410,6 +425,11 @@ switch (command) {
     if (typeof flags.language === 'string') {
       const after = await call('/api/v1/project', { method: 'PATCH', body: { language: flags.language === 'none' ? null : flags.language } });
       console.log(`Cards are written in: ${after.language ?? 'whatever the writer picks'}`);
+      break;
+    }
+    if (typeof flags.integration === 'string') {
+      const after = await call('/api/v1/project', { method: 'PATCH', body: { integration: flags.integration } });
+      console.log(`Landing a card: ${after.integration === 'direct' ? 'directly onto the main line' : 'through a pull request'}`);
       break;
     }
     const claimed = [flags.alias].flat().filter((x) => typeof x === 'string');
@@ -430,6 +450,7 @@ switch (command) {
     const project = await call('/api/v1/project');
     console.log(`${project.key} — ${project.name}${project.repo ? ` (${project.repo})` : ''}`);
     if (project.language) console.log(`Cards are written in: ${project.language}`);
+    console.log(`Landing a card: ${project.integration === 'direct' ? 'directly onto the main line' : 'through a pull request'}`);
     const rows = Object.entries(project.people ?? {});
     if (rows.length) {
       console.log('\nOne person, one name:');
@@ -662,8 +683,13 @@ switch (command) {
         if (!excluded.split('\n').includes('/.worktrees/')) writeFileSync(exclude, `${excluded}\n/.worktrees/\n`);
         if (!existsSync(place)) {
           const zweige = execFileSync('git', ['branch', '--list', branch], { encoding: 'utf8' }).trim();
+          // Current dev means the shared one: a local dev with unpushed merges
+          // from another session must not leak into a fresh task branch.
           let baseRef = 'HEAD';
-          try { execFileSync('git', ['show-ref', '--verify', '--quiet', 'refs/heads/dev']); baseRef = 'dev'; } catch { /* repositories without a dev branch use their current base */ }
+          try { execFileSync('git', ['fetch', '--quiet', 'origin', 'dev'], { stdio: 'pipe' }); } catch { /* offline: the last known remote dev is still better than a diverged local one */ }
+          for (const ref of ['refs/remotes/origin/dev', 'refs/heads/dev']) {
+            try { execFileSync('git', ['show-ref', '--verify', '--quiet', ref]); baseRef = ref; break; } catch { /* repositories without a dev branch use their current base */ }
+          }
           execFileSync('git', zweige ? ['worktree', 'add', place, branch] : ['worktree', 'add', place, '-b', branch, baseRef], { stdio: 'pipe' });
         }
         const actualBranch = execFileSync('git', ['-C', place, 'branch', '--show-current'], { encoding: 'utf8' }).trim();
@@ -1136,7 +1162,7 @@ switch (command) {
     const marke = '# gradula';
     if (flags.off || words[0] === 'off') {
       if (existsSync(file) && readFileSync(file, 'utf8').includes(marke)) {
-        execFileSync('rm', ['-f', file]);
+        rmSync(file, { force: true });
         console.log('Hook removed.');
       } else console.log('No gradula hook here.');
       break;
@@ -1464,7 +1490,7 @@ switch (command) {
     const set = await call('/api/v1/dokploy', {
       method: 'PUT',
       body: {
-        base: flags.base, token: flags.token, composeId: flags.compose,
+        from: flags.from, base: flags.base, token: flags.token, composeId: flags.compose,
         composes: { production: flags.compose, development: flags['compose-dev'] },
       },
     });
@@ -1617,7 +1643,10 @@ switch (command) {
     const at = `${base}/?project=${project}`;
     console.log(`This machine: ${machine}  →  ${project}`);
     console.log(`\nApprove it on the board:\n  ${at}\n  Settings → Your keys → this machine, code ${started.code}\n`);
-    try { spawn(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open', [at], { stdio: 'ignore', detached: true }).unref(); } catch { /* a terminal without a browser is fine */ }
+    // `start` is a cmd.exe builtin, not a program; and a missing opener fails
+    // asynchronously, so the 'error' event needs a listener or node exits.
+    const opener = process.platform === 'darwin' ? ['open', [at]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', at]] : ['xdg-open', [at]];
+    try { spawn(...opener, { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); } catch { /* a terminal without a browser is fine */ }
     process.stdout.write('Waiting for approval');
 
     const until = Date.now() + 10 * 60_000;
