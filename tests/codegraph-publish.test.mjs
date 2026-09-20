@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,writeFileSync,symlinkSync,rmSync} from 'node:fs';
+import {mkdtempSync,readFileSync,writeFileSync,symlinkSync,rmSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {join} from 'node:path';
 import {tmpdir} from 'node:os';
@@ -29,4 +29,9 @@ test('clean scans read committed blobs, ignore secrets and symlinks, and identif
   assert.deepEqual([...new Set(clean.graph.nodes.map(n=>n.path))],['code.ts']);assert.ok(!JSON.stringify(clean.graph).includes('never-index'));
   writeFileSync(join(root,'code.ts'),'export function changed() {}');writeFileSync(join(root,'untracked.ts'),'export const absent=1');
   const dirty=scanRepository(root);assert.equal(dirty.graph.dirty,true);assert.ok(dirty.graph.nodes.some(n=>n.name==='changed'));assert.ok(!dirty.graph.nodes.some(n=>n.path==='untracked.ts'));
+  const pinned=scanRepository(root,undefined,{revision:clean.graph.revision});
+  assert.equal(pinned.graph.dirty,false);assert.ok(pinned.graph.nodes.some(n=>n.name==='first'));
+  assert.ok(!pinned.graph.nodes.some(n=>n.name==='changed'));
+  assert.equal(readFileSync(join(root,'code.ts'),'utf8'),'export function changed() {}','pinned scans leave local work untouched');
+  assert.throws(()=>scanRepository(root,undefined,{revision:'main'}),/full source commit/);
 });

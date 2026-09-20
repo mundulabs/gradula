@@ -48,3 +48,22 @@ test('incremental rescans reuse unchanged syntax and remove deleted files and th
   assert.equal(removed.stats.deleted,1);assert.ok(!removed.graph.nodes.some(n=>n.path==='b.ts'));
   assert.ok(!removed.graph.edges.some(e=>e.to.startsWith('file:b.ts')));
 });
+
+test('file mode retains every file and compiler dependency with bounded representative edges',()=>{
+  const files=new Map([
+    ['a.ts','import {f} from "./b.js"; export function run(){f();f()}'],
+    ['b.ts','export function f(){}'],
+    ['unused.ts','export const untouched=1;'],
+    ['docs.md','# Guide\nSee `a.ts`.'],
+  ]), metadata={repository:'team/repo',revision:'a'.repeat(40),dirty:false};
+  const indexer=createIndexer({granularity:'files'}),{graph}=indexer.build(files,metadata);
+  assert.deepEqual(graph.nodes.map(n=>n.path).sort(),[...files.keys()].sort());
+  assert.ok(graph.nodes.every(n=>['file','document'].includes(n.kind)));
+  const calls=graph.edges.filter(e=>e.kind==='calls');
+  assert.equal(calls.length,1);assert.equal(calls[0].from,'file:a.ts');assert.equal(calls[0].to,'file:b.ts');
+  assert.equal(calls[0].source.path,'a.ts');assert.equal(calls[0].confidence,'EXTRACTED');
+  assert.match(graph.coverage.scope,/symbol details omitted/);
+  assert.equal(indexer.build(new Map([...files].reverse()),metadata).graph.digest,graph.digest);
+  files.delete('b.ts');assert.ok(!indexer.build(files,metadata).graph.edges.some(e=>e.to==='file:b.ts'));
+  assert.throws(()=>createIndexer({granularity:'unknown'}),/Granularity/);
+});
