@@ -166,7 +166,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     }],
     ['GET', /^\/api\/admin\/projects$/, async (_req, _m, ctx) => {
       ctx.needAdmin();
-      return { status: 200, body: await gradula.store.projects.list() };
+      return { status: 200, body: await gradula.listProjects() };
     }],
     ['POST', /^\/api\/admin\/projects\/([A-Z]{2,8})\/runtime-connections$/, async (req, m, ctx) => {
       ctx.needAdmin();
@@ -254,7 +254,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
 
     ['GET', /^\/api\/v1\/projects$/, async (_req, _m, ctx) => {
       if (!ctx.human) throw new Refusal(403, 'humans-only', 'This list exists only for signed-in people.');
-      return { status: 200, body: await gradula.store.projects.list() };
+      return { status: 200, body: await gradula.listProjects() };
     }],
 
     // ---- The key's project ---------------------------------------------------

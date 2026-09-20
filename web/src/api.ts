@@ -70,7 +70,7 @@ export type System = {
   sources: Record<string, string>;
 };
 
-export type Project = { key: string; name: string; repo: string | null };
+export type Project = { key: string; aliases?: string[]; name: string; repo: string | null };
 export type Me =
   | { kind: 'human'; name: string; sub: string; roles: string[] }
   | { kind: 'machine'; key: string | null; project: string | null };
