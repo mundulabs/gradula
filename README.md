@@ -546,4 +546,4 @@ coding success. See [retrieval validation](docs/retrieval-validation.md).
 
 ### Optional decision pilot
 
-Connected projects can try [Jev shadow decisions](docs/decision-pilot.md) for ambiguous skill selection, routing, review triage and text intent. Opt in per project on the Gradula server; clients use existing project credentials. The fixed campaign limits paid attempts, records outcomes and compares complete-task usage only when measured. It never changes execution or approval.
+Connected projects can try [Jev shadow decisions](docs/decision-pilot.md) for ambiguous skill selection, routing, review triage and text intent. Opt in per project on the Gradula server; clients authenticate with existing Gradula credentials and supply their own optional TypeSafe key from a private project `.env`. Core graph/context features require no provider key. The fixed campaign limits paid attempts, records outcomes and compares complete-task usage only when measured. It never changes execution or approval.

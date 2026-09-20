@@ -1,3 +1,4 @@
+import {validProviderKey} from './provider-key.mjs';
 import {PILOT, digest, pilotInput, pilotPayload, evaluatePilot, pilotFeedback, pilotReport} from './decision-pilot.mjs';
 /**
  * What Gradula DOES — the verbs, once, over a store.
@@ -304,9 +305,12 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return { ...project, manualAcceptance: project.manualAcceptance === true, integration: INTEGRATIONS.includes(project.integration) ? project.integration : 'pr', ladder: CARD_STYLE };
     },
 
-    async decisionTrial(projectKey,input,actor) {
+    async decisionTrial(projectKey,input,actor,requestKey = null) {
       const project=await this.getProject(projectKey);
-      if(!decisionPilot.apiKey||!decisionPilot.projects?.includes(project.key))return {mode:'shadow',status:'disabled',guidance:'Pilot not enabled for this project; continue the normal workflow.'};
+      if(!decisionPilot.projects?.includes(project.key))return {mode:'shadow',status:'disabled',guidance:'Pilot not enabled for this project; continue the normal workflow.'};
+      let apiKey;
+      try {apiKey=requestKey===null?decisionPilot.apiKey:validProviderKey(requestKey);}catch(error){throw bad('provider-key',error.message);}
+      if(!apiKey)return {mode:'shadow',status:'key-required',guidance:'Set TYPESAFE_API_KEY in this project environment to run the optional pilot; continue the normal workflow otherwise.'};
       let prepared;
       try {prepared=pilotInput(input);pilotPayload(prepared);}catch(error){throw bad('decision',error.message);}
       const fingerprint=digest(prepared);
@@ -317,7 +321,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         if(reserved.trial.fingerprint!==fingerprint)throw new Refusal(409,'request-id','Request id already belongs to a different input.');
         return {mode:'shadow',status:reserved.trial.result?'complete':'pending',trial:reserved.trial};
       }
-      const result=await evaluatePilot(prepared,{apiKey:decisionPilot.apiKey,fetchImpl:decisionPilot.fetchImpl??defaultFetch});
+      const result=await evaluatePilot(prepared,{apiKey,fetchImpl:decisionPilot.fetchImpl??defaultFetch});
       return {mode:'shadow',status:'complete',trial:await store.decisions.finish(project.key,trial.id,result)};
     },
     async decisionFeedback(projectKey,id,input,actor,authorKind) {
@@ -330,7 +334,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     },
     async decisionReport(projectKey) {
       const project=await this.getProject(projectKey);
-      return {enabled:Boolean(decisionPilot.apiKey&&decisionPilot.projects?.includes(project.key)),...pilotReport(await store.decisions.list(project.key,PILOT.campaign))};
+      return {enabled:Boolean(decisionPilot.projects?.includes(project.key)),acceptsProjectKey:true,providerKeyRequired:!decisionPilot.apiKey,...pilotReport(await store.decisions.list(project.key,PILOT.campaign))};
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */

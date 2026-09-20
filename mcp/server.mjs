@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {providerHeaders} from '../src/provider-key.mjs';
 /**
  * Gradula over MCP — so that Codex, Claude Desktop and Claude Code walk the
  * same road as the CLI. No access of its own to the database: every tool here
@@ -34,9 +35,11 @@ const laddered = (card) => (card && typeof card === 'object' && 'state' in card 
 
 async function api(path, { method = 'GET', body } = {}) {
   if (!token) throw new Error('GRADULA_TOKEN is missing — without a project key there is nothing to do here.');
+  const provider=providerHeaders(base,path,method);
   const res = await fetch(`${base}${path}`, {
     method,
-    headers: { 'X-Gradula-Session': session,
+    ...(Object.keys(provider).length ? {redirect:'error'} : {}),
+    headers: { ...provider, 'X-Gradula-Session': session,
       Authorization: `Bearer ${token}`,
       ...(actor ? { 'X-Gradula-Actor': actor } : {}),
       ...(coderOf(env) ? { 'X-Gradula-Coder': coderOf(env) } : {}),

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import {providerHeaders} from '../src/provider-key.mjs';
 /**
  * The hand: the same doors as the board, only from the keyboard.
  *
@@ -120,10 +121,13 @@ let session = workSession(env);
 
 async function call(path, { method = 'GET', body, soft = false } = {}) {
   if (!hand.token) stop('No GRADULA_TOKEN — nothing happens here without a project key.');
+  const provider=providerHeaders(base,path,method);
   const res = await fetch(`${base}${path}`, {
     method,
+    ...(Object.keys(provider).length ? {redirect:'error'} : {}),
     ...(soft ? { signal: AbortSignal.timeout(15000) } : {}),
     headers: {
+      ...provider,
       Authorization: `Bearer ${hand.token}`,
       'X-Gradula-Session': session,
       ...(hand.actor ? { 'X-Gradula-Actor': hand.actor } : {}),

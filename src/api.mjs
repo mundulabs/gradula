@@ -272,7 +272,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
 
     ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, GRAPH_LIMITS.bytes), ctx.actor) })],
     ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project,ctx.url.searchParams.get('revision')) })],
-    ['POST', /^\/api\/v1\/decision-trials$/, async (req,_m,ctx) => ({status:200,body:await gradula.decisionTrial(ctx.project,await readJson(req,16000),ctx.actor)})],
+    ['POST', /^\/api\/v1\/decision-trials$/, async (req,_m,ctx) => ({status:200,body:await gradula.decisionTrial(ctx.project,await readJson(req,16000),ctx.actor,req.headers['x-gradula-typesafe-key']??null)})],
     ['POST', /^\/api\/v1\/decision-trials\/([0-9A-Z]{26})\/feedback$/, async (req,m,ctx) => ({status:200,body:await gradula.decisionFeedback(ctx.project,m[1],await readJson(req,4000),ctx.actor,ctx.system?'agent':'human')})],
     ['GET', /^\/api\/v1\/decision-trials$/, async (_req,_m,ctx) => ({status:200,body:await gradula.decisionReport(ctx.project)})],
     ['GET', /^\/api\/v1\/context$/, async (_req, _m, ctx) => {

@@ -1,3 +1,12 @@
+/** Drop request payloads/headers from crash events, including request-scoped provider keys. */
+export function sanitizeCrash(event) {
+  if(event.request){delete event.request.data;delete event.request.cookies;delete event.request.headers;}
+  for(const breadcrumb of event.breadcrumbs??[])if(breadcrumb.data){
+    delete breadcrumb.data.headers;delete breadcrumb.data.request_headers;delete breadcrumb.data.body;
+  }
+  return event;
+}
+
 /**
  * Our own crash — Gradula reports to Sentry.
  *
@@ -27,14 +36,7 @@ export async function watch() {
       // The body of a request can carry a card title, and a title can carry a
       // customer's name. A crash report needs neither.
       sendDefaultPii: false,
-      beforeSend(event) {
-        if (event.request) {
-          delete event.request.data;
-          delete event.request.cookies;
-          if (event.request.headers) delete event.request.headers.authorization;
-        }
-        return event;
-      },
+      beforeSend: sanitizeCrash,
     });
     return Sentry;
   } catch (error) {
