@@ -31,7 +31,7 @@ Build a held-out set from real, consented Gradula tasks with human-reviewed labe
 
 Compare deterministic retrieval/rules, the present reasoning route, and the cascade. Report task completion, file recall, false confident decisions, abstention coverage, calibration, p50/p95 latency and total billed cost. Choose thresholds on a development split, freeze them and report held-out results separately. Start in shadow mode: suggestions cannot change state. Enable only a reversible, low-impact routing action after the measured gain justifies another provider dependency.
 
-We have a small synthetic routing trial, not representative production evidence. “State of the art”, guaranteed correctness and a particular token-saving percentage are therefore unsupported claims.
+We have small synthetic and retrospective real-task routing trials, not representative production evidence. “State of the art”, guaranteed correctness and a particular token-saving percentage are therefore unsupported claims.
 
 ## Authorized live trial
 
@@ -40,6 +40,23 @@ The reproducible command is `node --env-file=/Users/davidblaesing/gradula/.env t
 Results are in [typesafe-trial.json](typesafe-trial.json): 24/24 synthetic intent-routing cases matched the authored labels, compared with 23/24 for a simple keyword baseline. Eighteen answers met the preselected confidence threshold of 0.9; all eighteen were correct. The other six would fall back. The set includes English, German, ambiguous requests and five examples with distracting instructions inside an untrusted document field. Median end-to-end latency was 308 ms and p95 was 387 ms. The API reported 10,392 input tokens, corresponding to approximately $0.000436 at the published input price, excluding other infrastructure. This is calculated usage cost, not a reconciled invoice.
 
 The sample is tiny, authored for this trial and easy for the baseline. It establishes working authentication, valid outputs and inexpensive routing on these examples. It cannot establish calibration, robustness, production accuracy, a coding-token reduction or an advantage over the existing complete coding workflow. Do not switch core behavior on these results alone. The next useful experiment is shadow routing over a consented, human-labelled set of actual ambiguous requests.
+
+## Real-task shadow trial
+
+On 20 September 2026, the user approved trials for Gradula and Mundus. Each project supplied its own distinct key from its private `.env`; the hosted service had no shared provider key. Twelve existing task titles, expected primary workstreams and a keyword baseline were frozen before the requests. The service received the titles and five route descriptions, not source files. The aggregate results are below; internal task inputs remain local rather than being published with the open-source repository.
+
+| Measurement | Gradula | Mundus | Combined |
+| --- | ---: | ---: | ---: |
+| Label matches | 4/6 | 6/6 | 10/12 |
+| Keyword baseline matches | 4/6 | 6/6 | 10/12 |
+| Answers above the 0.9 threshold | 3/6 | 4/6 | 7/12 |
+| Wrong answers above threshold | 0 | 0 | 0 |
+| Billed input tokens reported | 3,064 | 3,109 | 6,173 |
+| Estimated provider cost, USD | 0.000128688 | 0.000130578 | 0.000259266 |
+
+All twelve calls answered. Combined median provider latency was 302 ms, with a nearest-rank p95 of 718 ms. Both incorrect choices were below the acceptance threshold, and both also fooled the keyword baseline. More context is needed to distinguish the intended primary workstream in those cases.
+
+These are selected retrospective examples with agent-authored labels, not independent human review or a held-out production benchmark. A reporting defect initially attributed agent-key feedback to humans; the HTTP endpoint now uses the authenticated person/agent distinction, and corrected feedback is appended without deleting the original audit record. The trial did not rerun coding tasks. It demonstrates working project-owned credentials and low classification cost, but **no improvement over this baseline and no demonstrated development-token saving**. Shadow mode adds these 6,173 tokens. Keep core retrieval deterministic and leave this classifier advisory until paired complete-task runs establish a benefit.
 
 ## Next evaluation
 
