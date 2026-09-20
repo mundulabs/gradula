@@ -2,7 +2,7 @@
  * Deployed — a card knows where it is, a deployment knows what it carries.
  *
  * Two facts nobody had joined: Dokploy keeps the FULL commit message of the
- * head it built (with every `Plan: MDLA-3` line in it), and GitHub knows
+ * head it built (with every `Plan: MDUS-3` line in it), and GitHub knows
  * whether one commit sits inside another. Put together they answer, without
  * anybody typing a word, the question a card could never answer about
  * itself: "is this on dev yet — is it on production?"
@@ -204,6 +204,7 @@ export async function gatherDeployed({
   environments = [],
   cards = [],
   evidence = new Map(),
+  keyAliases = {},
   fetchImpl = fetch,
   cache = SHARED,
   budget = BUDGET,
@@ -244,7 +245,7 @@ export async function gatherDeployed({
 
   for (const { environment, live } of lanes) {
     const lane = environment.id;
-    const named = (live.carries ?? []).filter((key) => known.has(key));
+    const named = [...new Set((live.carries ?? []).map(key => key.replace(/^([A-Z]{2,8})-/, (_, prefix) => `${keyAliases[prefix] ?? prefix}-`)))].filter((key) => known.has(key));
     const entry = { sha: null, at: live.finishedAt ?? live.at ?? null, cards: [...named] };
     deployed[lane] = entry;
     for (const key of named) if (perCard.has(key)) perCard.get(key)[lane] = true;

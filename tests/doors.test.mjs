@@ -96,7 +96,7 @@ test('create a card, find it, move it — with a chronicle', async (t) => {
  *
  * This laid `touches`, and `touches` means "these two cards name the same
  * FILE": it is the reason for the warning at `start`. So sixteen links on the
- * live board claimed a file collision because somebody had written "MDLA-14"
+ * live board claimed a file collision because somebody had written "MDUS-14"
  * in a sentence, and a warning that is usually wrong is a warning nobody
  * reads.
  */
@@ -112,7 +112,7 @@ test('a mention is a neighbourhood, not a dependency', async (t) => {
   assert.equal(laid?.kind, 'mentions');
   assert.equal(laid?.source, 'rule');
   assert.equal(fetched.body.links.filter((f) => f.kind === 'touches').length, 0, 'no collision is claimed');
-  // Measured on 2026-09-09: "part of MDLA-1" in the text made the card
+  // Measured on 2026-09-09: "part of MDUS-1" in the text made the card
   // blocked although the order was exactly the other way round. A name in a
   // text says nothing about who waits on whom.
   assert.deepEqual(fetched.body.blockedBy, [], 'a mention blocks nothing');
@@ -625,7 +625,7 @@ test('every path the MCP server calls is a route the API has', async () => {
   // fetch that answers `{}` to everything — and the failure showed up in a
   // test six hundred lines away that had never heard of MCP.
   const asked = [];
-  const sample = { card: 'MDLA-1', from: 'MDLA-1', to: 'MDLA-2', kind: 'needs', state: 'ready', title: 'x', root: 'MDLA-3' };
+  const sample = { card: 'MDUS-1', from: 'MDUS-1', to: 'MDUS-2', kind: 'needs', state: 'ready', title: 'x', root: 'MDUS-3' };
   const fetched = globalThis.fetch;
   try {
     for (const tool of TOOLS) {

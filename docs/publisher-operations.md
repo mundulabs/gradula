@@ -8,7 +8,7 @@ revision context. Existing card history was preserved.
 ## The active projects
 
 Gradula is `GRD`, repository `mundulabs/gradula`. The native product **Mundus** is
-`MDLA`, repository `mundulabs/mundus`. `MOLD` / `mundulabs/mundula` is the legacy
+`MDUS`, repository `mundulabs/mundus`. `MOLD` / `mundulabs/mundula` is the legacy
 JavaScript/Expo project, not Mundus. An initial rollout probe mistakenly targeted
 that legacy checkout and published one snapshot there; it did not alter source
 or history. No ongoing publisher should target it as a substitute for Mundus.

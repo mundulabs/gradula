@@ -2,7 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 const token = process.env.LOCAL_KEY ?? '';
-const project = process.env.LOCAL_PROJECT ?? 'MDLA';
+const project = process.env.LOCAL_PROJECT ?? 'MDUS';
 
 /** Local viewing only: stands in for the sign-in the board asks for. */
 const asPerson = {

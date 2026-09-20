@@ -95,7 +95,7 @@ const HELP = `gradula — wish, board, standing
   gradula codegraph <file.json>    publish a project-generated code graph snapshot
   gradula vocabulary [push]        read this repo's modules (and send them)
   gradula hook [off]               evidence lands on every commit, by itself
-  gradula login [--project MDLA]   register THIS machine — the board mints two keys (yours, and
+  gradula login [--project MDUS]   register THIS machine — the board mints two keys (yours, and
                                  one for the AI sessions here), no copy-paste
   gradula project [--alias "david=David Bläsing"] [--language de|en] [--integration direct|pr]
   gradula key <name>               mint a named service key with your own key (shown once; the owner is you)
@@ -176,7 +176,7 @@ const onBoard = (key) => `${base}/${key}`;
 const ladderStyle = CARD_STYLE;
 const dot = (item) => {
   // The ladder instead of one mark: five rungs say where a card stands, and
-  // a session can copy them beside a link — "[MDLA-71](…) ■■▩□□".
+  // a session can copy them beside a link — "[MDUS-71](…) ■■▩□□".
   const mark = ladderOf(item.state, ladderStyle);
   // Module and stack are TWO AXES and must not go into one bracket. Measured
   // on 09.09.: because both stood together I took `infra` for a module and
@@ -740,7 +740,7 @@ switch (command) {
   /**
    * The way back: what stands in the history becomes evidence on the card.
    *
-   * The bracket is the line `Plan: MDLA-142` in the commit message — it is
+   * The bracket is the line `Plan: MDUS-142` in the commit message — it is
    * the only thing a commit can say about a card without somebody keeping a
    * second list. Gradula does not take the same evidence twice.
    */
@@ -756,8 +756,8 @@ switch (command) {
       stop(`No history to read: ${String(cause.stderr ?? cause.message).trim().split('\n').pop()}`);
     }
 
-    // The branch already knows the card. `gradula start MDLA-3 --tree` creates
-    // `plan/MDLA-3` — whoever works on it should not have to type the line as
+    // The branch already knows the card. `gradula start MDUS-3 --tree` creates
+    // `plan/MDUS-3` — whoever works on it should not have to type the line as
     // well. Only this one form counts; guessing from arbitrary branch names is
     // the path on which evidence lands on the wrong card.
     let onBranch = null;
@@ -804,8 +804,8 @@ switch (command) {
     }
 
     if (!found.size) {
-      console.log('No commit names a card. The line reads:  Plan: MDLA-142');
-      console.log('Or work on a branch that gradula start --tree created (codex/MDLA-142).');
+      console.log('No commit names a card. The line reads:  Plan: MDUS-142');
+      console.log('Or work on a branch that gradula start --tree created (codex/MDUS-142).');
       break;
     }
     if (onBranch) console.log(`On the task branch for ${onBranch} — commits without a Plan line count for ${onBranch}.\n`);
@@ -1509,7 +1509,7 @@ switch (command) {
    * it sets — and the fields it does not name it carries over, so
    * `gradula sentry --environments prod,dev` is a whole sentence on its own.
    * The environments are the line that matters: a crash from a developer's
-   * own dev build on his own phone was an incident card in Ready (MDLA-79)
+   * own dev build on his own phone was an incident card in Ready (MDUS-79)
    * until the connection could say which environments count.
    */
   case 'sentry': {
@@ -1634,7 +1634,7 @@ switch (command) {
       project = await fetch(`${base}/api/v1/project`, { headers: { Authorization: `Bearer ${env.GRADULA_TOKEN}` } })
         .then((r) => (r.ok ? r.json() : null)).then((p) => p?.key ?? null).catch(() => null);
     }
-    if (!project) stop('Which project? gradula login --project MDLA');
+    if (!project) stop('Which project? gradula login --project MDUS');
 
     const raw = async (path, init = {}) => {
       const res = await fetch(`${base}${path}`, { ...init, headers: { ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers } });

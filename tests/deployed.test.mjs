@@ -53,10 +53,10 @@ const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const OLD = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 
 test('the description names the cards it carries: one Plan line each, once, in order', () => {
-  assert.deepEqual(carriesOf('Ship it\n\nPlan: MDLA-3\nsome words\nPlan: MDLA-12\nPlan: MDLA-3\n'), ['MDLA-3', 'MDLA-12']);
+  assert.deepEqual(carriesOf('Ship it\n\nPlan: MDUS-3\nsome words\nPlan: MDUS-12\nPlan: MDUS-3\n'), ['MDUS-3', 'MDUS-12']);
   assert.deepEqual(carriesOf('Ship it\n\n  Plan: GRD-7  \n'), ['GRD-7'], 'whitespace around the line is nothing');
-  assert.deepEqual(carriesOf('Plan: MDLA-3 and more'), [], 'the line is the key and nothing else — the bracket gradula sync reads');
-  assert.deepEqual(carriesOf('Plan:MDLA-3'), ['MDLA-3']);
+  assert.deepEqual(carriesOf('Plan: MDUS-3 and more'), [], 'the line is the key and nothing else — the bracket gradula sync reads');
+  assert.deepEqual(carriesOf('Plan:MDUS-3'), ['MDUS-3']);
   assert.deepEqual(carriesOf(null), []);
   assert.deepEqual(carriesOf('nothing named'), []);
 });
@@ -125,7 +125,7 @@ test('the chronicle folds to evidence per card and to where a card was seen', ()
     { verb: 'deployed', data: { environment: 'staging', sha: 'b', at: '2026-09-10T12:00:00Z' } },
   ]), { development: true, production: false, at: { development: '2026-09-10T12:00:00Z', production: null } }, 'the last note per lane; a lane the board does not have is nobody\'s');
 
-  assert.equal(foreignIdOf('production', 'MDLA-3', HEAD), `dokploy:production:MDLA-3:${HEAD}`);
+  assert.equal(foreignIdOf('production', 'MDUS-3', HEAD), `dokploy:production:MDUS-3:${HEAD}`);
 
   const now = new Date('2026-09-10T10:00:00Z').getTime();
   const picked = candidatesOf([

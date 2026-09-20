@@ -53,7 +53,7 @@ export const TARGETS_FREE = ['note', 'document', 'preview'];
  *   mentions        this card's text NAMES that one. Neither an order nor a
  *                   collision — and it used to be laid as `touches`, which
  *                   meant sixteen links on the live board claimed a file
- *                   collision where somebody had merely written "MDLA-14" in a
+ *                   collision where somebody had merely written "MDUS-14" in a
  *                   sentence. A warning that is usually wrong is a warning
  *                   nobody reads.
  */
@@ -170,7 +170,7 @@ export const bornIn = (kind) => (kind === 'idea' ? 'ideas' : 'ready');
  * THE LADDER, AS FIVE MARKS. Where a card stands, readable in a sentence:
  * `■▩□□□` — the rungs behind it filled, the one it is on hatched, the rest
  * empty. Ice is not a rung, so it draws none. The CLI prints it and the MCP
- * server sends it along, so that a session writing "built (MDLA-71)" can put
+ * server sends it along, so that a session writing "built (MDUS-71)" can put
  * the standing beside the link without asking a second time.
  */
 /*

@@ -165,7 +165,7 @@ gradula report [--plain] [--period "…"] [--milestone GRD-43] [--send]
 gradula chats                    which channels the heralds can see
 gradula vocabulary [push]        read this repo's modules (and send them)
 gradula hook [off]               evidence lands on every commit, by itself
-gradula login [--project MDLA]   register this machine — the board mints the key
+gradula login [--project MDUS]   register this machine — the board mints the key
 gradula project [--alias "david=David Bläsing"] [--language de|en]
 ```
 
@@ -205,7 +205,7 @@ last sighting come from Sentry. Two ways in: the hook (`POST
 
 **Which environments become cards.** The apps tag every event with an
 environment (`prod`, `dev`, `local`), and a crash from a developer's own dev
-build on their own phone is real without being the board's business (MDLA-79
+build on their own phone is real without being the board's business (MDUS-79
 was one — a WatchdogTermination from `dev`, five times, in Ready). So an issue
 becomes a card only when its environment is in the connection's
 `environments` — `production` and `prod` unless the connection says otherwise:
@@ -220,7 +220,7 @@ than a card you have to close. An issue from an environment that is not
 watched becomes no card and moves nothing; if a card for it already exists it
 gets one `seen` line (see the table above), so the chronicle shows it keeps
 happening. The pull asks Sentry for the watched environments only (all of them
-with `all`). Cards that already exist are untouched by the setting: MDLA-79
+with `all`). Cards that already exist are untouched by the setting: MDUS-79
 stays until a hand decides.
 
 `gradula show KEY` prints `deployed: dev 10:41 · production —` from those notes,
