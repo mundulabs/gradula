@@ -292,6 +292,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return { ...project, from: actor };
     },
 
+    async listProjects() {
+      return Promise.all((await store.projects.list()).map(async project => ({...project, aliases:await store.projects.aliases(project.key)})));
+    },
+
     async getProject(key) {
       const canonical = await store.projects.resolve(String(key ?? '').toUpperCase());
       const project = canonical ? await store.projects.get(canonical) : null;
@@ -571,6 +575,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const moved = await store.projects.rekey(project.key, wanted, actor);
       if (!moved) throw new Refusal(409, 'not-moved', 'The key could not be changed.');
       systemHeld.delete(project.key);
+      live?.disconnect?.(project.key);
       return moved;
     },
 
@@ -690,7 +695,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
 
     async listReleases(projectKey) {
       const project = await this.getProject(projectKey);
-      return (await store.releases.list(project.key)).sort((a, b) => String(b.at).localeCompare(String(a.at)));
+      const aliases = new Set(await store.projects.aliases(project.key));
+      const canonical = key => String(key).replace(/^([A-Z]{2,8})-/, (_, prefix) => `${aliases.has(prefix) ? project.key : prefix}-`);
+      return (await store.releases.list(project.key)).map(release => ({...release, cards:(release.cards ?? []).map(canonical)}))
+        .sort((a, b) => String(b.at).localeCompare(String(a.at)));
     },
 
     async listHeralds(projectKey) {

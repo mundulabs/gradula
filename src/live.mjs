@@ -90,6 +90,11 @@ export function createLive({ onPresence = null } = {}) {
       return here.size;
     },
 
+    /** End old subscriptions so EventSource reconnects through canonical authorization. */
+    disconnect(projectKey) {
+      for (const res of [...(listeners.get(projectKey) ?? [])]) res.end();
+    },
+
     /** The projects somebody is listening to right now. */
     projects() { return [...listeners.keys()]; },
 

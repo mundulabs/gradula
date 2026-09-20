@@ -135,6 +135,9 @@ export function createMemoryStore() {
         for (const map of [vocab, sentry, dokploy, github, eas]) {
           if (map.has(oldKey)) { map.set(newKey, map.get(oldKey)); map.delete(oldKey); }
         }
+        for (const [id, release] of [...releases]) if (release.project === oldKey) {
+          releases.delete(id); releases.set(`${newKey}:${release.id}`, release);
+        }
         for (const map of [tokens, heralds, releases, devices]) {
           for (const value of map.values()) if (value.project === oldKey) value.project = newKey;
         }

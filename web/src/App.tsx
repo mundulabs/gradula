@@ -1270,7 +1270,17 @@ export default function App() {
       .then((who) => { setMe(who); setSignedIn(true); return readProjects(); })
       .then((list) => {
         setProjects(list);
-        setProject((now) => { const wanted = openKey?.split('-')[0] ?? now; return list.some((p) => p.key === wanted) ? wanted : list[0]?.key ?? ''; });
+        const resolveProject = (key: string) => list.find(p => p.key === key || p.aliases?.includes(key))?.key;
+        setProject((now) => resolveProject(openKey?.split('-')[0] ?? now) ?? list[0]?.key ?? '');
+        if (openKey) {
+          const canonical = resolveProject(openKey.split('-')[0]);
+          if (canonical) {
+            const key = `${canonical}-${openKey.split('-')[1]}`;
+            setOpenKey(key);
+            const url = new URL(window.location.href); url.pathname = cardHref(key); url.searchParams.delete('card');
+            window.history.replaceState({card:key}, '', url);
+          }
+        }
       })
       .catch((e) => (e instanceof NotSignedIn ? setSignedIn(false) : setError(String(e.message ?? e))));
   }, []);

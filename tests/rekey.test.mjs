@@ -29,8 +29,13 @@ for (const [name, build] of builds) test(`${name}: rekey preserves active work, 
   await store.dokploy.set('OLD',{base:'https://deploy.test',token:'private',composeId:'native'});
   const device = await store.devices.open({project:'OLD',machine:'dev'});
   await store.codegraphs.set('OLD',{digest:'same',revision:'a'.repeat(40),dirty:false,actor:'owner',importedAt:new Date().toISOString(),repository:'owner/native',nodes:[],edges:[]});
+  await store.releases.add('OLD',{id:'release:one',lane:'web',at:new Date().toISOString(),cards:['OLD-1']});
   const renamed = await g.rekeyProject('OLD','NEW','owner');
   assert.equal(renamed.key,'NEW');
+  assert.deepEqual((await g.listProjects()).find(p=>p.key==='NEW').aliases,['OLD']);
+  assert.deepEqual((await g.listReleases('NEW'))[0].cards,['NEW-1']);
+  await store.releases.add('NEW',{id:'release:one',lane:'web',at:new Date().toISOString(),cards:['NEW-1']});
+  assert.equal((await store.releases.list('NEW')).length,1);
   const after = await g.getItem('OLD-1');
   assert.equal(after.id,card.id); assert.equal(after.key,'NEW-1');
   assert.equal(after.title,'Follow NEW-2'); assert.equal(after.text,'See NEW-2 and XOLD-2.');
@@ -78,4 +83,15 @@ test('a deployment naming an old Plan key still carries the renamed card',async(
     cards:[{key:'NEW-1',state:'making'}],keyAliases:{OLD:'NEW'},
   });
   assert.deepEqual(result.deployed.production.cards,['NEW-1']);
+});
+
+test('renaming reconnects the old live audience without changing another project',async()=>{
+ const {EventEmitter}=await import('node:events');
+ const {createLive}=await import('../src/live.mjs');
+ const live=createLive();
+ const response=()=>{const res=new EventEmitter();res.write=()=>{};res.end=()=>res.emit('close');return res;};
+ live.join('OLD',response());const other=response();live.join('OTHER',other);
+ const g=createGradula(createMemoryStore(),{live});await g.createProject({key:'OLD',name:'Old'});
+ await g.rekeyProject('OLD','NEW','owner');
+ assert.deepEqual(live.projects(),['OTHER']);other.end();assert.equal(live.count(),0);
 });
