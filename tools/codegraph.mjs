@@ -1,69 +1,83 @@
-/** This project's local publisher. Code is parsed with the existing TypeScript compiler. */
-import ts from 'typescript';
+/** Local publisher; source scanning never runs inside the Gradula service. */
 import {readFileSync, lstatSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
-import {posix, join} from 'node:path';
-import {normalizeGraph} from '../src/codegraph.mjs';
+import {join, resolve} from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
+import {config, handOf} from '../src/hand.mjs';
+import {createIndexer, buildGraph} from './codegraph-index.mjs';
+export {buildGraph};
 
-const root = fileURLToPath(new URL('../', import.meta.url));
-const git = (...args) => execFileSync('git', args, {cwd:root, encoding:'utf8'}).trim();
-
-export function buildGraph(files, {repository, revision, dirty}) {
-  const nodes = [], edges = [];
-  const id = path => `file:${path}`;
-  const sourceLine = (source, offset) => source.slice(0, offset).split('\n').length;
-  const connect = (from, to, kind, path, line, reason) => edges.push({from,to,kind,confidence:'EXTRACTED',reason,source:{path,line}});
-  const resolveFile = (from, target) => {
-    if (!target.startsWith('.')) return null;
-    const base = posix.normalize(posix.join(posix.dirname(from), target));
-    return [base, `${base}.ts`, `${base}.tsx`, `${base}.mjs`, `${base}.js`, `${base}/index.ts`, `${base}/index.tsx`].find(path => files.has(path)) ?? null;
-  };
-  for (const [path, source] of [...files].sort(([a],[b])=>a.localeCompare(b))) {
-    const doc = path.endsWith('.md');
-    const firstComment = source.match(/^\s*\/\*\*([\s\S]*?)\*\//)?.[1]?.replace(/^\s*\* ?/gm, '').trim();
-    nodes.push({id:id(path), name:posix.basename(path), path, kind:doc?'document':'file', area:path.split('/')[0],
-      about:(doc ? source.replace(/^#+ /gm, '').replace(/\s+/g,' ') : firstComment || '').slice(0,600)});
-    if (doc) {
-      for (const match of source.matchAll(/\[[^\]]*\]\(([^\s)#]+)(?:#[^)]*)?\)|`([^`\n]+)`/g)) {
-        const target = match[1] ? resolveFile(path, match[1].startsWith('.')?match[1]:`./${match[1]}`) : files.has(match[2]) ? match[2] : null;
-        if (target) connect(id(path),id(target),'references',path,sourceLine(source,match.index),'Explicit document path reference');
-      }
-      continue;
-    }
-    const ast = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true);
-    if (ast.parseDiagnostics.length) throw new Error(`Cannot index invalid syntax in ${path}`);
-    const visit = node => {
-      const module = (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) ? node.moduleSpecifier
-        : ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || ts.isIdentifier(node.expression) && node.expression.text === 'require') ? node.arguments[0] : null;
-      if (module && ts.isStringLiteral(module)) {
-        const target = resolveFile(path,module.text);
-        if (target) connect(id(path),id(target),'imports',path,ast.getLineAndCharacterOfPosition(node.getStart(ast)).line+1,'Literal relative module reference in the syntax tree');
-      }
-      ts.forEachChild(node,visit);
-    };
-    visit(ast);
-    for (const statement of ast.statements) {
-      const declarations = ts.isVariableStatement(statement) ? statement.declarationList.declarations : [statement];
-      for (const declaration of declarations) {
-        if (!declaration.name || !ts.isIdentifier(declaration.name)) continue;
-        const name = declaration.name.text;
-        const symbol = `${id(path)}#${name}`;
-        if (nodes.some(n=>n.id===symbol)) continue;
-        nodes.push({id:symbol,name,path,line:ast.getLineAndCharacterOfPosition(declaration.getStart(ast)).line+1,kind:'symbol',area:path.split('/')[0],about:`Top-level declaration in ${path}`});
-        connect(id(path),symbol,'declares',path,ast.getLineAndCharacterOfPosition(declaration.getStart(ast)).line+1,'Top-level named declaration in the syntax tree');
-      }
+export function scanRepository(root, indexer = createIndexer()) {
+  const git = (...args) => execFileSync('git',args,{cwd:root,encoding:'utf8',maxBuffer:32_000_000}).trim();
+  const revision = git('rev-parse','HEAD');
+  const dirty = !!git('status','--porcelain');
+  const files = new Map();
+  if(!dirty) {
+    // Read immutable Git objects in one batch, never a mixture of working-tree edits.
+    const entries=git('ls-tree','-rz','--full-tree',revision).split('\0').filter(Boolean)
+      .map(row=>{const tab=row.indexOf('\t');const [mode,,sha]=row.slice(0,tab).split(' ');return {mode,sha,path:row.slice(tab+1)};})
+      .filter(e=>e.mode.startsWith('100') && /\.(?:mjs|cjs|[jt]sx?|md)$/.test(e.path));
+    const output=execFileSync('git',['cat-file','--batch'],{cwd:root,input:entries.map(e=>e.sha).join('\n')+'\n',maxBuffer:128_000_000});
+    let offset=0;
+    for(const entry of entries){const end=output.indexOf(10,offset),header=output.subarray(offset,end).toString().split(' '),size=Number(header[2]);if(header[1]!=='blob'||!Number.isSafeInteger(size))throw new Error('Invalid Git blob');offset=end+1;files.set(entry.path,output.subarray(offset,offset+size).toString('utf8'));offset+=size+1;}
+  } else {
+    const tracked = git('ls-files','-z').split('\0').filter(path=>/\.(?:mjs|cjs|[jt]sx?|md)$/.test(path));
+    for (const path of tracked) {
+      const file = join(root,path), stat = lstatSync(file);
+      if (stat.isFile()) files.set(path,readFileSync(file,'utf8'));
     }
   }
-  return normalizeGraph({schema:'gradula.codegraph.v1',repository,revision,dirty,nodes,edges},repository);
+  const remote = git('remote','get-url','origin');
+  const repository = remote.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
+  if (!repository) throw new Error('Expected a GitHub origin in owner/repository form');
+  const result = indexer.build(files,{repository,revision,dirty});
+  if (git('rev-parse','HEAD') !== revision) throw new Error('HEAD changed during indexing; retry the scan');
+  // Detect edits made while reading. Never label a mixed scan as a clean revision.
+  if (!dirty && git('status','--porcelain')) throw new Error('Checkout changed during indexing; retry the scan');
+  return result;
+}
+
+export async function publishGraph(graph, {env=config(), fetchImpl=fetch}={}) {
+  if (graph.dirty) throw new Error('Only a clean committed checkout may be published');
+  const {token}=handOf(env,{machine:true});
+  if (!token || !env.GRADULA_URL) throw new Error('GRADULA_URL and a project token are required');
+  const base=env.GRADULA_URL.replace(/\/+$/,'');
+  const headers={Authorization:`Bearer ${token}`,'Content-Type':'application/json'};
+  const probe=await fetchImpl(`${base}/api/v1/context?q=publisher-capabilities`,{headers,signal:AbortSignal.timeout(10000)});
+  const capabilities=await probe.json();
+  if (!probe.ok || capabilities.capabilities?.version!==2) throw new Error('Upgrade the server to context version 2 before publishing');
+  const response=await fetchImpl(`${base}/api/v1/codegraph`,{method:'PUT',headers,body:JSON.stringify(graph),signal:AbortSignal.timeout(30000)});
+  const saved=await response.json();
+  if (!response.ok) throw new Error(`Graph publish failed: ${saved.error ?? response.status}`);
+  if (saved.revision!==graph.revision || saved.digest!==graph.digest) throw new Error('Server did not preserve the graph revision/digest; upgrade the server before publishing');
+  return saved;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  // Only tracked code/docs in THIS repository, never env files, lockfiles or another checkout.
-  const tracked = git('ls-files','-z').split('\0').filter(path => /\.(?:mjs|[jt]sx?|md)$/.test(path));
-  const files = new Map(tracked.filter(path=>lstatSync(join(root,path)).isFile()).map(path=>[path,readFileSync(join(root,path),'utf8')]));
-  const pkg = JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
-  const repository = pkg.repository.url.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
-  const graph = buildGraph(files,{repository,revision:git('rev-parse','HEAD'),dirty:!!git('status','--porcelain')});
-  process.stdout.write(`${JSON.stringify(graph)}\n`);
+  const args=process.argv.slice(2), watch=args.includes('--watch'), publish=args.includes('--publish');
+  const value=name=>args.includes(name)?args[args.indexOf(name)+1]:null;
+  const root=resolve(value('--root') ?? fileURLToPath(new URL('../',import.meta.url)));
+  const interval=Number(value('--interval') ?? 5000);
+  if (!Number.isSafeInteger(interval) || interval<1000 || interval>300000) throw new Error('Interval must be 1000–300000 ms');
+  const indexer=createIndexer(),controller=new AbortController(); let lastDigest=null, stopped=false, lastError=null;
+  const stop=()=>{stopped=true;controller.abort();};
+  process.once('SIGINT',stop);process.once('SIGTERM',stop);
+  do {
+    try {
+      const {graph,stats}=scanRepository(root,indexer);
+      if (graph.digest!==lastDigest) {
+        if (publish) await publishGraph(graph,{env:config(root)});
+        else if (!watch) process.stdout.write(`${JSON.stringify(graph)}\n`);
+        process.stderr.write(`${JSON.stringify({revision:graph.revision,dirty:graph.dirty,nodes:graph.nodes.length,edges:graph.edges.length,...stats,published:publish})}\n`);
+        lastDigest=graph.digest;
+      }
+      lastError=null;
+    } catch(error) {
+      if (error.message!==lastError) process.stderr.write(`${error.message}\n`);
+      lastError=error.message;
+      if (!watch) process.exitCode=1;
+    }
+    if (watch && !stopped) await delay(interval,null,{signal:controller.signal}).catch(error=>{if(error.name!=='AbortError')throw error;});
+  } while (watch && !stopped);
 }

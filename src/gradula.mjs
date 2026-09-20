@@ -19,6 +19,8 @@
 
 import { normalizeGraph } from './codegraph.mjs';
 import { contextOptions, retrieveContext, graphFreshness } from './context.mjs';
+import { attachKnowledge, pathsOverlap } from './knowledge.mjs';
+import { tokens as queryTokens } from './retrieval.mjs';
 import { randomUUID } from 'node:crypto';
 import { plannedPaths, activeReservation, workWarnings } from './reservations.mjs';
 import { labelsFor, mergeLabels, normalizeVocabulary, areaOf } from './labels.mjs';
@@ -297,9 +299,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */
-    async getCodegraph(projectKey) {
+    async getCodegraph(projectKey, revision = null) {
       const project = await this.getProject(projectKey);
-      const graph = await store.codegraphs.get(project.key);
+      if (revision && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) throw bad('revision','Expected a full source SHA');
+      const graph = (revision ? await store.codegraphs.get(project.key,revision) : null) ?? await store.codegraphs.get(project.key);
       return graph?.repository === project.repo ? graph : null;
     },
     async getContext(projectKey, input) {
@@ -308,8 +311,27 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       try { options = contextOptions(input); } catch (error) { throw bad('context', error.message); }
       // The card is in a query parameter, so the router's path guard cannot help.
       if (options.card && !options.card.startsWith(`${project.key}-`)) throw missing('That card does not exist.');
-      const card = options.card ? await this.getItem(options.card) : null;
-      return retrieveContext(await this.getCodegraph(project.key), card, options);
+      const graph=await this.getCodegraph(project.key,options.revision);
+      if(options.detail==='paths' && !options.card)return retrieveContext(graph,null,options);
+      const cards = await store.items.list(project.key,{limit:500});
+      const links=await store.links.list(project.key);
+      const card = options.card ? await findItem(options.card) : null;
+      if (card && card.project!==project.key) throw missing('That card does not exist.');
+      if (card) {
+        const blocked=blockedBy(links,cards).get(card.id) ?? [];
+        card.blockedBy=blocked.map(id=>cards.find(c=>c.id===id)?.key).filter(Boolean);
+        card.blockedByIncomplete=cards.length===500;
+      }
+      if(options.detail==='paths')return retrieveContext(graph,card,options);
+      const result=retrieveContext(graph,card,{...options,maxBytes:options.maxBytes-1400});
+      const paths=[...options.files,...result.nodes.map(n=>n.path).filter(Boolean)];
+      const terms=queryTokens(options.q);
+      const linkedIds=new Set(card ? links.filter(l=>l.from===card.id || l.to===card.id).flatMap(l=>[l.from,l.to]) : []);
+      const related=cards.filter(c=>c.key!==card?.key && (linkedIds.has(c.id) || (c.files ?? []).some(path=>paths.some(p=>pathsOverlap(path,p))) || terms.length && terms.some(term=>queryTokens(c.title).includes(term))))
+        .sort((a,b)=>Number(linkedIds.has(b.id))-Number(linkedIds.has(a.id)) || Number(b.kind==='decision')-Number(a.kind==='decision') || a.key.localeCompare(b.key)).slice(0,3);
+      if(card)related.unshift(card);
+      const histories=new Map(await Promise.all(related.map(async c=>[c.key,await store.events.of(c.id,{limit:12,verbs:['evidenced','decided','deployed']})])));
+      return attachKnowledge(result,related,histories,{maxBytes:options.maxBytes,scanned:cards.length,capped:cards.length===500,links});
     },
     async putCodegraph(projectKey, input, actor) {
       const project = await this.getProject(projectKey);

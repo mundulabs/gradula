@@ -1,0 +1,30 @@
+name: Publish source graph
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: codegraph-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GRADULA_URL: ${{ vars.GRADULA_URL }}
+      GRADULA_AGENT_TOKEN: ${{ secrets.GRADULA_GRAPH_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Publish this clean revision
+        if: env.GRADULA_URL != '' && env.GRADULA_AGENT_TOKEN != ''
+        run: node tools/codegraph.mjs --publish
+      - name: Report missing publishing configuration
+        if: env.GRADULA_URL == '' || env.GRADULA_AGENT_TOKEN == ''
+        run: echo '::warning::Graph not published. Configure GRADULA_URL and GRADULA_GRAPH_TOKEN after deploying context v2.'

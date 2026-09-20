@@ -17,7 +17,9 @@
     "test": "node --test tests/*.test.mjs",
     "mcp": "node mcp/server.mjs",
     "docs:check": "node tools/docs-check.mjs",
-    "codegraph:build": "node tools/codegraph.mjs"
+    "codegraph:build": "node tools/codegraph.mjs",
+    "codegraph:watch": "node tools/codegraph.mjs --watch --publish",
+    "codegraph:eval": "node tools/codegraph-eval.mjs"
   },
   "dependencies": {
     "@sentry/node": "^10.73.0",
@@ -30,6 +32,7 @@
   },
   "homepage": "https://grad.mundula.app",
   "devDependencies": {
+    "js-tiktoken": "1.0.21",
     "typescript": "5.9.3"
   }
 }

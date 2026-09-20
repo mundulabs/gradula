@@ -326,7 +326,7 @@ export const integrationPolicy = (project: string) => call<{integration: Integra
 export const saveIntegrationPolicy = (project: string, integration: Integration) => call<{integration: Integration}>(`/api/v1/project?project=${project}`, {method:'PATCH',body:JSON.stringify({integration})});
 
 export type CodeGraph = {
-  repository: string; digest: string; importedAt: string;
+  repository: string; digest: string; importedAt: string; revision?:string|null; dirty?:boolean|null;
   nodes: {id:string;name:string;path:string|null;kind:string;area:string;about:string}[];
   edges: {from:string;to:string;kind:string;confidence:'EXTRACTED'|'INFERRED';reason:string;source:{path:string;line?:number}|null}[];
 };

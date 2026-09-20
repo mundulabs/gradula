@@ -21,6 +21,7 @@
  */
 
 import { sessionKeyName } from './spec.mjs';
+import { GRAPH_LIMITS } from './codegraph.mjs';
 import { LIVE_HEADERS } from './live.mjs';
 import { Refusal } from './gradula.mjs';
 import { signatureOk } from './sentry.mjs';
@@ -269,12 +270,16 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       return { status: 200, body: await gradula.patchProject(ctx.project, { people: body.people, language: body.language, publish: body.publish, ladder: body.ladder, manualAcceptance: body.manualAcceptance, integration: body.integration }, ctx.actor) };
     }],
 
-    ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, 2_000_000), ctx.actor) })],
-    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project) })],
+    ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, GRAPH_LIMITS.bytes), ctx.actor) })],
+    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project,ctx.url.searchParams.get('revision')) })],
     ['GET', /^\/api\/v1\/context$/, async (_req, _m, ctx) => {
       const q = ctx.url.searchParams;
       return {status:200, body:await gradula.getContext(ctx.project, {
         q:q.get('q') ?? '', card:q.get('card'), files:q.getAll('file'), revision:q.get('revision'),
+        mode:q.get('mode') ?? undefined, detail:q.get('detail') ?? undefined, from:q.get('from') ?? undefined, to:q.get('to') ?? undefined,
+        depth:q.has('depth') ? Number(q.get('depth')) : undefined,
+        includeInferred:q.has('includeInferred') ? q.get('includeInferred')==='true' ? true : q.get('includeInferred')==='false' ? false : 'invalid' : undefined,
+        localDirty:q.has('localDirty') ? q.get('localDirty')==='true' ? true : q.get('localDirty')==='false' ? false : 'invalid' : undefined,
         limit:q.has('limit') ? Number(q.get('limit')) : undefined,
         maxBytes:q.has('maxBytes') ? Number(q.get('maxBytes')) : undefined,
       })};

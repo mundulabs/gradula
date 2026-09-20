@@ -36,7 +36,8 @@ const HELP = `gradula — wish, board, standing
   gradula show <CARD>
   gradula brief <CARD>             compact handoff for a chat: goal, state, gate, next move
   gradula context [query] [--card CARD] [--files path,path] [--limit 8] [--max-bytes 8000]
-                                  bounded file/document lookup; compares local HEAD when available
+                                  --mode search|explain|impact|path [--from node] [--to node] [--depth 2]
+                                  bounded source/evidence lookup; compares local HEAD when available
   gradula resume <CARD>            brief plus local workspace risk and recent evidence
   gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
   gradula approve <CARD>           the review says yes — done, with a reason
@@ -520,12 +521,15 @@ switch (command) {
     const query = new URLSearchParams();
     if (words.length) query.set('q', words.join(' '));
     if (flags.card) query.set('card', String(flags.card).toUpperCase());
+    for(const name of ['mode','detail','from','to','depth']) if(flags[name]!=null)query.set(name,String(flags[name]));
+    if(flags['include-inferred']!=null)query.set('includeInferred',String(flags['include-inferred']));
     for (const file of String(flags.files ?? '').split(',').filter(Boolean)) query.append('file', file);
     if (flags.limit != null) query.set('limit', String(flags.limit));
     if (flags['max-bytes'] != null) query.set('maxBytes', String(flags['max-bytes']));
     let revision = flags.revision;
     if (!revision) { try { revision = execFileSync('git', ['rev-parse', 'HEAD'], {encoding:'utf8', stdio:['ignore','pipe','ignore']}).trim(); } catch { /* no checkout */ } }
     if (revision) query.set('revision', String(revision));
+    try {query.set('localDirty',String(Boolean(execFileSync('git',['status','--porcelain'],{encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim())));} catch { /* no checkout */ }
     console.log(JSON.stringify(await call(`/api/v1/context?${query}`)));
     break;
   }

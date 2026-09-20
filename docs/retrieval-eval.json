@@ -1,0 +1,1167 @@
+{
+  "schema": "gradula.retrieval-eval.v1",
+  "revision": "607f19969531d07757351640464ce363437212b5",
+  "workingTree": true,
+  "graphDigest": "02c3abcdf6fc3275c0d7b1c27297eeb96b43a2e4ab03c03610c282882ff1e946",
+  "tokenizer": "cl100k_base",
+  "dataset": "Thirty repository-navigation questions with manually identified source files. Development set, not held-out coding tasks.",
+  "method": "Same tracked corpus; benchmark/audit leakage excluded. Both return at most 8 nodes/files and 8000 UTF-8 bytes. rg uses query-token file matches ranked by distinct terms, with two matching lines per file. Different payload contents: graph includes relationships/provenance. No LLM answer or end-to-end coding accuracy measured.",
+  "index": {
+    "nodes": 1267,
+    "edges": 4528,
+    "coldMs": 574.04,
+    "warmMs": 265.65,
+    "warmParsed": 0,
+    "warmReused": 102,
+    "fullGraphTokens": 465533
+  },
+  "summary": {
+    "queries": 30,
+    "graph": {
+      "recallAt8": 0.933,
+      "meanTokens": 377.6,
+      "meanMs": 1.291
+    },
+    "rg": {
+      "recallAt8": 0.833,
+      "meanTokens": 405.833,
+      "meanMs": 33.82
+    }
+  },
+  "cases": [
+    {
+      "id": 1,
+      "query": "Authentication and sign in",
+      "expected": [
+        "src/auth.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/auth.mjs",
+          "web/src/api.ts",
+          "src/server.mjs",
+          "src/hand.mjs",
+          "tests/auth.test.mjs",
+          "web/vite.config.ts",
+          "src/api.mjs",
+          "README.md"
+        ],
+        "tokens": 393,
+        "bytes": 1321,
+        "ms": 19.17
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/retrieval.mjs",
+          "tests/doors.test.mjs",
+          "AGENTS.md",
+          "bin/gradula.mjs",
+          "src/api.mjs",
+          "src/auth.mjs",
+          "src/dokploy.mjs"
+        ],
+        "tokens": 358,
+        "bytes": 1331,
+        "ms": 24.08
+      }
+    },
+    {
+      "id": 2,
+      "query": "Read the project environment credentials",
+      "expected": [
+        "src/hand.mjs"
+      ],
+      "graph": {
+        "recall": 0,
+        "paths": [
+          "src/sentry.mjs",
+          "src/dokploy.mjs",
+          "src/eas.mjs",
+          "src/telegram.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/system.mjs",
+          "src/store.mjs"
+        ],
+        "tokens": 403,
+        "bytes": 1344,
+        "ms": 1.34
+      },
+      "rg": {
+        "recall": 0,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/dokploy.mjs",
+          "tests/doors.test.mjs",
+          "src/auth.mjs",
+          "src/deployed.mjs",
+          "src/eas.mjs"
+        ],
+        "tokens": 376,
+        "bytes": 1406,
+        "ms": 38.03
+      }
+    },
+    {
+      "id": 3,
+      "query": "Detect the active coding assistant",
+      "expected": [
+        "src/hand.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/reservations.mjs",
+          "README.md",
+          "src/hand.mjs",
+          "CLAUDE.md",
+          "AGENTS.md",
+          "src/spec.mjs",
+          "web/src/vocabulary.ts",
+          "mcp/server.mjs"
+        ],
+        "tokens": 404,
+        "bytes": 1366,
+        "ms": 2.01
+      },
+      "rg": {
+        "recall": 0,
+        "paths": [
+          "README.md",
+          "bin/gradula.mjs",
+          "src/retrieval.mjs",
+          "tools/codegraph.mjs",
+          "AGENTS.md",
+          "mcp/server.mjs",
+          "src/gradula.mjs",
+          "src/heralds.mjs"
+        ],
+        "tokens": 479,
+        "bytes": 1885,
+        "ms": 38.82
+      }
+    },
+    {
+      "id": 4,
+      "query": "HTTP routes and request authorization",
+      "expected": [
+        "src/api.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/api.mjs",
+          "src/github.mjs",
+          "web/src/Dialog.tsx",
+          "src/auth.mjs",
+          "README.md",
+          "bin/gradula.mjs",
+          "mcp/server.mjs",
+          "src/sentry.mjs"
+        ],
+        "tokens": 399,
+        "bytes": 1322,
+        "ms": 0.82
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "mcp/server.mjs",
+          "README.md",
+          "src/api.mjs",
+          "tests/doors.test.mjs",
+          "AGENTS.md",
+          "bin/gradula.mjs",
+          "src/eas.mjs",
+          "src/github.mjs"
+        ],
+        "tokens": 369,
+        "bytes": 1201,
+        "ms": 36.55
+      }
+    },
+    {
+      "id": 5,
+      "query": "The in-memory store contract",
+      "expected": [
+        "src/store.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "tests/store.test.mjs",
+          "src/store.mjs",
+          "tests/acceptance.test.mjs",
+          "tests/codegraph.test.mjs",
+          "tests/reservations.test.mjs",
+          "src/store-pg.mjs",
+          "AGENTS.md",
+          "README.md"
+        ],
+        "tokens": 402,
+        "bytes": 1378,
+        "ms": 0.82
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "AGENTS.md",
+          "README.md",
+          "src/store-pg.mjs",
+          "src/store.mjs",
+          "tests/store.test.mjs",
+          "src/deployed.mjs",
+          "src/dokploy.mjs",
+          "src/eas.mjs"
+        ],
+        "tokens": 365,
+        "bytes": 1349,
+        "ms": 25.13
+      }
+    },
+    {
+      "id": 6,
+      "query": "Postgres migrations and database storage",
+      "expected": [
+        "src/store-pg.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "AGENTS.md",
+          "tests/migration.test.mjs",
+          "tests/store.test.mjs",
+          "src/store.mjs",
+          "src/store-pg.mjs",
+          "README.md",
+          "src/links.mjs",
+          "web/src/api.ts"
+        ],
+        "tokens": 394,
+        "bytes": 1322,
+        "ms": 0.58
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "AGENTS.md",
+          "src/labels.mjs",
+          "src/store-pg.mjs",
+          "README.md",
+          "src/links.mjs",
+          "src/store.mjs",
+          "tests/migration.test.mjs",
+          "tests/store.test.mjs"
+        ],
+        "tokens": 389,
+        "bytes": 1379,
+        "ms": 35.99
+      }
+    },
+    {
+      "id": 7,
+      "query": "Work reservations and overlapping files",
+      "expected": [
+        "src/reservations.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/reservations.mjs",
+          "src/work-session.mjs",
+          "tests/work-session.test.mjs",
+          "tests/reservations.test.mjs",
+          "AGENTS.md",
+          "web/src/App.tsx",
+          "src/gradula.mjs"
+        ],
+        "tokens": 418,
+        "bytes": 1457,
+        "ms": 0.64
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "AGENTS.md",
+          "bin/gradula.mjs",
+          "mcp/server.mjs",
+          "README.md",
+          "src/gradula.mjs",
+          "src/reservations.mjs",
+          "src/store-pg.mjs",
+          "tests/doors.test.mjs"
+        ],
+        "tokens": 409,
+        "bytes": 1629,
+        "ms": 37.05
+      }
+    },
+    {
+      "id": 8,
+      "query": "Schedule parallel work without conflicts",
+      "expected": [
+        "src/wave.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/wave.mjs",
+          "README.md",
+          "tests/schedule.test.mjs",
+          "src/eas.mjs",
+          "src/schedule.mjs",
+          "src/server.mjs",
+          "src/work-session.mjs",
+          "web/src/App.tsx"
+        ],
+        "tokens": 396,
+        "bytes": 1329,
+        "ms": 0.54
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/gradula.mjs",
+          "src/store-pg.mjs",
+          "src/wave.mjs",
+          "web/src/App.tsx",
+          "bin/gradula.mjs",
+          "src/server.mjs",
+          "tests/core.test.mjs"
+        ],
+        "tokens": 423,
+        "bytes": 1562,
+        "ms": 46.51
+      }
+    },
+    {
+      "id": 9,
+      "query": "Prevent dependency cycles",
+      "expected": [
+        "src/links.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/links.mjs",
+          "src/spec.mjs",
+          "src/pulse.mjs",
+          "README.md",
+          "tests/german.test.mjs",
+          "AGENTS.md"
+        ],
+        "tokens": 355,
+        "bytes": 1184,
+        "ms": 0.51
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/gradula.mjs",
+          "tests/doors.test.mjs",
+          "AGENTS.md",
+          "mcp/server.mjs",
+          "src/links.mjs",
+          "src/pulse.mjs",
+          "src/spec.mjs"
+        ],
+        "tokens": 438,
+        "bytes": 1881,
+        "ms": 26.82
+      }
+    },
+    {
+      "id": 10,
+      "query": "Infer module labels from vocabulary paths",
+      "expected": [
+        "src/labels.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/labels.mjs",
+          "src/gradula.mjs",
+          "src/heralds.mjs",
+          "src/report.mjs",
+          "src/system.mjs",
+          "bin/gradula.mjs",
+          "src/sentry.mjs",
+          "web/src/Map.tsx"
+        ],
+        "tokens": 414,
+        "bytes": 1344,
+        "ms": 0.54
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "mcp/server.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/labels.mjs",
+          "web/src/api.ts",
+          "web/src/words.ts",
+          "AGENTS.md"
+        ],
+        "tokens": 326,
+        "bytes": 1177,
+        "ms": 49.01
+      }
+    },
+    {
+      "id": 11,
+      "query": "Execute verification gates",
+      "expected": [
+        "src/gates.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/gates.mjs",
+          "src/github.mjs",
+          "README.md",
+          "src/spec.mjs",
+          "tests/gates.test.mjs",
+          "web/src/vocabulary.ts",
+          "web/src/App.tsx",
+          "src/gradula.mjs"
+        ],
+        "tokens": 407,
+        "bytes": 1369,
+        "ms": 0.55
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/gates.mjs",
+          "src/pipeline-herald.mjs",
+          "src/retrieval.mjs",
+          "src/store-pg.mjs",
+          "tests/core.test.mjs",
+          "tests/gates.test.mjs"
+        ],
+        "tokens": 357,
+        "bytes": 1285,
+        "ms": 26.47
+      }
+    },
+    {
+      "id": 12,
+      "query": "Find stale cards without a heartbeat",
+      "expected": [
+        "src/health.mjs"
+      ],
+      "graph": {
+        "recall": 0,
+        "paths": [
+          "src/gradula.mjs",
+          "web/src/motion.ts",
+          "src/ids.mjs",
+          "src/labels.mjs",
+          "web/src/App.tsx",
+          "AGENTS.md",
+          "src/spec.mjs",
+          "src/github.mjs"
+        ],
+        "tokens": 413,
+        "bytes": 1358,
+        "ms": 0.61
+      },
+      "rg": {
+        "recall": 0,
+        "paths": [
+          "bin/gradula.mjs",
+          "src/gradula.mjs",
+          "src/spec.mjs",
+          "src/store-pg.mjs",
+          "src/store.mjs",
+          "tests/doors.test.mjs",
+          "tests/store.test.mjs",
+          "web/src/motion.ts"
+        ],
+        "tokens": 378,
+        "bytes": 1367,
+        "ms": 49.47
+      }
+    },
+    {
+      "id": 13,
+      "query": "Project activity pace and energy",
+      "expected": [
+        "src/pulse.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/activity-batch.mjs",
+          "src/pulse.mjs",
+          "web/src/Pulse.tsx",
+          "tests/activity-batch.test.mjs",
+          "README.md",
+          "src/gradula.mjs",
+          "web/src/api.ts",
+          "src/live.mjs"
+        ],
+        "tokens": 405,
+        "bytes": 1386,
+        "ms": 0.63
+      },
+      "rg": {
+        "recall": 0,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/gradula.mjs",
+          "tests/doors.test.mjs",
+          "web/src/api.ts",
+          "web/src/words.ts",
+          "web/src/App.tsx",
+          "web/src/Pulse.tsx"
+        ],
+        "tokens": 355,
+        "bytes": 1319,
+        "ms": 42.56
+      }
+    },
+    {
+      "id": 14,
+      "query": "Combine deployment and error sources",
+      "expected": [
+        "src/system.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/system.mjs",
+          "src/dokploy.mjs",
+          "AGENTS.md",
+          "src/spec.mjs",
+          "tools/codegraph-index.mjs",
+          "src/activity-batch.mjs",
+          "web/src/App.tsx"
+        ],
+        "tokens": 407,
+        "bytes": 1413,
+        "ms": 0.66
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/github.mjs",
+          "src/gradula.mjs",
+          "src/system.mjs",
+          "tests/doors.test.mjs",
+          "tests/system.test.mjs",
+          "web/src/api.ts"
+        ],
+        "tokens": 375,
+        "bytes": 1456,
+        "ms": 43.97
+      }
+    },
+    {
+      "id": 15,
+      "query": "Expo EAS builds and submissions",
+      "expected": [
+        "src/eas.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/eas.mjs",
+          "src/gradula.mjs",
+          "tests/eas.test.mjs",
+          "src/releases.mjs",
+          "web/src/App.tsx",
+          "tests/releases.test.mjs",
+          "tools/codegraph-index.mjs",
+          "tests/codegraph.test.mjs"
+        ],
+        "tokens": 414,
+        "bytes": 1399,
+        "ms": 0.53
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "src/eas.mjs",
+          "src/gradula.mjs",
+          "tests/eas.test.mjs",
+          "tests/system.test.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/dokploy.mjs"
+        ],
+        "tokens": 372,
+        "bytes": 1352,
+        "ms": 41.07
+      }
+    },
+    {
+      "id": 16,
+      "query": "Dokploy deployment status",
+      "expected": [
+        "src/dokploy.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/dokploy.mjs",
+          "tests/dokploy.test.mjs",
+          "README.md",
+          "src/github.mjs",
+          "src/gradula.mjs",
+          "AGENTS.md",
+          "src/deployed.mjs",
+          "src/pipeline-herald.mjs"
+        ],
+        "tokens": 423,
+        "bytes": 1408,
+        "ms": 0.63
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/deployed.mjs",
+          "src/dokploy.mjs",
+          "src/github.mjs",
+          "src/gradula.mjs",
+          "src/releases.mjs",
+          "src/retrieval.mjs"
+        ],
+        "tokens": 418,
+        "bytes": 1535,
+        "ms": 29.57
+      }
+    },
+    {
+      "id": 17,
+      "query": "Sentry incident fingerprints and environments",
+      "expected": [
+        "src/sentry.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/sentry.mjs",
+          "README.md",
+          "src/system.mjs",
+          "src/spec.mjs",
+          "src/gradula.mjs",
+          "tests/sentry.test.mjs",
+          "src/deployed.mjs",
+          "src/watch.mjs"
+        ],
+        "tokens": 406,
+        "bytes": 1358,
+        "ms": 0.59
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/sentry.mjs",
+          "src/spec.mjs",
+          "src/store-pg.mjs",
+          "src/store.mjs",
+          "src/system.mjs",
+          "tests/store.test.mjs",
+          "AGENTS.md"
+        ],
+        "tokens": 352,
+        "bytes": 1298,
+        "ms": 39.79
+      }
+    },
+    {
+      "id": 18,
+      "query": "Filter public notifications",
+      "expected": [
+        "src/heralds.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/heralds.mjs",
+          "README.md",
+          "src/spec.mjs",
+          "src/dokploy.mjs",
+          "src/eas.mjs",
+          "src/github.mjs",
+          "src/sentry.mjs",
+          "web/src/App.tsx"
+        ],
+        "tokens": 410,
+        "bytes": 1393,
+        "ms": 0.57
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/heralds.mjs",
+          "tests/heralds.test.mjs",
+          "bin/gradula.mjs",
+          "src/api.mjs",
+          "src/auth.mjs",
+          "src/eas.mjs",
+          "src/github.mjs"
+        ],
+        "tokens": 372,
+        "bytes": 1329,
+        "ms": 28.22
+      }
+    },
+    {
+      "id": 19,
+      "query": "Send Telegram messages",
+      "expected": [
+        "src/telegram.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/telegram.mjs",
+          "src/heralds.mjs",
+          "src/gradula.mjs",
+          "src/report.mjs",
+          "README.md",
+          "src/pipeline-herald.mjs",
+          "tests/heralds.test.mjs",
+          "tests/pipeline-herald.test.mjs"
+        ],
+        "tokens": 420,
+        "bytes": 1387,
+        "ms": 0.63
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/gradula.mjs",
+          "src/heralds.mjs",
+          "src/pipeline-herald.mjs",
+          "src/server.mjs",
+          "src/telegram.mjs"
+        ],
+        "tokens": 393,
+        "bytes": 1413,
+        "ms": 27.16
+      }
+    },
+    {
+      "id": 20,
+      "query": "Daily and weekly notification schedules",
+      "expected": [
+        "src/schedule.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/schedule.mjs",
+          "src/heralds.mjs",
+          "README.md",
+          "tests/schedule.test.mjs",
+          "src/gradula.mjs",
+          "src/server.mjs",
+          "src/pipeline-herald.mjs",
+          "src/telegram.mjs"
+        ],
+        "tokens": 413,
+        "bytes": 1386,
+        "ms": 0.68
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "bin/gradula.mjs",
+          "src/schedule.mjs",
+          "src/store-pg.mjs",
+          "tests/heralds.test.mjs",
+          "tests/schedule.test.mjs",
+          "web/src/api.ts",
+          "web/src/App.tsx"
+        ],
+        "tokens": 435,
+        "bytes": 1572,
+        "ms": 35.51
+      }
+    },
+    {
+      "id": 21,
+      "query": "Serve static files safely",
+      "expected": [
+        "src/static.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/static.mjs",
+          "tests/doors.test.mjs",
+          "src/server.mjs",
+          "web/src/motion.ts",
+          "tests/german.test.mjs",
+          "tools/codegraph-index.mjs",
+          "web/src/App.tsx",
+          "src/links.mjs"
+        ],
+        "tokens": 413,
+        "bytes": 1388,
+        "ms": 0.45
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/api.mjs",
+          "src/server.mjs",
+          "src/static.mjs",
+          "tests/doors.test.mjs",
+          "tests/store.test.mjs",
+          "web/src/App.tsx",
+          "AGENTS.md"
+        ],
+        "tokens": 421,
+        "bytes": 1545,
+        "ms": 32.37
+      }
+    },
+    {
+      "id": 22,
+      "query": "Generate release notes",
+      "expected": [
+        "src/releases.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/releases.mjs",
+          "src/gradula.mjs",
+          "src/spec.mjs",
+          "tests/surface.test.mjs",
+          "src/heralds.mjs",
+          "src/github.mjs",
+          "tests/releases.test.mjs",
+          "web/src/api.ts"
+        ],
+        "tokens": 407,
+        "bytes": 1378,
+        "ms": 0.47
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/gradula.mjs",
+          "src/heralds.mjs",
+          "src/releases.mjs",
+          "src/spec.mjs",
+          "src/store-pg.mjs"
+        ],
+        "tokens": 504,
+        "bytes": 1636,
+        "ms": 30.95
+      }
+    },
+    {
+      "id": 23,
+      "query": "Generate an HTML activity report",
+      "expected": [
+        "src/report.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/report.mjs",
+          "web/src/api.ts",
+          "README.md",
+          "src/activity-batch.mjs",
+          "tests/activity-batch.test.mjs",
+          "bin/gradula.mjs",
+          "tests/gates.test.mjs",
+          "src/gradula.mjs"
+        ],
+        "tokens": 411,
+        "bytes": 1412,
+        "ms": 0.5
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/gradula.mjs",
+          "tests/doors.test.mjs",
+          "web/src/api.ts",
+          "web/src/App.tsx",
+          "src/api.mjs",
+          "src/report.mjs"
+        ],
+        "tokens": 429,
+        "bytes": 1505,
+        "ms": 36.77
+      }
+    },
+    {
+      "id": 24,
+      "query": "GitHub branch and commit comparison",
+      "expected": [
+        "src/github.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/github.mjs",
+          "tests/deployed.test.mjs",
+          "README.md",
+          "src/deployed.mjs",
+          "web/src/deployed.ts",
+          "src/gradula.mjs",
+          "tests/github.test.mjs",
+          "src/releases.mjs"
+        ],
+        "tokens": 410,
+        "bytes": 1389,
+        "ms": 0.62
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/gradula.mjs",
+          "src/store-pg.mjs",
+          "tests/surface.test.mjs",
+          "web/src/App.tsx",
+          "bin/gradula.mjs",
+          "src/deployed.mjs",
+          "src/github.mjs"
+        ],
+        "tokens": 371,
+        "bytes": 1371,
+        "ms": 48.74
+      }
+    },
+    {
+      "id": 25,
+      "query": "Normalize actor names and aliases",
+      "expected": [
+        "src/people.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/people.mjs",
+          "src/spec.mjs",
+          "src/labels.mjs",
+          "src/heralds.mjs",
+          "src/retrieval.mjs",
+          "src/api.mjs",
+          "src/codegraph.mjs",
+          "src/gradula.mjs"
+        ],
+        "tokens": 409,
+        "bytes": 1369,
+        "ms": 0.58
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/gradula.mjs",
+          "bin/gradula.mjs",
+          "src/api.mjs",
+          "src/codegraph.mjs",
+          "src/health.mjs",
+          "src/people.mjs",
+          "src/pulse.mjs"
+        ],
+        "tokens": 356,
+        "bytes": 1223,
+        "ms": 36.94
+      }
+    },
+    {
+      "id": 26,
+      "query": "normalizeGraph",
+      "expected": [
+        "src/codegraph.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/codegraph.mjs"
+        ],
+        "tokens": 232,
+        "bytes": 824,
+        "ms": 0.72
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "README.md",
+          "src/codegraph.mjs",
+          "src/gradula.mjs",
+          "src/spec.mjs",
+          "src/static.mjs",
+          "tests/codegraph.test.mjs",
+          "tests/core.test.mjs",
+          "tools/codegraph-index.mjs"
+        ],
+        "tokens": 403,
+        "bytes": 1412,
+        "ms": 19.72
+      }
+    },
+    {
+      "id": 27,
+      "query": "contextOptions",
+      "expected": [
+        "src/context.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/context.mjs"
+        ],
+        "tokens": 230,
+        "bytes": 821,
+        "ms": 0.76
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/context.mjs",
+          "src/gradula.mjs",
+          "tests/pipeline-herald.test.mjs",
+          "web/src/App.tsx",
+          "AGENTS.md"
+        ],
+        "tokens": 499,
+        "bytes": 1765,
+        "ms": 19.2
+      }
+    },
+    {
+      "id": 28,
+      "query": "workSession",
+      "expected": [
+        "src/work-session.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "web/src/api.ts",
+          "src/work-session.mjs"
+        ],
+        "tokens": 255,
+        "bytes": 903,
+        "ms": 0.47
+      },
+      "rg": {
+        "recall": 0,
+        "paths": [
+          "AGENTS.md",
+          "bin/gradula.mjs",
+          "mcp/server.mjs",
+          "README.md",
+          "src/api.mjs",
+          "src/gradula.mjs",
+          "src/heralds.mjs",
+          "src/people.mjs"
+        ],
+        "tokens": 383,
+        "bytes": 1393,
+        "ms": 20.37
+      }
+    },
+    {
+      "id": 29,
+      "query": "parseItemKey",
+      "expected": [
+        "src/ids.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/ids.mjs"
+        ],
+        "tokens": 233,
+        "bytes": 811,
+        "ms": 0.61
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "bin/gradula.mjs",
+          "mcp/server.mjs",
+          "src/api.mjs",
+          "src/gradula.mjs",
+          "src/ids.mjs",
+          "src/reservations.mjs",
+          "src/store.mjs",
+          "tests/core.test.mjs"
+        ],
+        "tokens": 441,
+        "bytes": 1554,
+        "ms": 29.15
+      }
+    },
+    {
+      "id": 30,
+      "query": "activeReservation",
+      "expected": [
+        "src/reservations.mjs"
+      ],
+      "graph": {
+        "recall": 1,
+        "paths": [
+          "src/reservations.mjs"
+        ],
+        "tokens": 232,
+        "bytes": 834,
+        "ms": 0.51
+      },
+      "rg": {
+        "recall": 1,
+        "paths": [
+          "AGENTS.md",
+          "bin/gradula.mjs",
+          "mcp/server.mjs",
+          "README.md",
+          "src/gradula.mjs",
+          "src/reservations.mjs",
+          "src/store-pg.mjs",
+          "tests/doors.test.mjs"
+        ],
+        "tokens": 629,
+        "bytes": 2701,
+        "ms": 18.61
+      }
+    }
+  ]
+}

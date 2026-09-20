@@ -26,7 +26,7 @@ const fixture = () => normalizeGraph({schema:'gradula.codegraph.v1', repository:
   ]},'team/repo');
 
 test('path and symbol retrieval includes explained neighbours and no unrelated bulk', () => {
-  const result = retrieveContext(fixture(),null,contextOptions({q:'sessionKey',revision}));
+  const result = retrieveContext(fixture(),null,contextOptions({q:'sessionKey',revision,detail:'evidence'}));
   assert.equal(result.nodes[0].id,'auth');
   assert.equal(result.snapshot.freshness,'matching');
   assert.ok(result.nodes.some(n=>n.path==='docs/access.md'));
@@ -34,8 +34,8 @@ test('path and symbol retrieval includes explained neighbours and no unrelated b
   assert.deepEqual(result.edges[0].source,{path:'docs/access.md',line:4});
   assert.ok(result.edges.some(e=>e.confidence==='INFERRED' && e.source===null));
   assert.equal(retrieveContext(fixture(),null,contextOptions({q:'nonexistent'})).nodes.length,0);
-  assert.equal(retrieveContext(fixture(),null,contextOptions({files:['src/auth.mjs'],limit:1})).nodes[0].match,'declared-file');
-  assert.ok(retrieveContext(fixture(),null,contextOptions({files:['src']})).nodes.some(n=>n.match==='declared-folder'));
+  assert.equal(retrieveContext(fixture(),null,contextOptions({files:['src/auth.mjs'],limit:1,detail:'evidence'})).nodes[0].match,'declared-file');
+  assert.ok(retrieveContext(fixture(),null,contextOptions({files:['src'],detail:'evidence'})).nodes.some(n=>n.match==='declared-folder'));
 });
 
 test('freshness is explicit and never inferred from import time', () => {
@@ -54,7 +54,7 @@ test('UTF-8 serialized response, including metadata, stays within its byte budge
   graph.nodes.push(...Array.from({length:200},(_,i)=>({id:`large${i}`,name:'sessionKey',path:`src/${'漢'.repeat(180)}${i}.mjs`,kind:'file',about:'漢\\"'.repeat(500)})));
   graph.edges.push(...graph.nodes.slice(4).map(n=>({from:'auth',to:n.id,kind:'imports',confidence:'EXTRACTED',reason:'漢'.repeat(2000),source:{path:'src/auth.mjs',line:1}})));
   const card={key:'ONE-1',title:'Access',text:'漢'.repeat(10000),state:'making',files:Array(30).fill('漢'.repeat(500)),history:Array(2000).fill({verb:'said',data:{line:'noise'}})};
-  const result=retrieveContext(graph,card,contextOptions({q:'sessionKey',maxBytes:4096,limit:20}));
+  const result=retrieveContext(graph,card,contextOptions({q:'sessionKey',maxBytes:4096,limit:20,detail:'evidence'}));
   assert.ok(Buffer.byteLength(JSON.stringify(result))+1<=4096);
   assert.equal(result.budget.bytes,Buffer.byteLength(JSON.stringify(result))+1);
   assert.ok(result.budget.omittedNodes>0 && result.budget.omittedEdges>0 && result.budget.cardTruncated);
@@ -78,6 +78,19 @@ test('service enforces project isolation even when the card is a query parameter
   assert.equal((await g.getContext('TWO',{q:'auth'})).snapshot.freshness,'missing');
   await g.patchProject('ONE',{repo:'other/repo'});
   assert.equal((await g.getContext('ONE',{q:'auth'})).snapshot.freshness,'missing');
+});
+
+test('a bounded card scan reports that omitted blockers may exist, including compact detail', async () => {
+  const store=createMemoryStore(), g=createGradula(store);
+  await g.createProject({key:'ONE',name:'One',repo:'team/repo'});
+  const cards=[];
+  for(let i=0;i<501;i++)cards.push(await store.items.create('ONE',{kind:'task',title:`Card ${i}`}));
+  await store.links.add({project:'ONE',from:cards[0].id,to:cards[500].id,kind:'needs'});
+  for(const detail of ['paths','evidence']) {
+    const result=await g.getContext('ONE',{card:cards[0].key,detail});
+    assert.equal(result.card.blockedByIncomplete,true);
+    assert.ok(result.budget.bytes<=result.budget.maxBytes);
+  }
 });
 
 const run = (script,args,env,cwd,stdin='') => new Promise((resolve,reject) => {

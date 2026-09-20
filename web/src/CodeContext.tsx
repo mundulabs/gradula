@@ -14,7 +14,7 @@ export default function CodeContext({project, files}:{project:string;files:strin
   const ids=new Set([...focus,...edges.flatMap(e=>[e.from,e.to])]);
   const nodes=graph?.nodes.filter(n=>ids.has(n.id)) ?? [];
   const matches=query.trim()?graph?.nodes.filter(n=>(n.name+' '+n.path).toLowerCase().includes(query.trim().toLowerCase())).slice(0,20):[];
-  const href=(path:string,line?:number)=>`https://github.com/${graph?.repository}/blob/dev/${path.split('/').map(encodeURIComponent).join('/')}${line?'#L'+line:''}`;
+  const href=(path:string,line?:number)=>`https://github.com/${graph?.repository}/blob/${graph?.revision && graph.dirty===false ? graph.revision : 'HEAD'}/${path.split('/').map(encodeURIComponent).join('/')}${line?'#L'+line:''}`;
   const shown=nodes.slice(0,36), centre=shown.find(n=>focus.has(n.id));
   const surrounding=shown.filter(n=>n.id!==centre?.id);
   const positions=new Map(surrounding.map((n,i)=>[n.id,{x:160+112*Math.cos(i/surrounding.length*Math.PI*2),y:160+112*Math.sin(i/surrounding.length*Math.PI*2)}]));
@@ -22,7 +22,7 @@ export default function CodeContext({project, files}:{project:string;files:strin
   return <section className="code-context" aria-label={t('graph.title')}>
     <h3>{t('graph.title')}</h3>
     {loading?<p>{t('ui.loading')}</p>:error?<p role="status">{t('graph.error')}</p>:!graph?<p>{t('graph.empty')}</p>:<>
-      <p>{t('graph.snapshot')} {new Date(graph.importedAt).toLocaleString()} · {graph.digest.slice(0,8)}</p>
+      <p>{t('graph.snapshot')} {new Date(graph.importedAt).toLocaleString()} · {graph.digest.slice(0,8)}{graph.revision && graph.dirty===false ? ` · ${graph.revision.slice(0,12)}` : ''}</p>
       <label>{t('graph.find')}<input type="search" value={query} onChange={e=>setQuery(e.target.value)}/></label>
       {!!matches?.length&&<div className="code-context-results">{matches.map(n=><button key={n.id} onClick={()=>{setSelected(n.id);setQuery('')}}>{n.name}</button>)}</div>}
       {selected&&<button onClick={()=>setSelected(null)}>{t('graph.ticket')}</button>}
