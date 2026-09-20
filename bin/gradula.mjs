@@ -38,6 +38,9 @@ const HELP = `gradula — wish, board, standing
   gradula context [query] [--card CARD] [--files path,path] [--limit 8] [--max-bytes 8000]
                                   --mode search|explain|impact|path [--from node] [--to node] [--depth 2]
                                   bounded source/evidence lookup; compares local HEAD when available
+  gradula decision-trial <input.json>   optional shadow classification; sends only supplied brief/catalog
+  gradula decision-feedback <ID> <feedback.json>   record outcomes and measured paired runs
+  gradula decision-report             measured pilot usage and outcomes, no guessed savings
   gradula resume <CARD>            brief plus local workspace risk and recent evidence
   gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
   gradula approve <CARD>           the review says yes — done, with a reason
@@ -517,6 +520,17 @@ switch (command) {
   }
 
 
+  case 'decision-trial': {
+    if(!words[0])stop('gradula decision-trial <input.json>');
+    console.log(JSON.stringify(await call('/api/v1/decision-trials',{method:'POST',body:JSON.parse(readFileSync(words[0],'utf8'))})));break;
+  }
+  case 'decision-feedback': {
+    if(!/^[0-9A-Z]{26}$/.test(words[0]??'')||!words[1])stop('gradula decision-feedback <ID> <feedback.json>');
+    console.log(JSON.stringify(await call(`/api/v1/decision-trials/${words[0]}/feedback`,{method:'POST',body:JSON.parse(readFileSync(words[1],'utf8'))})));break;
+  }
+  case 'decision-report': {
+    console.log(JSON.stringify(await call('/api/v1/decision-trials')));break;
+  }
   case 'context': {
     const query = new URLSearchParams();
     if (words.length) query.set('q', words.join(' '));

@@ -625,7 +625,7 @@ test('every path the MCP server calls is a route the API has', async () => {
   // fetch that answers `{}` to everything — and the failure showed up in a
   // test six hundred lines away that had never heard of MCP.
   const asked = [];
-  const sample = { card: 'MDUS-1', from: 'MDUS-1', to: 'MDUS-2', kind: 'needs', state: 'ready', title: 'x', root: 'MDUS-3' };
+  const sample = { id: '01ARZ3NDEKTSV4RRFFQ69G5FAV', card: 'MDUS-1', from: 'MDUS-1', to: 'MDUS-2', kind: 'needs', state: 'ready', title: 'x', root: 'MDUS-3' };
   const fetched = globalThis.fetch;
   try {
     for (const tool of TOOLS) {

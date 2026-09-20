@@ -1,3 +1,4 @@
+import {PILOT, digest, pilotInput, pilotPayload, evaluatePilot, pilotFeedback, pilotReport} from './decision-pilot.mjs';
 /**
  * What Gradula DOES — the verbs, once, over a store.
  *
@@ -44,7 +45,7 @@ import { energy, pace, outlook, hangs, within } from './pulse.mjs';
 import { nameOf } from './people.mjs';
 import { dueHeralds, CADENCES } from './schedule.mjs';
 import { isRunning, isKind, isState, isTarget, isRunner, isVisibility, isLinkKind, isLinkSource, isStack, STACKS, normalizeGate as rawGate, bornIn, RUNNING_MS, LANGUAGES, AGENT_KEY_KIND, agentKeyName, CARD_STYLE, INTEGRATIONS } from './spec.mjs';
-import { isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
+import { mintId, isProjectKey, parseItemKey, mentionedKeys } from './ids.mjs';
 import { DEVICE_TTL } from './store.mjs';
 import { issueToCard, issueOf, projectOf, actionOf, environmentOf, readEnvironments, environmentsOf, lanesOf, takesEnvironment, fetchIssues, fetchLatestEnvironment, resolveIssue, issueIdOf, publicConnection, BASE_EU, BASE_US } from './sentry.mjs';
 
@@ -129,7 +130,7 @@ const HERALD_KINDS = { telegram };
  */
 export const HOUSE_KEY = 'house';
 
-export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, activityWindowMs = 5000 } = {}) {
+export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, activityWindowMs = 5000, decisionPilot = {} } = {}) {
   const keyOf = (herald) => (herald?.token === HOUSE_KEY ? houseKey : herald?.token ?? null);
   const pipelineHerald = createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl: defaultFetch });
   const findItem = async (key) => {
@@ -301,6 +302,35 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const project = canonical ? await store.projects.get(canonical) : null;
       if (!project) throw missing(`There is no project ${key}.`);
       return { ...project, manualAcceptance: project.manualAcceptance === true, integration: INTEGRATIONS.includes(project.integration) ? project.integration : 'pr', ladder: CARD_STYLE };
+    },
+
+    async decisionTrial(projectKey,input,actor) {
+      const project=await this.getProject(projectKey);
+      if(!decisionPilot.apiKey||!decisionPilot.projects?.includes(project.key))return {mode:'shadow',status:'disabled',guidance:'Pilot not enabled for this project; continue the normal workflow.'};
+      let prepared;
+      try {prepared=pilotInput(input);pilotPayload(prepared);}catch(error){throw bad('decision',error.message);}
+      const fingerprint=digest(prepared);
+      const trial={id:mintId(),campaign:PILOT.campaign,requestId:prepared.requestId,kind:prepared.kind,baseline:prepared.baseline,candidateIds:prepared.candidates.map(c=>c.id),fingerprint,catalogDigest:digest(prepared.candidates),model:PILOT.model,threshold:PILOT.threshold,created:new Date().toISOString(),actor};
+      const reserved=await store.decisions.reserve(project.key,trial,PILOT);
+      if(!reserved)return {mode:'shadow',status:'limit',guidance:'Pilot attempt limit reached; continue the normal workflow.'};
+      if(!reserved.fresh){
+        if(reserved.trial.fingerprint!==fingerprint)throw new Refusal(409,'request-id','Request id already belongs to a different input.');
+        return {mode:'shadow',status:reserved.trial.result?'complete':'pending',trial:reserved.trial};
+      }
+      const result=await evaluatePilot(prepared,{apiKey:decisionPilot.apiKey,fetchImpl:decisionPilot.fetchImpl??defaultFetch});
+      return {mode:'shadow',status:'complete',trial:await store.decisions.finish(project.key,trial.id,result)};
+    },
+    async decisionFeedback(projectKey,id,input,actor,authorKind) {
+      const project=await this.getProject(projectKey),trial=await store.decisions.get(project.key,id);
+      if(!trial)throw missing('That trial does not exist.');
+      if(!trial.result)throw new Refusal(409,'pending','Trial has not finished.');
+      let feedback;try{feedback=pilotFeedback(input,trial);}catch(error){throw bad('feedback',error.message);}
+      if(trial.feedback.length>=10)throw bad('feedback','Feedback limit reached.');
+      return store.decisions.feedback(project.key,id,{...feedback,actor,authorKind:authorKind==='human'?'human':'agent',at:new Date().toISOString()});
+    },
+    async decisionReport(projectKey) {
+      const project=await this.getProject(projectKey);
+      return {enabled:Boolean(decisionPilot.apiKey&&decisionPilot.projects?.includes(project.key)),...pilotReport(await store.decisions.list(project.key,PILOT.campaign))};
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */

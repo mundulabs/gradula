@@ -63,6 +63,8 @@ web/                 the board (Vite + React); web/src/vocabulary.ts imports src
 
 14. **Retrieve context, not the whole graph or chronicle.** Use `gradula context "symbol or topic"` or MCP `plan_context` for unfamiliar code; request `--detail evidence`, `--card KEY`, or `--mode explain|impact|path` only when needed. Inspect freshness, read known files directly, and fall back to local `rg` for missing/stale context (`tests/context.test.mjs`).
 
+15. **The decision pilot is shadow-only.** For an opted-in project, trial an ambiguous optional skill or route once after recording the normal choice; use `decision-trial` / MCP `plan_decision_trial` with a sanitized brief and supplied catalog. Explicit skill requirements take precedence. Record outcomes, never invent token measurements; skip paid calls when disabled or capped ([pilot guide](docs/decision-pilot.md)).
+
 ## Checking
 
 ```bash

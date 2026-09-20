@@ -486,6 +486,8 @@ begin
       r.tab, r.conname);
   end loop;
 end $$;
+-- Pilot attempts are reserved before any paid call, including failures and crashes.
+create table if not exists decision_trial (id text primary key, project text not null references project(key) on update cascade on delete cascade, campaign text not null, request_id text not null, data jsonb not null, unique(project,campaign,request_id));
 -- Historical addresses cannot be reassigned to another tenant.
 create table if not exists project_alias (alias text primary key, project text not null references project(key) on update cascade on delete cascade);
 -- One incident per cause: the same foreign fingerprint may have only ONE
@@ -653,6 +655,30 @@ export async function createPgStore(url, { schema = null } = {}) {
       },
     },
 
+    decisions: {
+      async reserve(project,trial,limits) {
+        const client=await pool.connect();
+        const shape=r=>r?{...r.data,project:r.project}:null;
+        try {
+          await client.query('begin');
+          await client.query('lock table decision_trial in exclusive mode');
+          const old=await client.query('select project,data from decision_trial where project=$1 and campaign=$2 and request_id=$3',[project,trial.campaign,trial.requestId]);
+          if(old.rows[0]){await client.query('commit');return {fresh:false,trial:shape(old.rows[0])};}
+          const count=await client.query('select count(*)::int as total, count(*) filter(where project=$1)::int as own from decision_trial where campaign=$2',[project,trial.campaign]);
+          if(count.rows[0].total>=limits.total||count.rows[0].own>=limits.perProject){await client.query('commit');return null;}
+          const row={...trial,feedback:[]};
+          await client.query('insert into decision_trial(id,project,campaign,request_id,data) values($1,$2,$3,$4,$5)',[trial.id,project,trial.campaign,trial.requestId,JSON.stringify(row)]);
+          await client.query('commit');return {fresh:true,trial:{...row,project}};
+        } catch(error){await client.query('rollback');throw error;} finally {client.release();}
+      },
+      async finish(project,id,result) {const {rows}=await q("update decision_trial set data=jsonb_set(data,'{result}',$3::jsonb) where project=$1 and id=$2 returning project,data",[project,id,JSON.stringify(result)]);return rows[0]?{...rows[0].data,project:rows[0].project}:null;},
+      async get(project,id) {const {rows}=await q('select project,data from decision_trial where project=$1 and id=$2',[project,id]);return rows[0]?{...rows[0].data,project:rows[0].project}:null;},
+      async list(project,campaign) {const {rows}=await q('select project,data from decision_trial where project=$1 and campaign=$2 order by id',[project,campaign]);return rows.map(r=>({...r.data,project:r.project}));},
+      async feedback(project,id,entry) {
+        const {rows}=await q("update decision_trial set data=jsonb_set(data,'{feedback}',data->'feedback' || $3::jsonb) where project=$1 and id=$2 and jsonb_array_length(data->'feedback')<10 returning project,data",[project,id,JSON.stringify([entry])]);
+        if(!rows[0])throw Error('Trial missing or feedback limit reached');return {...rows[0].data,project:rows[0].project};
+      },
+    },
     codegraphs: {
       async history(key) { const {rows}=await q('select digest,actor,at from codegraph_import where project=$1 order by at',[key]); return rows.map(r=>({...r,at:iso(r.at)})); },
       async get(key,revision=null) { const {rows}=await q(revision ? 'select snapshot from codegraph_revision where project=$1 and revision=$2' : 'select snapshot from codegraph where project=$1',revision?[key,revision]:[key]); return rows[0]?.snapshot ?? null; },
