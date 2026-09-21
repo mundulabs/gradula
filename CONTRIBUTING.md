@@ -35,4 +35,4 @@ for that Vite origin. There is no hard-coded development user or authentication 
 
 Describe the behavior change and verification in a pull request. Do not commit
 keys, `.env*` files, real user transcripts, database exports or private graph data.
-TypeSafe integration is optional; tests use synthetic provider responses, not paid calls.
+Task measurement is optional and reads only usage counters; tests use synthetic traces.
