@@ -23,6 +23,18 @@ if (process.env.GRADULA_DB_URL) {
 }
 
 for (const [name, build] of implementations) {
+  test(`${name}: project archive and access policy survive rekey and restoration`, async t=>{
+    const store=await build();t.after(()=>store.close?.());
+    await store.projects.create({key:'ACC',name:'Access'});
+    await store.projects.patch('ACC',{archived:true,accessRole:'project:ACC'});
+    assert.equal((await store.projects.get('ACC')).archived,true);
+    assert.equal((await store.projects.list()).find(p=>p.key==='ACC').accessRole,'project:ACC');
+    await store.projects.rekey('ACC','NEW');
+    assert.equal((await store.projects.get('NEW')).accessRole,'project:ACC');
+    await store.projects.patch('NEW',{archived:false,accessRole:null});
+    assert.equal((await store.projects.get('NEW')).archived,false);
+    assert.equal((await store.projects.get('NEW')).accessRole,null);
+  });
   test(`${name}: separate runtime connections without touching cards or overwriting destinations`, async (t) => {
     const store = await build(); t.after(() => store.close?.());
     await store.projects.create({ key: 'SRC', name: 'Native' });

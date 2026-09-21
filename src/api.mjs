@@ -158,6 +158,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
   const routes = [
     ['GET', /^\/api\/health$/, async () => ({ status: 200, body: { ok: true, store: gradula.store.kind, watching: Boolean(watcher) } })],
 
+    ['GET', /^\/api\/setup$/, async () => ({status:200,body:{signInConfigured:Boolean(auth)}})],
+
     // ---- Admin: only with the admin secret -----------------------------------
     ['POST', /^\/api\/admin\/projects$/, async (req, _m, ctx) => {
       ctx.needAdmin();
@@ -207,14 +209,14 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       // address is a redirect to their page with our name in front of it.
       const raw = ctx.url.searchParams.get('target') ?? '/';
       const target = raw.startsWith('/') && !raw.startsWith('//') ? raw : '/';
-      const { ort, cookie } = auth.start(target);
+      const { ort, cookie } = await auth.start(target);
       return { redirectTo: ort, cookies: [cookie] };
     }],
     ['GET', /^\/auth$/, async (req, _m, ctx) => {
       if (!auth) throw new Refusal(503, 'no-sign-in', 'No sign-in is set up for this service.');
       const code = ctx.url.searchParams.get('code');
       if (!code) throw new Refusal(400, 'no-code', ctx.url.searchParams.get('error') ?? 'The identity provider sent no code.');
-      const { target, cookies } = await auth.finish(code, cookiesOf(req)[ATTEMPT]);
+      const { target, cookies } = await auth.finish(code, cookiesOf(req)[auth.attemptName ?? ATTEMPT], {state:ctx.url.searchParams.get('state')});
       return { redirectTo: target, cookies };
     }],
     ['POST', /^\/auth\/sign-out$/, async () => {
@@ -254,7 +256,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
 
     ['GET', /^\/api\/v1\/projects$/, async (_req, _m, ctx) => {
       if (!ctx.human) throw new Refusal(403, 'humans-only', 'This list exists only for signed-in people.');
-      return { status: 200, body: await gradula.listProjects() };
+      return { status: 200, body: (await gradula.listProjects()).filter(p => !p.archived && (!p.accessRole || ctx.human.roles.includes(p.accessRole))) };
     }],
 
     // ---- The key's project ---------------------------------------------------
@@ -597,7 +599,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       // one — those two are open (the code the person matches is the guard).
       const isDeviceStart = req.method === 'POST' && path === '/api/v1/device';
       const isDevicePoll = req.method === 'GET' && /^\/api\/v1\/device\/[0-9A-Z]{26}$/.test(path);
-      const isOpen = path === '/api/health' || isHook || path.startsWith('/auth') || isDeviceStart || isDevicePoll || /^\/c\/[A-Z]{2,8}-[0-9]+$/.test(path);
+      const isOpen = path === '/api/setup' || path === '/api/health' || isHook || path.startsWith('/auth') || isDeviceStart || isDevicePoll || /^\/c\/[A-Z]{2,8}-[0-9]+$/.test(path);
 
       let token = null;
       let project = null;
@@ -619,7 +621,9 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
           const needs = !['/api/v1/me', '/api/v1/projects'].includes(path);
           if (needs) {
             if (!chosen) throw new Refusal(400, 'no-project', 'Which project? (?project=MDUS)');
-            project = (await gradula.getProject(chosen)).key;
+            const selected=await gradula.getProject(chosen);
+            if (selected.archived || selected.accessRole && !human.roles.includes(selected.accessRole)) throw new Refusal(404,'no-project','Project unavailable to this account.');
+            project = selected.key;
           }
         }
       }
@@ -628,7 +632,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
         res,
         url,
         project,
-        actor: actorOf(req, token, human),
+        actor: isAdmin ? 'admin' : actorOf(req, token, human),
         work: { owner: token ? `token:${token.id}` : `user:${human?.sub}`, session: String(req.headers['x-gradula-session'] ?? randomUUID()) },
         human,
         system: token?.kind === 'system',
@@ -650,6 +654,13 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
         throw new Refusal(404, 'no-card', `${match[1]} does not exist.`);
       }
 
+      // Every admin route is protected here, including future routes.
+      if (isAdmin) ctx.needAdmin();
+      if (isHook && (await gradula.getProject(match[1])).archived) throw new Refusal(410,'archived','This project is archived.');
+      if (project && (await gradula.getProject(project)).archived) throw new Refusal(410,'archived','This project is archived. An administrator can restore it.');
+      // Owned keys cease to authorize a person who no longer has project access
+      // once revoked by an administrator. Provider role changes affect new sessions.
+      if (human && !['GET','HEAD','OPTIONS'].includes(req.method) && origin && req.headers.origin !== origin) throw new Refusal(403,'origin','A browser mutation requires the configured origin.');
       const result = await run(req, match, ctx);
       // A long line has written itself and stays open.
       if (result?.open) return;

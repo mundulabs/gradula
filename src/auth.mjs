@@ -1,36 +1,6 @@
-/**
- * Who is that? — the sign-in for people.
- *
- * Machines come with a project key (api.mjs); it holds for one project and
- * knows nothing about people. People come in here, through the same Zitadel
- * sign-in as Mundula, and bring something a key cannot: a NAME that may stand
- * in the chronicle.
- *
- * The door is OIDC, not Zitadel. Mundula signs in at Zitadel, but no vendor
- * name stands here: issuer, client and the path to the roles come from the
- * environment. Another installation puts Keycloak, Authentik or Entra in
- * front of it without changing a line.
- *
- * Four decisions hold this file together:
- *
- * PKCE WITHOUT A SECRET. The exchange of code for token happens on the
- * server, but the client is public all the same: a secret that lies in
- * Dokploy and is never rotated is no better protection than a verifier that
- * arises fresh per sign-in and never holds twice.
- *
- * THE SESSION IS A NOTE, NOT A STORE. A signed cookie carries subject, name,
- * roles and expiry — nobody needs more, and a service without a session table
- * cannot lose one either. The price: a revocation takes effect only at
- * expiry. That is why it is seven days and not thirty.
- *
- * THE ROLE IS CHECKED IN THE TOKEN, NOT IN OUR DATABASE. Zitadel says who is
- * `dev`. A role that stood only here would be a claim about somebody else's
- * installation.
- *
- * THE STATE OF A SIGN-IN IS A COOKIE, NOT A VARIABLE. Two people sign in at
- * the same moment; a module-level state would be a mistake you only find
- * with the second one.
- */
+/** OIDC sign-in through the installation's identity provider, with PKCE, state
+ * and nonce. GitHub can be offered by that provider; repository credentials
+ * stay separate from login. No account from the hosted Gradula is required. */
 
 import { createHmac, randomBytes, createHash, timingSafeEqual } from 'node:crypto';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -120,13 +90,13 @@ export function rolesOf(claims, path = ROLLEN_CLAIM) {
 }
 
 /** An attempt: the verifier for PKCE and where it goes back to afterwards. */
-export function mintAttempt(secret, { verifier, target, until }) {
-  return mintSession(secret, { sub: 'attempt', name: target, roles: [verifier], until });
+export function mintAttempt(secret, { verifier, target, until, state, nonce }) {
+  return mintSession(secret, { sub: 'attempt', name: target, roles: [verifier, state, nonce], until });
 }
 export function readAttempt(secret, value, now = Date.now()) {
   const note = readSession(secret, value, now);
   if (!note || note.sub !== 'attempt') return null;
-  return { verifier: note.roles?.[0], target: note.name };
+  return { verifier: note.roles?.[0], target: note.name, ...(note.roles?.[1] ? {state:note.roles[1],nonce:note.roles[2]} : {}) };
 }
 
 export const challengeOf = (verifier) => createHash('sha256').update(verifier).digest('base64url');
@@ -139,42 +109,69 @@ const cookie = (name, value, { maxAge, secure = true }) =>
  * honest position (the machines still come in), a door without configuration
  * would be a hole.
  */
-export function createAuth({ issuer, clientId, audience, secret, origin, role = 'dev', rollenClaim = ROLLEN_CLAIM, secure = true, jwks } = {}) {
-  if (!issuer || !clientId || !audience || !secret || !origin) return null;
+export function createAuth({ issuer, clientId, audience, secret, origin, role = 'dev', rollenClaim = ROLLEN_CLAIM, secure = true, jwks, scope, clientSecret, fetchImpl = fetch } = {}) {
+  if (!issuer || !clientId || !secret || !origin) return null;
   if (String(secret).length < 32) throw new Error('GRADULA_SESSION_SECRET needs 32+ characters');
 
   const base = String(issuer).replace(/\/+$/, '');
   const backTo = `${String(origin).replace(/\/+$/, '')}/auth`;
-  const keys = jwks ?? createRemoteJWKSet(new URL(`${base}/oauth/v2/keys`));
+  let discovery, keys = jwks;
+  const endpoint = value => {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost','127.0.0.1','[::1]'].includes(url.hostname))) throw Error('OIDC endpoints require HTTPS (except loopback development).');
+    return url.href;
+  };
+  endpoint(base); endpoint(origin);
+  const metadata = async () => {
+    if (!discovery) discovery = (async () => {
+      const res = await fetchImpl(`${base}/.well-known/openid-configuration`, {signal:AbortSignal.timeout(10000),redirect:'error'});
+      if (!res.ok) throw Error(`OIDC discovery failed (${res.status})`);
+      const doc = await res.json();
+      if (typeof doc.issuer !== 'string' || doc.issuer.replace(/\/+$/, '') !== base) throw Error('OIDC discovery issuer mismatch');
+      for (const field of ['authorization_endpoint','token_endpoint','jwks_uri']) endpoint(doc[field]);
+      keys ??= createRemoteJWKSet(new URL(doc.jwks_uri));
+      return doc;
+    })().catch(error => {discovery = null; throw error;});
+    return discovery;
+  };
+  const sessionName = secure ? SESSION : 'gradula-local';
+  const attemptName = secure ? ATTEMPT : 'gradula-attempt-local';
 
   return {
     role,
     backTo,
+    attemptName,
 
     /** The beginning: a verifier, a cookie, an address at Zitadel. */
-    start(target = '/') {
+    async start(target = '/') {
+      const endpoints = await metadata();
+      const state=b64(randomBytes(32)),nonce=b64(randomBytes(32));
+      if (!target.startsWith('/') || target.startsWith('//') || target.includes('\\')) target='/';
       const verifier = b64(randomBytes(32));
       const until = Date.now() + 10 * 60_000;
       const suche = new URLSearchParams({
         client_id: clientId,
         redirect_uri: backTo,
         response_type: 'code',
-        scope: `openid profile email urn:zitadel:iam:org:project:id:${audience}:aud`,
+        scope: scope || `openid profile email${audience ? ` urn:zitadel:iam:org:project:id:${audience}:aud` : ''}`,
+        state, nonce,
         code_challenge: challengeOf(verifier),
         code_challenge_method: 'S256',
       });
       return {
-        ort: `${base}/oauth/v2/authorize?${suche}`,
-        cookie: cookie(ATTEMPT, mintAttempt(secret, { verifier, target, until }), { maxAge: 600, secure }),
+        ort: `${endpoints.authorization_endpoint}?${suche}`,
+        cookie: cookie(attemptName, mintAttempt(secret, { verifier, target, until, state, nonce }), { maxAge: 600, secure }),
       };
     },
 
     /** The way back: code for token, check the token, issue the note. */
-    async finish(code, attemptCookie, { fetchImpl = fetch } = {}) {
+    async finish(code, attemptCookie, { state, fetchImpl: exchange = fetchImpl } = {}) {
       const attempt = readAttempt(secret, attemptCookie);
-      if (!attempt?.verifier) throw new Error('The attempt has expired or is missing.');
+      if (!attempt?.verifier || !attempt.state || !state || !same(state,attempt.state)) throw new Error('The sign-in attempt is missing, expired or has mismatched state.');
+      const endpoints=await metadata();
 
-      const res = await fetchImpl(`${base}/oauth/v2/token`, {
+      const res = await exchange(endpoints.token_endpoint, {
+        signal:AbortSignal.timeout(10000),redirect:'error',
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
@@ -183,13 +180,15 @@ export function createAuth({ issuer, clientId, audience, secret, origin, role = 
           redirect_uri: backTo,
           client_id: clientId,
           code_verifier: attempt.verifier,
+          ...(clientSecret ? {client_secret:clientSecret} : {}),
         }),
       });
-      if (!res.ok) throw new Error(`Zitadel answers ${res.status} on the exchange.`);
+      if (!res.ok) throw new Error(`Identity provider answers ${res.status} on the exchange.`);
       const token = await res.json();
-      if (!token.id_token) throw new Error('Zitadel sent no id_token.');
+      if (!token.id_token) throw new Error('Identity provider sent no id_token.');
 
-      const { payload } = await jwtVerify(token.id_token, keys, { issuer: base, audience: clientId });
+      const { payload } = await jwtVerify(token.id_token, keys, { issuer: endpoints.issuer, audience: clientId });
+      if (!payload.sub || !attempt.nonce || payload.nonce !== attempt.nonce) throw Error('OIDC nonce mismatch');
       const roles = rolesOf(payload, rollenClaim);
       if (!roles.includes(role)) {
         const refusal = new Error(`Gradula needs the role "${role}".`);
@@ -202,19 +201,19 @@ export function createAuth({ issuer, clientId, audience, secret, origin, role = 
         target: attempt.target || '/',
         session: { sub: payload.sub, name: payload.name ?? payload.preferred_username ?? payload.email ?? 'someone', roles, until },
         cookies: [
-          cookie(SESSION, mintSession(secret, { sub: payload.sub, name: payload.name ?? payload.preferred_username ?? payload.email ?? 'someone', roles, until }), { maxAge: DAYS * 86_400, secure }),
-          `${ATTEMPT}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`,
+          cookie(sessionName, mintSession(secret, { sub: payload.sub, name: payload.name ?? payload.preferred_username ?? payload.email ?? 'someone', roles, until }), { maxAge: DAYS * 86_400, secure }),
+          `${attemptName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`,
         ],
       };
     },
 
     /** Who is knocking? `null` for nobody, or for an expired note. */
     who(req) {
-      return readSession(secret, cookiesOf(req)[SESSION]);
+      return readSession(secret, cookiesOf(req)[sessionName]);
     },
 
     signOut() {
-      return `${SESSION}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
+      return `${sessionName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
     },
   };
 }

@@ -16,7 +16,7 @@
  * what was measured; a verdict shows a word and the two numbers it rests on.
  * Whoever wants to disagree with it can see what to disagree with.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'preact/compat';
 import { pulse as readPulse } from './api';
 import type { Pulse as Beat } from './api';
 import { chosenLanguage, words } from './words';

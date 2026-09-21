@@ -1,4 +1,4 @@
-import {useEffect,useState,type ReactNode} from 'react';
+import {useEffect,useState,type ReactNode} from 'preact/compat';
 import {publishedDocument} from './api';
 import Dialog from './Dialog';
 import {chosenLanguage,words} from './words';

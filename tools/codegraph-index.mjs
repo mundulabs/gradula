@@ -27,6 +27,8 @@ export function createIndexer({granularity='symbols'}={}) {
         edgeKeys.add(key); edges.push({from,to,kind,confidence:'EXTRACTED',reason,source:{path,line}});
       };
       for (const [path,source] of [...files].sort(([a],[b])=>a.localeCompare(b))) {
+        const supported=/\.(?:mjs|cjs|[jt]sx?|md)$/.test(path);
+        if(!supported){add({id:fileId(path),name:posix.basename(path),kind:'file',path,area:path.split('/')[0],about:'Tracked file inventory; language semantics are not indexed.'});continue;}
         const contentHash = hash(source), old = cache.get(path);
         let ast = old?.hash===contentHash ? old.ast : null;
         if (old?.hash===contentHash) stats.reused++; else stats.parsed++;
@@ -88,6 +90,7 @@ export function createIndexer({granularity='symbols'}={}) {
       for (const [path,source] of files) {
         const ast = sources.get(root+path);
         if (!ast) {
+          if(!path.endsWith('.md'))continue;
           for (const match of source.matchAll(/\[[^\]]*\]\(([^\s)#]+)(?:#[^)]*)?\)|`([^`\n]+)`/g)) {
             const target = match[1] ? posix.normalize(posix.join(posix.dirname(path),match[1])) : match[2];
             if (files.has(target)) edge(fileId(path),fileId(target),'references',path,source.slice(0,match.index).split('\n').length,'Explicit document path reference');
@@ -122,8 +125,8 @@ export function createIndexer({granularity='symbols'}={}) {
       edges.sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)));
       const projected = granularity==='files' ? fileGraph(nodes,edges) : {nodes,edges};
       const scope = granularity==='files'
-        ? 'file-level JS/TS/Markdown; representative cross-file edges; symbol details omitted; NodeNext'
-        : 'tracked JavaScript, TypeScript and Markdown; NodeNext resolution';
+        ? 'File inventory; JS/TS/Markdown edges; symbol details omitted; other languages are paths only'
+        : 'File inventory; JS/TS symbols and Markdown; other languages are paths only; NodeNext';
       const graph = normalizeGraph({schema:'gradula.codegraph.v1',...metadata,generator:`${GENERATOR}/${granularity}`,coverage:{files:files.size,unresolvedCalls:stats.unresolvedCalls,scope},...projected},metadata.repository);
       // A failed parse/admission never poisons the previous successful cache.
       cache=next;previousProgram=program;

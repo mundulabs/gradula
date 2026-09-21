@@ -10,7 +10,7 @@
  * a person's sentences, and a renderer that reinterprets them turns an
  * asterisk in a shell command into italics. Whitespace is kept as written.
  */
-import type { ReactNode } from 'react';
+import type { ReactNode } from 'preact/compat';
 
 /** A card key or a bare http(s) address — the two things worth pressing. */
 const ADDRESS = /\b([A-Z]{2,8}-\d{1,7})\b|(https?:\/\/[^\s<>"')]+)/g;

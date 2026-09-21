@@ -444,6 +444,8 @@ alter table herald   add column if not exists schedule jsonb not null default '{
 -- service wrote a second spelling of it: four rows on the real board, all of
 -- them one person. The sentences stay (a chronicle nobody may edit is the
 -- point of having one); this says which names mean the same person.
+alter table project add column if not exists archived boolean not null default false;
+alter table project add column if not exists access_role text;
 alter table project  add column if not exists people jsonb not null default '{}'::jsonb;
 -- The language the CARDS are written in — one per board, not one per person.
 -- The surface has always been switchable per reader; what was missing was the
@@ -539,15 +541,15 @@ export async function createPgStore(url, { schema = null } = {}) {
     async close() { await pool.end(); },
 
     projects: {
-      async create({ key, name, repo = null }) {
+      async create({ key, name, repo = null, accessRole = null }) {
         const client = await pool.connect();
         try {
           await client.query('begin');
           await client.query('lock table project, project_alias in share row exclusive mode');
           if ((await client.query('select alias from project_alias where alias=$1', [key])).rowCount) throw Object.assign(new Error('Project key is a historical address'), { code: 'taken' });
           const { rows } = await client.query(
-            'insert into project (id, key, name, repo) values ($1,$2,$3,$4) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
-            [mintId(), key, name, repo]);
+            'insert into project (id, key, name, repo, access_role) values ($1,$2,$3,$4,$5) returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, archived, access_role as "accessRole", created',
+            [mintId(), key, name, repo, accessRole]);
           await client.query('commit');
           return { ...rows[0], created: iso(rows[0].created) };
         } catch (error) { await client.query('rollback'); throw error; }
@@ -562,7 +564,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         return { project: key, removed: rowCount };
       },
       async get(key) {
-        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created from project where key = $1', [key]);
+        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, archived, access_role as "accessRole", created from project where key = $1', [key]);
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       /** Runtime connections can move separately from the project identity. */
@@ -606,7 +608,7 @@ export async function createPgStore(url, { schema = null } = {}) {
           const taken = await client.query('select key from project where key=$1 union all select alias from project_alias where alias=$1', [newKey]);
           if (taken.rowCount) { await client.query('rollback'); return null; }
           const { rows } = await client.query(
-            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created',
+            'update project set key = $2 where key = $1 returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, archived, access_role as "accessRole", created',
             [oldKey, newKey],
           );
           if (!rows[0]) { await client.query('rollback'); return null; }
@@ -636,7 +638,7 @@ export async function createPgStore(url, { schema = null } = {}) {
       async patch(key, changes) {
         const sets = [];
         const values = [];
-        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish'], ['ladder', 'ladder'], ['manualAcceptance', 'manual_acceptance'], ['integration', 'integration']]) {
+        for (const [name, column] of [['name', 'name'], ['repo', 'repo'], ['language', 'language'], ['publish', 'publish'], ['ladder', 'ladder'], ['manualAcceptance', 'manual_acceptance'], ['integration', 'integration'], ['archived', 'archived'], ['accessRole', 'access_role']]) {
           if (changes[name] !== undefined) { values.push(changes[name]); sets.push(`${column} = $${values.length}`); }
         }
         // A map, not a column of its own: an alias is a word about a word.
@@ -644,13 +646,13 @@ export async function createPgStore(url, { schema = null } = {}) {
         if (!sets.length) return store.projects.get(key);
         values.push(key);
         const { rows } = await q(
-          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created`,
+          `update project set ${sets.join(', ')} where key = $${values.length} returning id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, archived, access_role as "accessRole", created`,
           values,
         );
         return rows[0] ? { ...rows[0], created: iso(rows[0].created) } : null;
       },
       async list() {
-        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, created from project order by key');
+        const { rows } = await q('select id, key, name, repo, people, language, publish, ladder, manual_acceptance as "manualAcceptance", integration, archived, access_role as "accessRole", created from project order by key');
         return rows.map((row) => ({ ...row, created: iso(row.created) }));
       },
     },

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState } from 'preact/compat';
 import { chosenLanguage, words } from './words';
 const t = words(chosenLanguage());
 export default function ConfirmAction({ label, action }: { label: string; action: () => Promise<unknown> }) {

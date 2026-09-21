@@ -66,7 +66,7 @@ if (process.env.GRADULA_HOSTED_GRAPH) {
   const publish = async () => {
     if (pending) return;
     pending = true;
-    try { await importHostedGraph(gradula, {path:process.env.GRADULA_HOSTED_GRAPH}); clearInterval(retry); }
+    try { await importHostedGraph(gradula, {path:process.env.GRADULA_HOSTED_GRAPH,project:process.env.GRADULA_HOSTED_PROJECT || 'GRD'}); clearInterval(retry); }
     catch (error) { console.error(`[gradula] hosted graph unavailable: ${error.message}`); }
     finally { pending = false; }
   };
@@ -84,6 +84,8 @@ const auth = createAuth({
   issuer: process.env.OIDC_ISSUER,
   clientId: process.env.OIDC_CLIENT_ID,
   audience: process.env.OIDC_AUDIENCE,
+  scope: process.env.OIDC_SCOPE,
+  clientSecret: process.env.OIDC_CLIENT_SECRET,
   secret: process.env.GRADULA_SESSION_SECRET,
   origin: process.env.PUBLIC_ORIGIN,
   role: process.env.GRADULA_ROLE ?? 'dev',
@@ -105,7 +107,7 @@ const staticFiles = createStatic(process.env.GRADULA_WEB ?? new URL('../web/dist
 const TICK_MS = 15 * 60_000;
 const tick = setInterval(async () => {
   try {
-    for (const project of await store.projects.list()) {
+    for (const project of (await store.projects.list()).filter(p=>!p.archived)) {
       const sent = await gradula.sendDueReports(project.key);
       for (const one of sent.filter((o) => o.sent)) console.log(`[gradula] report → ${one.name}`);
       // And put back what was left lying. On the same beat on purpose: a
@@ -135,7 +137,7 @@ const pipelineTick = async () => {
   if (pipelineBusy) return;
   pipelineBusy = true;
   try {
-    for (const project of await store.projects.list()) {
+    for (const project of (await store.projects.list()).filter(p=>!p.archived)) {
       try {
         const results = await gradula.pollPipelines(project.key);
         for (const result of results) if (!result.sent) console.warn(`[gradula] pipeline ${project.key}: ${result.reason ?? 'not delivered'}`);
@@ -151,7 +153,7 @@ void pipelineTick().catch((error) => console.warn(`[gradula] pipeline: ${telegra
 const handle = createApi(gradula, { adminToken, auth, staticFiles, live, watcher: sentry, origin: process.env.PUBLIC_ORIGIN ?? null });
 
 if (!adminToken) console.warn('[gradula] Without GRADULA_ADMIN_TOKEN there is no admin door (503).');
-if (!auth) console.warn('[gradula] Without OIDC_ISSUER/CLIENT_ID/AUDIENCE and GRADULA_SESSION_SECRET nobody can sign in — machines still can.');
+if (!auth) console.warn('[gradula] Without OIDC_ISSUER/CLIENT_ID and GRADULA_SESSION_SECRET nobody can sign in — machines still can.');
 
 createServer(handle).listen(port, host, () => {
   console.log(`[gradula] listening on http://${host}:${port} — store: ${store.kind}`);

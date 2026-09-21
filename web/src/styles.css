@@ -1,15 +1,4 @@
-/*
- * GRADULA IS GREY UNTIL SOMETHING HAS A STATE.
- *
- * Mundula has a law: the orange means state, never decoration. Gradula takes
- * it further — here EVERY colour means a state, and there are no others. No
- * accent, no brand in a hue, no gradient. What is coloured says something:
- * what is running, what is waiting, what is done, what is only proposed.
- *
- * That is at the same time the own appearance Gradula needs as its own
- * product: it does not borrow Mundula's orange, it simply has none.
- */
-
+/* Gradula design tokens. Status cues remain legible without motion or colour. */
 :root {
   --ground: #101318;
   color-scheme: dark;
@@ -27,8 +16,8 @@
   --waiting: #e0a53a;
   --proposal: #63b8e8;
 
-  --font: 'Archivo', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --font: system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --mono: ui-monospace, Menlo, monospace;
 }
 
 @media (prefers-color-scheme: light) {
@@ -400,9 +389,7 @@ button[disabled] { opacity: 0.45; cursor: default; }
  *
  * So the selector names the beam's wrapper and nothing else.
  */
-.column-inside > [class*='border-beam'],
 .column-inside > div:has(> .card),
-.group > [class*='border-beam'],
 .group > div:has(> .card) { width: 100%; display: block; }
 .readerOnly {
   position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -748,7 +735,7 @@ button.ghost { background: transparent; border-color: var(--line); color: var(--
  * language, standing, who — eleven controls. Wrapped they still cover a third
  * of a phone screen in permanent chrome; unwrapped they ran off the edge
  * where a page with `overflow: hidden` on <body> means gone, not scrollable —
- * David could not reach the view switch or "+ Card" at all. Even trimmed to
+ * A reader could not reach the view switch or "+ Card" at all. Even trimmed to
  * "the row keeps what gets you somewhere", three views plus a labelled
  * "+ Card" button still would not fit beside a usable search field at 375px
  * — measured, not guessed, in the Browser pane.
@@ -1056,3 +1043,16 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 
 .document-table { overflow:auto; margin:20px 0; }
 .document-reader blockquote { border-left:2px solid var(--line-light); margin:16px 0; padding-left:18px; color:var(--muted); }
+
+/* First-run setup and owned state cues; no remote fonts or animation packages. */
+.setup-link { display:inline-block; margin:12px 0; color:var(--ink); text-underline-offset:4px; }
+.setup-steps { text-align:left; max-width:540px; margin:24px auto; padding-left:24px; line-height:1.8; }
+.signal-frame { border-radius:12px; position:relative; width:100%; }
+.signal-working { outline:1px solid var(--line-light); }
+.signal-attention { outline:1px solid var(--waiting); }
+.signal-changed { animation:signal-notice var(--signal-duration) ease-out 1; }
+.bonded-cards { display:flex; flex-direction:column; gap:4px; padding:4px; border-left:2px solid var(--line-light); border-radius:8px; }
+.activity-dot { display:block; width:9px; height:9px; border-radius:50%; background:var(--ink); animation:signal-activity 1.6s ease-in-out infinite; }
+@keyframes signal-notice { from { box-shadow:0 0 0 2px var(--ink); } to { box-shadow:0 0 0 0 transparent; } }
+@keyframes signal-activity { 50% { opacity:.35; } }
+@media (prefers-reduced-motion:reduce) { .signal-changed, .activity-dot { animation:none; } }

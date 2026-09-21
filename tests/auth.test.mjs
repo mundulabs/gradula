@@ -70,11 +70,11 @@ test('without configuration there is no door', () => {
   assert.throws(() => createAuth({ issuer: 'https://a', clientId: '1', audience: '2', secret: 'kurz', origin: 'https://b' }), /32\+/);
 });
 
-test('the beginning sends to Zitadel and lays an attempt cookie', () => {
-  const auth = createAuth({ issuer: 'https://auth.example/', clientId: 'client-1', audience: 'project-9', secret: SECRET, origin: 'https://gradula.example' });
-  const { ort, cookie } = auth.start('/tafel');
+test('the beginning discovers endpoints and lays an attempt cookie', async () => {
+  const auth = createAuth({ issuer: 'https://auth.example/', clientId: 'client-1', audience: 'project-9', secret: SECRET, origin: 'https://gradula.example', fetchImpl:async()=>({ok:true,json:async()=>({issuer:'https://auth.example',authorization_endpoint:'https://auth.example/authorize',token_endpoint:'https://auth.example/token',jwks_uri:'https://auth.example/keys'})}) });
+  const { ort, cookie } = await auth.start('/tafel');
   const url = new URL(ort);
-  assert.equal(url.origin + url.pathname, 'https://auth.example/oauth/v2/authorize');
+  assert.equal(url.origin + url.pathname, 'https://auth.example/authorize');
   assert.equal(url.searchParams.get('client_id'), 'client-1');
   assert.equal(url.searchParams.get('redirect_uri'), 'https://gradula.example/auth');
   assert.equal(url.searchParams.get('code_challenge_method'), 'S256');
@@ -86,4 +86,27 @@ test('the beginning sends to Zitadel and lays an attempt cookie', () => {
 test('cookies are read, several of them too', () => {
   assert.deepEqual(cookiesOf({ headers: { cookie: 'a=1; __Host-gradula=xy; b=2' } })['__Host-gradula'], 'xy');
   assert.deepEqual(cookiesOf({ headers: {} }), {});
+});
+
+test('generic OIDC verifies state, nonce, issuer and roles; local cookies work without __Host prefix', async () => {
+ const {generateKeyPair,SignJWT,createLocalJWKSet,exportJWK}=await import('jose');
+ const {privateKey,publicKey}=await generateKeyPair('RS256');const jwks=createLocalJWKSet({keys:[await exportJWK(publicKey)]});
+ let idToken,exchanges=0;
+ const fetchImpl=async url=>url.includes('openid-configuration')?{ok:true,json:async()=>({issuer:'https://identity.test',authorization_endpoint:'https://identity.test/realm/login',token_endpoint:'https://identity.test/realm/token',jwks_uri:'https://identity.test/realm/keys'})}:{ok:true,json:async()=>{exchanges++;return {id_token:idToken};}};
+ const secret='x'.repeat(40),auth=createAuth({issuer:'https://identity.test',clientId:'client',secret,origin:'http://localhost:3200',role:'gradula',rollenClaim:'roles',secure:false,jwks,fetchImpl});
+ const started=await auth.start('//evil.test'),url=new URL(started.ort),attempt=started.cookie.split(';')[0].split('=')[1];
+ assert.match(started.cookie,/^gradula-attempt-local=/);assert.equal(url.searchParams.get('scope'),'openid profile email');
+ await assert.rejects(auth.finish('code',attempt,{state:'wrong'}),/state/);assert.equal(exchanges,0);
+ const token=async(nonce,roles=['gradula'])=>new SignJWT({nonce,roles,name:'Alice'}).setProtectedHeader({alg:'RS256'}).setIssuer('https://identity.test').setAudience('client').setSubject('alice').setExpirationTime('5m').sign(privateKey);
+ idToken=await token('wrong');await assert.rejects(auth.finish('code',attempt,{state:url.searchParams.get('state')}),/nonce/);
+ idToken=await token(url.searchParams.get('nonce'),[]);await assert.rejects(auth.finish('code',attempt,{state:url.searchParams.get('state')}),/role/);
+ idToken=await token(url.searchParams.get('nonce'));const finished=await auth.finish('code',attempt,{state:url.searchParams.get('state')});assert.equal(finished.target,'/');
+ assert.equal(auth.who({headers:{cookie:finished.cookies[0].split(';')[0]}}).sub,'alice');
+});
+
+test('discovery refuses another issuer and insecure remote endpoints',async()=>{
+ for(const override of [{issuer:'https://impostor.test'},{token_endpoint:'http://remote.test/token'}]){
+ const auth=createAuth({issuer:'https://identity.test',clientId:'client',secret:'x'.repeat(40),origin:'https://board.test',fetchImpl:async()=>({ok:true,json:async()=>({issuer:'https://identity.test',authorization_endpoint:'https://identity.test/login',token_endpoint:'https://identity.test/token',jwks_uri:'https://identity.test/keys',...override})})});
+ await assert.rejects(auth.start());
+ }
 });

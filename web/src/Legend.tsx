@@ -12,8 +12,8 @@
  * line of markup away and cannot drift.
  */
 import Dialog from './Dialog';
-import { BorderBeam } from 'border-beam';
-import { beamFor, BEAM_STATIC, LEVEL_CLASS } from './motion';
+import SignalFrame from './SignalFrame';
+import { LEVEL_CLASS } from './motion';
 import type { Signal } from './motion';
 import { chosenLanguage, words } from './words';
 import { KINDS } from './vocabulary';
@@ -28,11 +28,8 @@ const SIGNALS: { signal: Signal; what: string; why: string }[] = [
 ];
 
 function Sample({ signal, label }: { signal: Signal; label: string }) {
-  const beam = beamFor(signal);
   const card = <span className="legend-card">{label}</span>;
-  return beam
-    ? <BorderBeam size={beam.size} duration={beam.duration} colorVariant={beam.color} staticColors={BEAM_STATIC} theme="dark">{card}</BorderBeam>
-    : card;
+  return <SignalFrame signal={signal}>{card}</SignalFrame>;
 }
 
 export default function Legend({ close }: { close: () => void }) {
@@ -66,7 +63,7 @@ export default function Legend({ close }: { close: () => void }) {
           <span className="legend-why">{t('legend.labelsWhy')}</span>
         </div>
         <div className="legend-row">
-          <span className="legend-card"><span className="waiting">{t('card.waits')} GRD-1</span></span>
+          <span className="legend-card"><span className="waiting">{t('card.waits')} APP-1</span></span>
           <span className="legend-why">{t('legend.waitsWhy')}</span>
         </div>
         <div className="legend-row">

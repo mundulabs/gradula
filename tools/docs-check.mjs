@@ -3,7 +3,7 @@ import { readFile, readdir, access } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
-const documents = ['README.md', 'AGENTS.md', ...(await readdir(resolve(root, 'docs'))).filter((name) => name.endsWith('.md')).map((name) => `docs/${name}`)];
+const documents = ['README.md', 'AGENTS.md', 'CONTRIBUTING.md', 'SECURITY.md', ...(await readdir(resolve(root, 'docs'))).filter((name) => name.endsWith('.md')).map((name) => `docs/${name}`)];
 const failures = [];
 const exists = async (path, source) => {
   try { await access(path); } catch { failures.push(`${source}: missing ${path}`); }

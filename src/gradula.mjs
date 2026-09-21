@@ -133,6 +133,7 @@ const HERALD_KINDS = { telegram };
 export const HOUSE_KEY = 'house';
 
 export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, activityWindowMs = 5000, decisionPilot = {} } = {}) {
+  const pilotEnabled = async project => (decisionPilot.projects ?? []).some(key => key === project.key) || (await store.projects.aliases(project.key)).some(key => (decisionPilot.projects ?? []).includes(key));
   const keyOf = (herald) => (herald?.token === HOUSE_KEY ? houseKey : herald?.token ?? null);
   const pipelineHerald = createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl: defaultFetch });
   const findItem = async (key) => {
@@ -287,12 +288,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     store,
     pollPipelines(projectKey) { return pipelineHerald.poll(projectKey); },
 
-    async createProject({ key, name, repo = null }, actor = 'system') {
+    async createProject({ key, name, repo = null, accessRole = null }, actor = 'system') {
+      if(accessRole !== null && (typeof accessRole !== 'string' || !/^[A-Za-z0-9:_./-]{1,120}$/.test(accessRole))) throw bad('accessRole','Invalid project access role.');
       const projectKey = String(key ?? '').trim().toUpperCase();
       if (!isProjectKey(projectKey)) throw bad('id', 'A project key: two to eight capital letters, MDUS for instance.');
       if (await store.projects.resolve(projectKey)) throw new Refusal(409, 'duplicate', `${projectKey} already exists.`);
-      const project = await store.projects.create({ key: projectKey, name: text(name, 120, 'name'), repo: repo ? String(repo).slice(0, 300) : null });
-      return { ...project, from: actor };
+      const project = await store.projects.create({ key: projectKey, name: text(name, 120, 'name'), repo: repo ? String(repo).slice(0, 300) : null, accessRole });
+      return { ...(await this.getProject(project.key)), from: actor };
     },
 
     async listProjects() {
@@ -308,7 +310,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
 
     async decisionTrial(projectKey,input,actor,requestKey = null) {
       const project=await this.getProject(projectKey);
-      if(!decisionPilot.projects?.includes(project.key))return {mode:'shadow',status:'disabled',guidance:'Pilot not enabled for this project; continue the normal workflow.'};
+      if(!(await pilotEnabled(project)))return {mode:'shadow',status:'disabled',guidance:'Pilot not enabled for this project; continue the normal workflow.'};
       let apiKey;
       try {apiKey=requestKey===null?decisionPilot.apiKey:validProviderKey(requestKey);}catch(error){throw bad('provider-key',error.message);}
       if(!apiKey)return {mode:'shadow',status:'key-required',guidance:'Set TYPESAFE_API_KEY in this project environment to run the optional pilot; continue the normal workflow otherwise.'};
@@ -335,11 +337,11 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     },
     async decisionReport(projectKey) {
       const project=await this.getProject(projectKey);
-      return {enabled:Boolean(decisionPilot.projects?.includes(project.key)),acceptsProjectKey:true,providerKeyRequired:!decisionPilot.apiKey,...pilotReport(await store.decisions.list(project.key,PILOT.campaign)),tasks:taskReport(await store.decisions.list(project.key,TASK_CAMPAIGN))};
+      return {enabled:Boolean((await pilotEnabled(project))),acceptsProjectKey:true,providerKeyRequired:!decisionPilot.apiKey,...pilotReport(await store.decisions.list(project.key,PILOT.campaign)),tasks:taskReport(await store.decisions.list(project.key,TASK_CAMPAIGN))};
     },
     async beginTaskRun(projectKey,input,actor) {
       const project=await this.getProject(projectKey);
-      if(!decisionPilot.projects?.includes(project.key))return {status:'disabled'};
+      if(!(await pilotEnabled(project)))return {status:'disabled'};
       let prepared;try{prepared=taskInput(input);}catch(error){throw bad('task-run',error.message);}
       const card=await findItem(prepared.card);
       if(!card||card.project!==project.key)throw missing('That card does not exist in this project.');
@@ -656,6 +658,14 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     async patchProject(key, changes, actor = 'admin') {
       const project = await this.getProject(key);
       const next = {};
+      if (changes.archived !== undefined) {
+        if(typeof changes.archived !== 'boolean') throw bad('archived','archived must be boolean.');
+        next.archived=changes.archived;
+      }
+      if (changes.accessRole !== undefined) {
+        if(changes.accessRole !== null && (typeof changes.accessRole !== 'string' || !/^[A-Za-z0-9:_./-]{1,120}$/.test(changes.accessRole))) throw bad('accessRole','Use a role identifier or null for the shared trusted instance.');
+        next.accessRole=changes.accessRole;
+      }
       if (changes.manualAcceptance !== undefined) {
         if (typeof changes.manualAcceptance !== 'boolean') throw bad('manualAcceptance', 'manualAcceptance must be boolean.');
         next.manualAcceptance = changes.manualAcceptance;
@@ -710,7 +720,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
         else next.publish = 'done';
       }
       if (!Object.keys(next).length) return project;
-      return store.projects.patch(project.key, next);
+      const changed=await store.projects.patch(project.key, next);
+      systemHeld.delete(project.key);
+      if(next.archived)live?.disconnect?.(project.key);
+      return changed;
     },
 
     /**

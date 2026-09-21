@@ -3,7 +3,7 @@
 # The house naming rule: <abbreviation>-<task>, like mdla-web. The abbreviation is
 # the project key under which Gradula tracks itself: GRD.
 #
-# The warnings from the neighbouring house apply here just the same (infra/mundula/README.md):
+# Deployment-specific routing and existing database volume names are kept here.
 #
 # 1. NEVER attach a Dokploy "mount" to this service. With a mount, Dokploy passes
 #    `--project-directory`, `build.context` slips one level up, and the build
@@ -17,7 +17,7 @@ services:
   web:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.hosted
     restart: unless-stopped
     environment:
       NODE_ENV: production
