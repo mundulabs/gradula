@@ -1,5 +1,7 @@
 # Jev decision pilot
 
+> **Superseded on 21 September 2026 (GRAD-81).** The classifier, its doors, CLI verbs, MCP tools and provider keys were removed: across every labelled case it matched a keyword baseline and saved no task tokens. Task usage measurement stayed (`gradula measure on|off|report|collect`, [setup](setup.md)). This page is the record of the pilot as it ran.
+
 Gradula hosts an opt-in, project-scoped decision experiment. Manual `decision-trial` calls remain shadow classifications. Repositories that explicitly enable task measurement also enroll upcoming board tasks in a normal-workflow or TypeSafe-advice arm. Advice can change an optional next step; it never overrides required skills, context retrieval, tests or review, and never executes commands. TypeSafe receives a bounded title and the approach catalog, never an automatically collected repository or skill body.
 
 ## Automatic task collection

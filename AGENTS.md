@@ -63,7 +63,7 @@ web/                 the board (Vite + Preact); web/src/vocabulary.ts imports sr
 
 14. **Retrieve context, not the whole graph or chronicle.** Use `gradula context "symbol or topic"` or MCP `plan_context` for unfamiliar code; request `--detail evidence`, `--card KEY`, or `--mode explain|impact|path` only when needed. Inspect freshness, read known files directly, and fall back to local `rg` for missing/stale context (`tests/context.test.mjs`).
 
-15. **Measure decisions through the task.** In opted-in repositories, `start` / `plan_start` enrolls a task usage window and assigns the normal workflow or one capped optional TypeSafe approach. Follow mandatory skills first; acknowledge offered advice with `decision-adopt CARD yes|no` / `plan_decision_adopt`. `decision-report` collects actual session counters through the completion turn. Disclose other model usage; different tasks, missing usage and agent labels never establish savings or human review ([pilot guide](docs/decision-pilot.md)).
+15. **Measure the task, decide nothing for it.** In an opted-in repository (`gradula measure on`), `start` / `plan_start` enrols a task usage window and `measure report` / `plan_measure_report` reads the coder's own counters through the completion turn (`tests/measurement.test.mjs`). No classifier sits in front of the work: the TypeSafe pilot matched a keyword baseline and was removed ([assessment](docs/typesafe-assessment.md)). Disclose other model usage; different tasks never establish a saving.
 
 ## Checking
 

@@ -1,6 +1,4 @@
-import {validProviderKey} from './provider-key.mjs';
-import {PILOT, digest, pilotInput, pilotPayload, evaluatePilot, pilotFeedback, pilotReport} from './decision-pilot.mjs';
-import {TASK_CAMPAIGN,TASK_LIMITS,taskInput,taskObservation,taskReport} from './task-measurement.mjs';
+import {TASK_CAMPAIGN,TASK_LIMITS,digest,taskInput,taskObservation,taskReport} from './task-measurement.mjs';
 /**
  * What Gradula DOES — the verbs, once, over a store.
  *
@@ -132,8 +130,9 @@ const HERALD_KINDS = { telegram };
  */
 export const HOUSE_KEY = 'house';
 
-export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, activityWindowMs = 5000, decisionPilot = {} } = {}) {
-  const pilotEnabled = async project => (decisionPilot.projects ?? []).some(key => key === project.key) || (await store.projects.aliases(project.key)).some(key => (decisionPilot.projects ?? []).includes(key));
+export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null, live = null, fetchImpl: defaultFetch = fetch, houseKey = null, activityWindowMs = 5000, taskMeasurement = {} } = {}) {
+  // Task usage is measured only for projects the operator names; nothing else opts a repository in.
+  const measured = async project => (taskMeasurement.projects ?? []).some(key => key === project.key) || (await store.projects.aliases(project.key)).some(key => (taskMeasurement.projects ?? []).includes(key));
   const keyOf = (herald) => (herald?.token === HOUSE_KEY ? houseKey : herald?.token ?? null);
   const pipelineHerald = createPipelineHerald({ store, heraldKinds, keyOf, fetchImpl: defaultFetch });
   const findItem = async (key) => {
@@ -308,40 +307,13 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       return { ...project, manualAcceptance: project.manualAcceptance === true, integration: INTEGRATIONS.includes(project.integration) ? project.integration : 'pr', ladder: CARD_STYLE };
     },
 
-    async decisionTrial(projectKey,input,actor,requestKey = null) {
+    async taskReport(projectKey) {
       const project=await this.getProject(projectKey);
-      if(!(await pilotEnabled(project)))return {mode:'shadow',status:'disabled',guidance:'Pilot not enabled for this project; continue the normal workflow.'};
-      let apiKey;
-      try {apiKey=requestKey===null?decisionPilot.apiKey:validProviderKey(requestKey);}catch(error){throw bad('provider-key',error.message);}
-      if(!apiKey)return {mode:'shadow',status:'key-required',guidance:'Set TYPESAFE_API_KEY in this project environment to run the optional pilot; continue the normal workflow otherwise.'};
-      let prepared;
-      try {prepared=pilotInput(input);pilotPayload(prepared);}catch(error){throw bad('decision',error.message);}
-      const fingerprint=digest(prepared);
-      const trial={id:mintId(),campaign:PILOT.campaign,requestId:prepared.requestId,kind:prepared.kind,baseline:prepared.baseline,candidateIds:prepared.candidates.map(c=>c.id),fingerprint,catalogDigest:digest(prepared.candidates),model:PILOT.model,threshold:PILOT.threshold,created:new Date().toISOString(),actor};
-      const reserved=await store.decisions.reserve(project.key,trial,PILOT);
-      if(!reserved)return {mode:'shadow',status:'limit',guidance:'Pilot attempt limit reached; continue the normal workflow.'};
-      if(!reserved.fresh){
-        if(reserved.trial.fingerprint!==fingerprint)throw new Refusal(409,'request-id','Request id already belongs to a different input.');
-        return {mode:'shadow',status:reserved.trial.result?'complete':'pending',trial:reserved.trial};
-      }
-      const result=await evaluatePilot(prepared,{apiKey,fetchImpl:decisionPilot.fetchImpl??defaultFetch});
-      return {mode:'shadow',status:'complete',trial:await store.decisions.finish(project.key,trial.id,result)};
-    },
-    async decisionFeedback(projectKey,id,input,actor,authorKind) {
-      const project=await this.getProject(projectKey),trial=await store.decisions.get(project.key,id);
-      if(!trial)throw missing('That trial does not exist.');
-      if(!trial.result)throw new Refusal(409,'pending','Trial has not finished.');
-      let feedback;try{feedback=pilotFeedback(input,trial);}catch(error){throw bad('feedback',error.message);}
-      if(trial.feedback.length>=10)throw bad('feedback','Feedback limit reached.');
-      return store.decisions.feedback(project.key,id,{...feedback,actor,authorKind:authorKind==='human'?'human':'agent',at:new Date().toISOString()});
-    },
-    async decisionReport(projectKey) {
-      const project=await this.getProject(projectKey);
-      return {enabled:Boolean((await pilotEnabled(project))),acceptsProjectKey:true,providerKeyRequired:!decisionPilot.apiKey,...pilotReport(await store.decisions.list(project.key,PILOT.campaign)),tasks:taskReport(await store.decisions.list(project.key,TASK_CAMPAIGN))};
+      return {enabled:await measured(project),...taskReport(await store.decisions.list(project.key,TASK_CAMPAIGN))};
     },
     async beginTaskRun(projectKey,input,actor) {
       const project=await this.getProject(projectKey);
-      if(!(await pilotEnabled(project)))return {status:'disabled'};
+      if(!(await measured(project)))return {status:'disabled'};
       let prepared;try{prepared=taskInput(input);}catch(error){throw bad('task-run',error.message);}
       const card=await findItem(prepared.card);
       if(!card||card.project!==project.key)throw missing('That card does not exist in this project.');
@@ -355,20 +327,10 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const project=await this.getProject(projectKey),run=await store.decisions.get(project.key,id);
       if(!run||run.campaign!==TASK_CAMPAIGN)throw missing('That task run does not exist.');
       let observation;try{observation=taskObservation(input);}catch(error){throw bad('task-run',error.message);}
-      if(run.arm==='baseline'&&(observation.decision!=='baseline'||observation.trialId||observation.adoption!==null))throw bad('task-run','A baseline run cannot include a TypeSafe recommendation.');
-      if(observation.decision==='suggested'&&!observation.trialId)throw bad('task-run','A recommendation requires its classifier record.');
-      const unknown=run.arm==='typesafe'&&observation.decision==='unavailable';
-      let classifierInputTokens=unknown?null:0,classifierEstimatedCostUsd=unknown?null:0;
-      if(observation.trialId){
-        const trial=await store.decisions.get(project.key,observation.trialId);
-        if(!trial||trial.campaign!==PILOT.campaign||trial.requestId!==`task-${run.requestId.slice(0,64)}`)throw bad('task-run','Classifier must belong to this project and task run.');
-        if(observation.decision==='suggested'&&(trial.result?.status!=='answered'||trial.result.abstained))throw bad('task-run','An unavailable or abstained classifier cannot supply a recommendation.');
-        classifierInputTokens=trial.result?.inputTokens??null;classifierEstimatedCostUsd=trial.result?.estimatedCostUsd??null;
-      }
       const card=await findItem(run.card);
       const status=['review','done','ice'].includes(card?.state)?card.state:'active';
       // Completion follows board evidence, never a caller's claimed success.
-      const result={...observation,status,success:status==='done'?true:status==='ice'?false:null,classifierInputTokens,classifierEstimatedCostUsd,actor,at:new Date().toISOString()};
+      const result={...observation,status,success:status==='done'?true:status==='ice'?false:null,actor,at:new Date().toISOString()};
       return store.decisions.finish(project.key,id,result);
     },
 

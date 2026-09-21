@@ -627,8 +627,6 @@ test('every path the MCP server calls is a route the API has', async () => {
   const asked = [];
   const sample = { id: '01ARZ3NDEKTSV4RRFFQ69G5FAV', card: 'MDUS-1', from: 'MDUS-1', to: 'MDUS-2', kind: 'needs', state: 'ready', title: 'x', root: 'MDUS-3' };
   const fetched = globalThis.fetch;
-  const providerKey = process.env.TYPESAFE_API_KEY;
-  process.env.TYPESAFE_API_KEY = ''; // Route-contract tests never read a real local provider secret.
   try {
     for (const tool of TOOLS) {
       const path = await new Promise((done) => {
@@ -639,7 +637,6 @@ test('every path the MCP server calls is a route the API has', async () => {
     }
   } finally {
     globalThis.fetch = fetched;
-    if(providerKey===undefined)delete process.env.TYPESAFE_API_KEY;else process.env.TYPESAFE_API_KEY=providerKey;
   }
   assert.equal(asked.length, TOOLS.length, 'every tool asked for a path');
 

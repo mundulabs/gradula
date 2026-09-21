@@ -1,5 +1,7 @@
 # TypeSafe / Jev assessment for Gradula
 
+> **Superseded on 21 September 2026 (GRAD-81).** The pilot is over and the classifier removed; the measurements below are why. What remains is the task usage measurement without arms ([setup](setup.md)).
+
 Reviewed 20 September 2026. Recommendation: an optional measured pilot, not a core dependency. A user-authorized synthetic API trial was run. An opt-in shadow pilot is now implemented; it does not change production task decisions. See [pilot operation and limits](decision-pilot.md).
 
 ## What the claims mean

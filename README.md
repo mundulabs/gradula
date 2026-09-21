@@ -29,9 +29,8 @@ npm run setup -- instance --origin https://board.example.org
 docker compose --env-file .env.instance --profile public up --build -d
 ```
 
-No Mundus account or TypeSafe key is required. The portable Compose setup is
-separate from the hosted installation's infrastructure. TypeSafe is an optional
-pilot; complete-task token savings have not been established.
+No Mundus account or third-party model key is required. The portable Compose
+setup is separate from the hosted installation's infrastructure.
 
 ## Run it locally
 
@@ -568,6 +567,6 @@ statistics. `--check` requires recall >= 0.90 and mean response size <= 500 toke
 This is a regression probe, not a held-out benchmark or a measure of end-to-end
 coding success. See [retrieval validation](docs/retrieval-validation.md).
 
-### Optional decision pilot
+### Optional task measurement
 
-Connected projects can try [Jev shadow decisions](docs/decision-pilot.md) for ambiguous skill selection, routing, review triage and text intent. Opt in per project on the Gradula server; clients authenticate with existing Gradula credentials and supply their own optional TypeSafe key from a private project `.env`. Core graph/context features require no provider key. The fixed campaign limits paid attempts, records outcomes and compares complete-task usage only when measured. It never changes execution or approval.
+A repository can opt in to measuring what each board task cost its coding model: `gradula measure on` in that checkout, and its key in the server's `GRADULA_MEASURED_PROJECTS`. From then on `start` enrols the task and `move`, `measure collect` and `measure report` read the coder's own usage trace through the completion turn — input, cached input, output, reasoning and calls, per task, with every collection gap named. Only Codex traces are read so far; other coders report `collection-unavailable`. Nothing is uploaded but counters, and no report claims a saving: different tasks are not comparable runs. The earlier TypeSafe/Jev classifier pilot was removed after it matched a keyword baseline on every labelled case and saved no task tokens; its record stays in [the assessment](docs/typesafe-assessment.md).
