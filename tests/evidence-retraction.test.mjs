@@ -1,0 +1,23 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createMemoryStore} from '../src/store.mjs';
+import {createGradula} from '../src/gradula.mjs';
+const stores=[['memory',async()=>createMemoryStore()]];
+if(process.env.GRADULA_DB_URL)stores.push(['Postgres',async()=>{const {createPgStore}=await import('../src/store-pg.mjs');const s=await createPgStore(process.env.GRADULA_DB_URL,{schema:`retract_${Date.now()}`});await s.migrate();return s}]);
+for(const [name,build] of stores)test(`${name}: evidence retraction is atomic, scoped to its card and retains the original submitter`,async t=>{
+ const store=await build();t.after(()=>store.close?.());const g=createGradula(store);
+ await g.createProject({key:'PRB',name:'Example'});const card=await g.addItem('PRB',{kind:'task',title:'Review'},'author');const other=await g.addItem('PRB',{kind:'task',title:'Other'},'author');
+ await g.addEvidence(card.key,{kind:'commit',ref:'abcdef123456',comment:'Wrong association'},'author');
+ const entry=(await store.events.of(card.id)).find(e=>e.verb==='evidenced');
+ await assert.rejects(g.retractEvidence(other.key,entry.id,'Correction','author'));
+ await assert.rejects(g.retractEvidence(card.key,entry.id,'','author'));
+ assert.deepEqual(await g.cardsOfRef('PRB','abcdef123456'),[card.key]);
+ const results=await Promise.allSettled([g.retractEvidence(card.key,entry.id,'Wrong branch inheritance','administrator'),g.retractEvidence(card.key,entry.id,'Duplicate attempt','administrator')]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+ assert.deepEqual(await g.cardsOfRef('PRB','abcdef123456'),[]);
+ const history=await store.events.of(card.id),original=history.find(e=>e.id===entry.id);
+ assert.equal(original.verb,'said');assert.deepEqual(original.data.retractedEvidence,entry.data);assert.equal(original.actor,entry.actor);assert.equal(original.at,entry.at);
+ assert.equal(history.filter(e=>e.data?.retractedEvent===entry.id).length,1);
+ assert.match(history.find(e=>e.data?.retractedEvent===entry.id).data.line,/Retracted evidence abcdef123456/);
+ assert.equal(history.find(e=>e.data?.retractedEvent===entry.id).actor,'administrator');
+});

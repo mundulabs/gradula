@@ -818,7 +818,7 @@ switch (command) {
       if (!hash?.trim()) continue;
       const named = [...`${title}\n${body ?? ''}`.matchAll(/^\s*Plan:\s*([A-Z]{2,8}-[0-9]{1,7})\s*$/gm)];
       if (named.length) for (const hit of named) add(hit[1].toUpperCase(), hash, title, author, email, files);
-      else if (onBranch) add(onBranch, hash, title, author, email, files);
+      else if (onBranch && typeof flags.since === 'string' && !/^(Merge |fixup!|squash!)/.test(String(title ?? ''))) add(onBranch, hash, title, author, email, files);
       else if (flags.adopt && !/^(Merge |fixup!|squash!)/.test(String(title ?? ''))) orphans.push({ hash, title: (title ?? '').trim(), body: (body ?? '').trim(), author, email, files });
     }
 
@@ -847,7 +847,7 @@ switch (command) {
       console.log('Or work on a branch that gradula start --tree created (codex/MDUS-142).');
       break;
     }
-    if (onBranch) console.log(`On the task branch for ${onBranch} — commits without a Plan line count for ${onBranch}.\n`);
+    if (onBranch && typeof flags.since === 'string') console.log(`On the task branch for ${onBranch} — commits without a Plan line count for ${onBranch}.\n`);
 
     let fresh = 0;
     for (const [card, commits] of found) {

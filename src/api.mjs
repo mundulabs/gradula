@@ -271,7 +271,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     }],
 
     ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, GRAPH_LIMITS.bytes), ctx.actor) })],
-    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => ({ status:200, body:await gradula.getCodegraph(ctx.project,ctx.url.searchParams.get('revision')) })],
+    ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => {const graph=await gradula.getCodegraph(ctx.project,ctx.url.searchParams.get('revision'));return {status:200,body:graph?{...graph,documents:(graph.documents??[]).map(({markdown,...entry})=>entry)}:null};}],
+    ['GET', /^\/api\/v1\/documents$/, async (_req,_m,ctx) => ({status:200,body:await gradula.publishedDocument(ctx.project,ctx.url.searchParams.get('path'),ctx.url.searchParams.get('revision'))})],
     ['POST', /^\/api\/v1\/decision-trials$/, async (req,_m,ctx) => ({status:200,body:await gradula.decisionTrial(ctx.project,await readJson(req,16000),ctx.actor,req.headers['x-gradula-typesafe-key']??null)})],
     ['POST', /^\/api\/v1\/decision-trials\/([0-9A-Z]{26})\/feedback$/, async (req,m,ctx) => ({status:200,body:await gradula.decisionFeedback(ctx.project,m[1],await readJson(req,4000),ctx.actor,ctx.person?'human':'agent')})],
     ['GET', /^\/api\/v1\/decision-trials$/, async (_req,_m,ctx) => ({status:200,body:await gradula.decisionReport(ctx.project)})],
@@ -344,6 +345,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       const body = await readJson(req);
       return { status: 201, body: await gradula.decide(m[1], body, ctx.actor) };
     }],
+    ['POST', /^\/api\/admin\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/evidence\/([0-9A-Z]{26})\/retract$/, async (req,m,ctx) => {ctx.needAdmin();const body=await readJson(req);return {status:200,body:await gradula.retractEvidence(m[1],m[2],body.reason,ctx.actor)};}],
     ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/evidence$/, async (req, m, ctx) => {
       const body = await readJson(req);
       return { status: 201, body: await gradula.addEvidence(m[1], body, ctx.actor) };
@@ -487,7 +489,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['GET', /^\/api\/v1\/standing$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.standing(ctx.project) })],
     // One picture of the whole system — every connection and the board, one
     // shape, with `sources` saying what is not being seen (system.mjs).
-    ['GET', /^\/api\/v1\/system$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.system(ctx.project) })],
+    ['GET', /^\/api\/v1\/system$/, async (_req, _m, ctx) => ({ status: 200, body: await gradula.system(ctx.project,{background:ctx.url.searchParams.get('wait')==='0'}) })],
     ['GET', /^\/api\/v1\/report$/, async (_req, _m, ctx) => ({
       status: 200,
       body: await gradula.report(ctx.project, {

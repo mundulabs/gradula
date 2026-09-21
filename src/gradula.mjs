@@ -39,7 +39,7 @@ import * as telegram from './telegram.mjs';
 import * as dokploy from './dokploy.mjs';
 import * as github from './github.mjs';
 import * as eas from './eas.mjs';
-import { gatherSystem, boardPicture, FRESH_MS } from './system.mjs';
+import { gatherSystem, boardPicture, emptySystem, FRESH_MS } from './system.mjs';
 import { candidatesOf, evidenceOf, deployedOf, foreignIdOf, unknownDeployed } from './deployed.mjs';
 import { gather, plainReport, humanReport, htmlReport, escapeHtml, clip } from './report.mjs';
 import { findings, whoDidWhat } from './health.mjs';
@@ -376,6 +376,12 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       if (revision && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) throw bad('revision','Expected a full source SHA');
       const graph = (revision ? await store.codegraphs.get(project.key,revision) : null) ?? await store.codegraphs.get(project.key);
       return graph?.repository === project.repo ? graph : null;
+    },
+    async publishedDocument(projectKey,path,revision=null) {
+      const graph=await this.getCodegraph(projectKey,revision);
+      const doc=graph?.documents?.find(d=>d.path===path);
+      if(!doc||(revision&&graph.revision!==revision))throw missing('This document has not been published with the project snapshot.');
+      return {...doc,revision:graph.revision,digest:graph.digest,repository:graph.repository};
     },
     async getContext(projectKey, input) {
       const project = await this.getProject(projectKey);
@@ -1349,6 +1355,15 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * commit was signed by whoever wrote it. It is stored beside the evidence,
      * never instead of the actor — who pushed and who wrote are two questions.
      */
+    async retractEvidence(key, id, reason, actor) {
+      const item=await findItem(key);
+      const why=text(reason,500,'reason');
+      const entry=await store.events.retract(item.id,id,actor,why);
+      if(!entry)throw missing('No active evidence on this card.');
+      systemHeld.delete(item.project);
+      live?.announce(item.project,{card:item.key,verb:'said',actor});
+      return {ok:true,event:entry};
+    },
     async addEvidence(key, {
       kind, ref, comment = null, note: sentNote = null, author = null, email = null, files = null,
     }, actor) {
@@ -1778,15 +1793,23 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * `fresh` skips the cache — the live poll uses it, so its beat IS the
      * cache's clock. Single-flight: two askers during a gather share it.
      */
-    async system(projectKey, { fetchImpl, fresh = false, now = Date.now, deployedCache, budget } = {}) {
+    async system(projectKey, { fetchImpl, fresh = false, background = false, now = Date.now, deployedCache, budget } = {}) {
       const project = await this.getProject(projectKey);
       const board = async () => {
         const [history, cards] = await Promise.all([this.history(project.key, { limit: 500 }), store.items.list(project.key, {})]);
         return { history, cards };
       };
       const held = systemHeld.get(project.key);
+      if(background){
+        const refreshing=!held?.doc||!!held.promise||now()-held.at>=FRESH_MS;
+        if(refreshing&&!held?.promise)void this.system(project.key,{fetchImpl,now,deployedCache,budget}).then(doc=>live?.announceSystem(project.key,{at:doc.at,changed:['sources']})).catch(()=>{});
+        const picture=boardPicture({...await board(),now:now()});
+        const previous=held?.doc;
+        const measured=new Map((previous?.cards??[]).map(card=>[card.key,{deployed:card.deployed,evidence:card.evidence??0,git:card.git}]));
+        return {...(previous??emptySystem(new Date(now()).toISOString())),...picture,cards:picture.cards.map(card=>({...card,...measured.get(card.key)})),sources:previous?.sources??{board:'ok',dokploy:'checking',github:'checking',eas:'checking',sentry:'checking'},observation:{refreshing,observedAt:previous?.at??null}};
+      }
       if (held?.promise) return held.promise;
-      if (held && !fresh && now() - held.at < FRESH_MS) {
+      if (held?.doc && !fresh && now() - held.at < FRESH_MS) {
         const picture = boardPicture({ ...(await board()), now: now() });
         // Where a card has arrived was measured with the held picture; a
         // card that was not in it yet has not been measured — unknown, not

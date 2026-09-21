@@ -1,3 +1,4 @@
+import ProjectOverview from './ProjectOverview';
 import CodeContext from './CodeContext';
 import { acceptancePolicy, saveAcceptancePolicy, integrationPolicy, saveIntegrationPolicy, type Integration } from './api';
 /**
@@ -30,11 +31,11 @@ import {
   signInPath, me as readMe, projects as readProjects, cards as readCards,
   card as readCard, system as readSystem, move, start, beatWork, releaseWork, workSession, create, change, confirm, say, decide,
   vocabulary as readVocabulary, links as readLinks, live as liveLine,
-  standing as readStanding, NotSignedIn,
+  NotSignedIn,
   heralds as heraldsRead, myKeys, mintKey, revokeKey, type OwnKey, pendingDevices, approveDevice, denyDevice, type Device, templates as templatesRead, houseKey as houseKeyRead, HOUSE_KEY, saveHerald, dropHerald,
   probeHerald, heraldChats, chatsForKey, report as reportRead, sendReport,
   type Me, type Card, type Project, type State, type Herald, type Template, type Report, type Link,
-  type Standing, type SystemCard,
+  type Standing, type System, type SystemCard,
 } from './api';
 import { laneChips, commitHref, fileHref, LANES, type Lane, type Chip } from './deployed';
 
@@ -1144,7 +1145,7 @@ export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [project, setProject] = useState<string>(() => localStorage.getItem('gradula.project') ?? '');
+  const [project, setProject] = useState<string>(() => new URLSearchParams(location.search).get('project') ?? localStorage.getItem('gradula.project') ?? '');
   const [cards, setCards] = useState<Card[]>([]);
   const working = useRef(new Map<string, Card>());
   const [, refreshActivity] = useState(0);
@@ -1182,7 +1183,10 @@ export default function App() {
   // Three views of the same facts: the board answers "what is to be done",
   // the map "where has the work gone", the pulse "how are we doing". Same
   // cards, three questions — which is why it is a switch and not three tools.
-  const [view, setView] = useState<'board' | 'map' | 'pulse'>('board');
+  const [view, setView] = useState<'overview' | 'board' | 'map' | 'pulse'>(() => { const v = new URLSearchParams(location.search).get('view'); return v === 'board' || v === 'map' || v === 'pulse' ? v : 'overview'; });
+  const [systemDoc, setSystemDoc] = useState<System | null>(null);
+  const [systemError, setSystemError] = useState(false);
+  useEffect(() => { const url = new URL(location.href); url.searchParams.set('view', view); if (project) url.searchParams.set('project', project); history.replaceState(history.state, '', url); }, [project, view]);
   /*
    * THE ADDRESS IS THE STATE, and the address of a card is `/MDUS-2`.
    *
@@ -1315,9 +1319,16 @@ export default function App() {
   const loadPicture = useCallback(() => {
     if (!project) return;
     readSystem(project)
-      .then((doc) => { if (activeProject.current === project) setPicture(new Map((doc.cards ?? []).map((card) => [card.key, card]))); })
-      .catch(() => { if (activeProject.current === project) setPicture(new Map()); });
+      .then((doc) => { if (activeProject.current !== project) return; setSystemDoc(doc); setSystemError(false); setPicture(new Map((doc.cards ?? []).map((card) => [card.key, card]))); const lane = doc.environments?.find(e => e.id === 'production'); if (lane) setStanding({...lane.standing, deployments: lane.deployments} as Standing); })
+      .catch(() => { if (activeProject.current === project) setSystemError(true); });
   }, [project]);
+
+  useEffect(() => {
+    if (!project || !systemDoc?.observation?.refreshing) return;
+    const timer = setTimeout(loadPicture, 2500);
+    return () => clearTimeout(timer);
+  }, [project, systemDoc, loadPicture]);
+  const latestLoad = useRef(load); latestLoad.current = load;
 
   // The long line. It says only THAT something moved; the reading happens
   // through the door that knows the rights. Bundled, so that ten moves in one
@@ -1341,18 +1352,18 @@ export default function App() {
         setJustChanged(new Set());
         setBonds([]);
         setPicture(new Map());
-        load();
+        latestLoad.current();
         return;
       }
       if (clock) return;
-      clock = setTimeout(() => { clock = null; load(); }, 400);
+      clock = setTimeout(() => { clock = null; latestLoad.current(); }, 400);
     }, () => {
       loadPicture();
       if (clock) return;
-      clock = setTimeout(() => { clock = null; load(); }, 400);
+      clock = setTimeout(() => { clock = null; latestLoad.current(); }, 400);
     });
     return () => { if (clock) clearTimeout(clock); stop(); };
-  }, [project, load, loadPicture]);
+  }, [project, loadPicture]);
 
   useEffect(() => {
     if (!project) return;
@@ -1363,10 +1374,9 @@ export default function App() {
         setAreaOfModule(Object.fromEntries(v.map((m) => [m.id, m.area ?? m.id])));
       })
       .catch(() => { if (activeProject.current === project) { setModules([]); setAreaOfModule({}); } });
-    setCards([]); previous.current = []; setBonds([]); setPicture(new Map()); setStanding(null);
+    setCards([]); previous.current = []; setBonds([]); setPicture(new Map()); setStanding(null); setSystemDoc(null); setSystemError(false);
     setAreaFilter('');
     readLinks(project).then((value) => { if (activeProject.current === project) setBonds(value); }).catch(() => {});
-    readStanding(project).then((value) => { if (activeProject.current === project) setStanding(value); }).catch(() => {});
     setModuleFilter('');
     setCraftFilter('');
     loadPicture();
@@ -1420,9 +1430,9 @@ export default function App() {
         {projects.length > 1 ? <select className="project-switch" aria-label={t('ui.project')} value={project} onChange={(e) => { open(null); setProject(e.target.value); resetFilters(); }}>
           {projects.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
         </select> : <strong className="project-name">{projects[0]?.name ?? t('ui.app')}</strong>}
-        <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.target.value)} />
+        {view !== 'overview' ? <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.target.value)} /> : null}
         <nav className="views" aria-label={t('ui.views')}>
-          {(['board', 'map', 'pulse'] as const).map((one) => <button key={one} aria-pressed={view === one} className={view === one ? 'view here' : 'view'} onClick={() => setView(one)}>{t(`nav.${one}`)}</button>)}
+          {(['overview', 'board', 'map', 'pulse'] as const).map((one) => <button key={one} aria-pressed={view === one} className={view === one ? 'view here' : 'view'} onClick={() => { setView(one); if (one === 'overview') resetFilters(); }}>{t(`nav.${one}`)}</button>)}
         </nav>
         <button className="primary new-action" disabled={!project} onClick={() => setCreating(true)}><Icon name="plus" />{t('ui.newCard')}</button>
         <div className="menu-anchor" ref={menuRef}>
@@ -1435,25 +1445,25 @@ export default function App() {
           </div> : null}
         </div>
       </header>
-      <div className="workspace-toolbar">
+      {view !== 'overview' ? <div className="workspace-toolbar">
         <div className="workspace-context"><span>{t(`nav.${view}`)}</span><span className="small" role="status">{loading ? t('ui.loading') : `${cards.length} ${t('map.cards')}`}</span></div>
         {standing && standing.standing !== 'unknown' ? <span className={STAND_CLASS[standing.standing] ?? 'standing'} title={standing.line}>{standing.standing}</span> : null}
         {view !== 'pulse' ? <button aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" />{t('ui.filters')}{filterCount ? ` · ${filterCount}` : ''}</button> : null}
         {filterCount && view !== 'pulse' ? <button className="ghost" onClick={resetFilters}>{t('ui.clearFilters')}</button> : null}
-      </div>
-      {filtersOpen && view !== 'pulse' ? <div className="filter-bar">
+      </div> : null}
+      {filtersOpen && view !== 'overview' && view !== 'pulse' ? <div className="filter-bar">
         <label>{t('ui.area')}<select value={areaFilter} onChange={(e) => { setAreaFilter(e.target.value); setModuleFilter(''); }}><option value="">{t('nav.allAreas')}</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
         <label>{t('ui.module')}<select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}><option value="">{t('nav.allModules')}</option>{shownModules.map((module) => <option key={module} value={module}>{module}</option>)}</select></label>
         <label>{t('ui.craft')}<select value={craftFilter} onChange={(e) => setCraftFilter(e.target.value)}><option value="">{t('nav.allCrafts')}</option>{crafts.map((craft) => <option key={craft} value={craft}>{craft}</option>)}</select></label>
       </div> : null}
       {error ? <div className="error" role="alert">{error}<button onClick={load}>{t('ui.retry')}</button></div> : null}
       {!project ? <div className="empty-state"><h2>{t('ui.noProjects')}</h2><p>{t('ui.noProjectsWhy')}</p></div> : null}
-      {!loading && !cards.length && project && view !== 'pulse' ? <div className="board-notice"><strong>{t(filterCount ? 'ui.noResults' : 'ui.emptyBoard')}</strong><span>{t(filterCount ? 'ui.noResultsWhy' : 'ui.emptyBoardWhy')}</span>{filterCount ? <button onClick={resetFilters}>{t('ui.clearFilters')}</button> : <button onClick={() => setCreating(true)}>{t('ui.newCard')}</button>}</div> : null}
+      {!loading && !cards.length && project && view !== 'overview' && view !== 'pulse' ? <div className="board-notice"><strong>{t(filterCount ? 'ui.noResults' : 'ui.emptyBoard')}</strong><span>{t(filterCount ? 'ui.noResultsWhy' : 'ui.emptyBoardWhy')}</span>{filterCount ? <button onClick={resetFilters}>{t('ui.clearFilters')}</button> : <button onClick={() => setCreating(true)}>{t('ui.newCard')}</button>}</div> : null}
       {view === 'board' ? <nav className="column-tabs" aria-label={t('ui.stages')}>
         {COLUMN_NAMES.map((column) => <button key={column.state} aria-pressed={mobileColumn === column.state} onClick={() => setMobileColumn(column.state)}>{column.name}<span>{cards.filter((card) => card.state === column.state).length}</span></button>)}
       </nav> : null}
 
-      {view === 'pulse' ? <PulseView key={`pulse:${project}`} project={project} open={open} /> : view === 'map' ? <AreaMap key={`map:${project}`} cards={cards} open={open} areaOfModule={areaOfModule} /> : (
+      {view === 'overview' ? (projects.find(p => p.key === project) ? <ProjectOverview key={project} project={projects.find(p => p.key === project)!} cards={cards} system={systemDoc} systemError={systemError} loading={loading} open={open} board={() => setView('board')} retry={loadPicture} /> : null) : view === 'pulse' ? <PulseView key={`pulse:${project}`} project={project} open={open} /> : view === 'map' ? <AreaMap key={`map:${project}`} cards={cards} open={open} areaOfModule={areaOfModule} /> : (
       <div className="board" aria-busy={loading}>
         {COLUMN_NAMES.map((column) => {
           const inside = cards.filter((k) => k.state === column.state);

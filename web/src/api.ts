@@ -68,6 +68,10 @@ export type System = {
   cards: SystemCard[];
   deployed: Record<string, { sha: string | null; at: string | null; cards: string[] }>;
   sources: Record<string, string>;
+  observation?: {refreshing:boolean;observedAt:string|null};
+  environments?: {id:string;standing:{standing:string;line:string};deployments:{title:string;status:string;at:string|null}[]}[];
+  people?: {actor:string|null;card:string;verb:string;at:string}[];
+  pipeline?: {name:string;branch:string;status:string;url?:string;at?:string}[];
 };
 
 export type Project = { key: string; aliases?: string[]; name: string; repo: string | null };
@@ -116,6 +120,7 @@ sessionStorage.setItem('gradula-work-session', workSession);
 async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${root}${path}`, {
     ...init,
+    signal:init.signal??((init.method??'GET')==='GET'?AbortSignal.timeout(12000):undefined),
     credentials: 'include',
     headers: { 'X-Gradula-Session': workSession, ...(init.body ? { 'Content-Type': 'application/json' } : {}), ...init.headers },
   });
@@ -140,7 +145,7 @@ export const cards = (project: string, filter: { q?: string; module?: string; st
   return call<Card[]>(`/api/v1/cards?${query}`);
 };
 export const card = (project: string, key: string) => call<Card>(`/api/v1/cards/${key}?project=${project}`);
-export const system = (project: string) => call<System>(`/api/v1/system?project=${project}`);
+export const system = (project: string) => call<System>(`/api/v1/system?project=${project}&wait=0`);
 export type Link = { id: string; kind: string; source: string; reason: string | null; from: string | null; to: string | null };
 export const links = (project: string) => call<Link[]>(`/api/v1/links?project=${project}`);
 export const vocabulary = (project: string) => call<{ id: string; area?: string }[]>(`/api/v1/vocabulary?project=${project}`);
@@ -329,5 +334,9 @@ export type CodeGraph = {
   repository: string; digest: string; importedAt: string; revision?:string|null; dirty?:boolean|null;
   nodes: {id:string;name:string;path:string|null;kind:string;area:string;about:string}[];
   edges: {from:string;to:string;kind:string;confidence:'EXTRACTED'|'INFERRED';reason:string;source:{path:string;line?:number}|null}[];
+  documents?: {path:string;contentHash:string}[];
 };
 export const codegraph = (project:string) => call<CodeGraph|null>(`/api/v1/codegraph?project=${encodeURIComponent(project)}`);
+export const publishedDocument=(project:string,path:string,revision?:string|null)=>call<{path:string;markdown:string;revision:string|null;repository:string}>(`/api/v1/documents?${new URLSearchParams({project,path,...(revision?{revision}:{})})}`);
+export type DecisionReport={enabled:boolean;attempts:number;remainingProjectAttempts:number;knownEstimatedCostUsd:number;comparison:{pairs:number;tokenReduction:number;baselineSucceeded:number;pilotSucceeded:number}|null;tasks?:{pending:number;collectionGaps:number;arms:Record<string,{started:number;finished:number;metered:number;adopted:number;accepted:number}>}};
+export const decisionReport=(project:string)=>call<DecisionReport>(`/api/v1/decision-trials?project=${encodeURIComponent(project)}`);
