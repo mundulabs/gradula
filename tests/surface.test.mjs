@@ -13,6 +13,7 @@
  * the one thing that made it ugly: that a class named in the markup has a rule.
  */
 import test from 'node:test';
+import ts from 'typescript';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 
@@ -199,13 +200,13 @@ test('every word the board asks for exists in both languages', () => {
   const dictionary = readFileSync(new URL('web/src/words.ts', root), 'utf8');
   const sides = [...dictionary.matchAll(/^  (en|de): \{$([\s\S]*?)^  \},$/gm)];
   assert.equal(sides.length, 2, 'the dictionary has both sides');
-  const keysOf = (block) => new Set([...block.matchAll(/^\s+'([\w.]+)':/gm)].map((m) => m[1]));
+  const keysOf = (block) => new Set([...block.matchAll(/^\s+['"]([\w.]+)['"]:/gm)].map((m) => m[1]));
   const [en, de] = sides.map(([, , block]) => keysOf(block));
   assert.deepEqual([...en].filter((k) => !de.has(k)), [], 'English keys without a German twin');
   assert.deepEqual([...de].filter((k) => !en.has(k)), [], 'German keys without an English twin');
 
   const asked = new Set();
-  for (const file of ['web/src/App.tsx', 'web/src/Map.tsx']) {
+  for (const file of ['web/src/App.tsx', 'web/src/ProjectOverview.tsx', 'web/src/Knowledge.tsx', 'web/src/ProjectGraph.tsx']) {
     for (const m of readFileSync(new URL(file, root), 'utf8').matchAll(/\bt\('([\w.]+)'\)/g)) asked.add(m[1]);
   }
   assert.ok(asked.size > 15, 'the surface asks for words at all');
@@ -238,17 +239,21 @@ test('the board does not keep a second copy of the vocabulary', () => {
 test('no sentence stands bare in the markup', () => {
   const root = new URL('..', import.meta.url);
   const bare = [];
-  for (const file of ['web/src/App.tsx', 'web/src/Map.tsx']) {
+  for (const file of ['web/src/App.tsx', 'web/src/ProjectOverview.tsx', 'web/src/Knowledge.tsx', 'web/src/ProjectGraph.tsx']) {
     const source = readFileSync(new URL(file, root), 'utf8');
-    for (const [, text] of source.matchAll(/>([A-Za-zÄÖÜäöü][^<>{}\n]{2,})</g)) {
-      if (!/[a-zäöü]{3}/.test(text)) continue;          // a symbol or a number is not a sentence
-      if (text.trim() === 'Gradula') continue;          // a name is not translated
-      bare.push(`${file}: ${text.trim()}`);
-    }
-    for (const [, text] of source.matchAll(/(?:placeholder|aria-label)="([^"]{4,})"/g)) {
-      if (/^[A-Z][a-z]+ · [a-z]+$/.test(text)) continue; // the language switch names both languages at once
-      bare.push(`${file}: ${text}`);
-    }
+    const parsed=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+    const inspect=node=>{
+      if(ts.isJsxText(node)){
+        const text=node.text.trim();
+        if(/[a-zäöü]{3}/i.test(text)&&!['Gradula','Git','UTC'].includes(text))bare.push(`${file}: ${text}`);
+      }
+      if(ts.isJsxAttribute(node)&&['placeholder','aria-label'].includes(node.name.getText(parsed))&&node.initializer&&ts.isStringLiteral(node.initializer)){
+        const text=node.initializer.text;
+        if(text.length>=4&&!/^[A-Z][a-z]+ · [a-z]+$/.test(text))bare.push(`${file}: ${text}`);
+      }
+      ts.forEachChild(node,inspect);
+    };
+    inspect(parsed);
   }
   assert.deepEqual(bare, [], 'these read to a person and are not in the dictionary');
 });

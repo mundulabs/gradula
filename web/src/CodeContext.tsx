@@ -2,7 +2,11 @@ import {useEffect, useMemo, useState} from 'preact/compat';
 import {codegraph, type CodeGraph} from './api';
 import {chosenLanguage, words} from './words';
 const t=words(chosenLanguage());
-export default function CodeContext({project, files}:{project:string;files:string[]}) {
+export default function CodeContext(props:{project:string;files:string[]}) {
+  const [expanded,setExpanded]=useState(false);
+  return expanded?<LoadedCodeContext {...props}/>:<button onClick={()=>setExpanded(true)}>{t('knowledge.loadContext')}</button>;
+}
+function LoadedCodeContext({project, files}:{project:string;files:string[]}) {
   const [graph,setGraph]=useState<CodeGraph|null>(null), [error,setError]=useState(false), [loading,setLoading]=useState(true);
   const [selected,setSelected]=useState<string|null>(null), [query,setQuery]=useState('');
   useEffect(()=>{let alive=true;setGraph(null);setError(false);setLoading(true);setSelected(null);

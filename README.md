@@ -150,7 +150,7 @@ gradula brief <CARD>             compact handoff for a chat: goal, state, gate, 
 gradula context [query] [--card CARD] [--files path,path] [--limit 8] [--max-bytes 8000]
                                  bounded code/document lookup with checkout revision comparison
 gradula resume <CARD>            brief plus local workspace risk and recent evidence
-gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
+gradula files <CARD> show|add|from-evidence [path…]   structured paths for knowledge, wave and handoff
 gradula approve <CARD>           the review says yes — done, with a reason
 gradula reject <CARD> "reason"   back to making, and the sentence is the reason
 gradula move <CARD> <ideas|ready|making|review|done|ice> [--reason "…"]
@@ -196,7 +196,7 @@ gradula project [--alias "david=David Bläsing"] [--language de|en]
 A commit whose message contains `Plan: KEY-42` becomes evidence on that card
 through `gradula sync` (or automatically, once `gradula hook` is installed).
 
-`gradula files KEY add path` records structured paths on old or new cards; `gradula files KEY from-evidence` backfills paths from commit evidence when available. Those paths feed map labels, waves, collision warnings and brief/resume.
+`gradula files KEY add path` records structured paths on old or new cards; `gradula files KEY from-evidence` backfills paths from commit evidence when available. Those paths feed knowledge results, waves, collision warnings and brief/resume.
 
 `gradula brief KEY` is the prompt-sized handoff for modern IDE chats: current goal, state, labels, gate, reservation and next command. `gradula resume KEY` adds only the local risk that matters when a chat died or work is stale: matching worktree, dirty file count, commits not on `dev`, and the last few relevant chronicle lines. Use `show` when a person wants the full card; use `brief`/`resume` when an agent needs to continue without dragging the whole board into context. `gradula health` also flags open cards that grew beyond a compact handoff or whose chronicle became noisy; it names them for cleanup without blocking work.
 
