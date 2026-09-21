@@ -320,6 +320,15 @@ export function createMemoryStore() {
     },
 
     events: {
+      // Retraction keeps the original evidence in the chronicle, but removes its
+      // status as active proof. Only its recorded submitting actor may retract it.
+      async retract(item, id, actor, reason) {
+        const row=events.find(e=>e.item===item&&e.id===id&&e.actor===actor&&e.verb==='evidenced');
+        if(!row)return null;
+        const original=clone(row.data),at=now();
+        row.verb='said';row.data={line:`Retracted evidence ${original.ref}: ${reason}`,retractedEvidence:original,retraction:{actor,at,reason}};
+        return this.add({item,actor,verb:'said',data:{line:`Retracted evidence ${original.ref}: ${reason}`,retractedEvent:id}});
+      },
       async add({ item, actor, verb, data = null }) {
         seqCounter += 1;
         // `at`, the same name Postgres uses. It was `time` here, and the two

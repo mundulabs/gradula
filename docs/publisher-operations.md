@@ -78,3 +78,10 @@ Publishers may attach `documents` containing indexed Markdown paths and their bo
 only document metadata; the authenticated project-scoped `/documents?path=…&revision=…`
 door returns one published document. Gradula never reads another project's checkout.
 Upgrade Gradula before deploying document-aware publishers.
+
+Evidence correction preserves the original submission in the chronicle. The submitting
+actor can POST a reason to `/cards/KEY/evidence/EVENT_ID/retract`; the original entry
+becomes a retracted note and a new audit note records the correction atomically.
+Retracted evidence no longer counts in commit lookup or deployment comparisons.
+Unbounded CLI sync only uses explicit Plan lines; task-branch inheritance requires
+`--since` and excludes merge/fixup/squash commits.

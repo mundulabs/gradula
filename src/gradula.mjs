@@ -1355,6 +1355,15 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
      * commit was signed by whoever wrote it. It is stored beside the evidence,
      * never instead of the actor — who pushed and who wrote are two questions.
      */
+    async retractEvidence(key, id, reason, actor) {
+      const item=await findItem(key);
+      const why=text(reason,500,'reason');
+      const entry=await store.events.retract(item.id,id,actor,why);
+      if(!entry)throw missing('No active evidence from this actor on this card.');
+      systemHeld.delete(item.project);
+      live?.announce(item.project,{card:item.key,verb:'said',actor});
+      return {ok:true,event:entry};
+    },
     async addEvidence(key, {
       kind, ref, comment = null, note: sentNote = null, author = null, email = null, files = null,
     }, actor) {

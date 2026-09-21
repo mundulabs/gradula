@@ -826,6 +826,19 @@ export async function createPgStore(url, { schema = null } = {}) {
     },
 
     events: {
+      async retract(item, id, actor, reason) {
+        const client=await pool.connect();
+        try {
+          await client.query('begin');
+          const {rows}=await client.query("select * from history where card=$1 and id=$2 and actor=$3 and verb='evidenced' for update",[item,id,actor]);
+          if(!rows.length){await client.query('rollback');return null;}
+          const original=rows[0].data,at=new Date().toISOString();
+          const text=`Retracted evidence ${original.ref}: ${reason}`;
+          await client.query("update history set verb='said',data=$2::jsonb where id=$1",[id,JSON.stringify({line:text,retractedEvidence:original,retraction:{actor,at,reason}})]);
+          const result=await client.query("insert into history (id,card,actor,verb,data) values ($1,$2,$3,'said',$4::jsonb) returning *",[mintId(),item,actor,JSON.stringify({line:text,retractedEvent:id})]);
+          await client.query('commit');const row=result.rows[0];return {id:row.id,item:row.card,actor:row.actor,verb:row.verb,data:row.data,at:iso(row.at)};
+        }catch(error){await client.query('rollback');throw error;}finally{client.release();}
+      },
       async add({ item, actor, verb, data = null }) {
         const { rows } = await q(
           'insert into history (id, card, actor, verb, data) values ($1,$2,$3,$4,$5::jsonb) returning *',

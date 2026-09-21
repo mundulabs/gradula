@@ -1288,3 +1288,17 @@ test('document door authenticates, scopes projects and keeps bodies out of graph
  assert.equal((await call('/api/v1/documents?path=docs/guide.md&revision='+'b'.repeat(40),{token})).status,404,'an unavailable revision must not silently serve the newest document');
  const scoped=await call('/api/v1/documents?project=OTHER&path=docs/guide.md',{token});assert.equal(scoped.body.markdown,'# Published body','a project key remains scoped to its own project even when another is requested');
 });
+
+test('evidence retraction requires the original authenticated actor and leaves an audit record',async t=>{
+ const {call,close,token}=await start2();t.after(close);
+ const made=await call('/api/v1/cards',{token,method:'POST',body:{kind:'task',title:'Correction'}});const key=made.body.key;
+ await call(`/api/v1/cards/${key}/evidence`,{token,method:'POST',body:{kind:'commit',ref:'123456abcdef'}});
+ const card=(await call(`/api/v1/cards/${key}`,{token})).body;const entry=card.history.find(e=>e.verb==='evidenced');
+ const path=`/api/v1/cards/${key}/evidence/${entry.id}/retract`;
+ assert.equal((await call(path,{method:'POST',body:{reason:'Wrong association'}})).status,401);
+ assert.equal((await call(path,{token,method:'POST',body:{reason:''}})).status,400);
+ assert.equal((await call(path,{token,method:'POST',body:{reason:'Wrong branch inheritance'}})).status,200);
+ assert.equal((await call(path,{token,method:'POST',body:{reason:'Again'}})).status,404);
+ const after=(await call(`/api/v1/cards/${key}`,{token})).body;
+ assert.ok(after.history.some(e=>e.data?.retractedEvidence?.ref==='123456abcdef'));
+});
