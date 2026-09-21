@@ -1,0 +1,55 @@
+# Portable installation. Existing hosted installations keep their own compose file.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${GRADULA_PORT:-3200}:3200"
+    environment:
+      GRADULA_DB_URL: postgres://gradula:${GRADULA_DB_PASSWORD:?Run npm run setup -- instance}@db:5432/gradula
+      GRADULA_ADMIN_TOKEN: ${GRADULA_ADMIN_TOKEN:?Generate an instance configuration}
+      GRADULA_SESSION_SECRET: ${GRADULA_SESSION_SECRET:?Generate an instance configuration}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?Set the public origin}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_SCOPE: ${OIDC_SCOPE:-openid profile email}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_ROLLEN_CLAIM: ${OIDC_ROLLEN_CLAIM:-roles}
+      GRADULA_ROLE: ${GRADULA_ROLE:-gradula}
+      GRADULA_DECISION_PROJECTS: ${GRADULA_DECISION_PROJECTS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: gradula
+      POSTGRES_DB: gradula
+      POSTGRES_PASSWORD: ${GRADULA_DB_PASSWORD:?Generate an instance configuration}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gradula"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  proxy:
+    image: caddy:2-alpine
+    profiles: [public]
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      GRADULA_HOST: ${GRADULA_HOST:?Set your DNS hostname}
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - certificates:/data
+      - proxy_config:/config
+    depends_on: [web]
+volumes:
+  database:
+  certificates:
+  proxy_config:

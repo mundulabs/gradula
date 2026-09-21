@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState} from 'react';
+import {useEffect, useMemo, useState} from 'preact/compat';
 import {codegraph, type CodeGraph} from './api';
 import {chosenLanguage, words} from './words';
 const t=words(chosenLanguage());
@@ -23,7 +23,7 @@ export default function CodeContext({project, files}:{project:string;files:strin
     <h3>{t('graph.title')}</h3>
     {loading?<p>{t('ui.loading')}</p>:error?<p role="status">{t('graph.error')}</p>:!graph?<p>{t('graph.empty')}</p>:<>
       <p>{t('graph.snapshot')} {new Date(graph.importedAt).toLocaleString()} · {graph.digest.slice(0,8)}{graph.revision && graph.dirty===false ? ` · ${graph.revision.slice(0,12)}` : ''}</p>
-      <label>{t('graph.find')}<input type="search" value={query} onChange={e=>setQuery(e.target.value)}/></label>
+      <label>{t('graph.find')}<input type="search" value={query} onChange={e=>setQuery(e.currentTarget.value)}/></label>
       {!!matches?.length&&<div className="code-context-results">{matches.map(n=><button key={n.id} onClick={()=>{setSelected(n.id);setQuery('')}}>{n.name}</button>)}</div>}
       {selected&&<button onClick={()=>setSelected(null)}>{t('graph.ticket')}</button>}
       {!nodes.length?<p>{t('graph.unmatched')}</p>:<>

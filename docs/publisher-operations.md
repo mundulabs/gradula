@@ -7,7 +7,7 @@ revision context. Existing card history was preserved.
 
 ## The active projects
 
-Gradula is `GRD`, repository `mundulabs/gradula`. The native product **Mundus** is
+Gradula is `GRAD` (`GRD` remains a historical key), repository `mundulabs/gradula`. The native product **Mundus** is
 `MDUS`, repository `mundulabs/mundus`. `MOLD` / `mundulabs/mundula` is the legacy
 JavaScript/Expo project, not Mundus. An initial rollout probe mistakenly targeted
 that legacy checkout and published one snapshot there; it did not alter source
@@ -21,7 +21,7 @@ scanner does not provide Rust compiler coverage.
 ## Hosted refresh
 
 Gradula's image build scans immutable Git objects at its source HEAD and bundles
-one graph artifact. The running service imports that artifact into its own GRD
+one graph artifact. The running service imports that artifact into its own Gradula
 project, after verifying the repository and revision. It retries failed imports
 every minute until successful and retains the last accepted graph on failure.
 The runtime image contains no Git checkout or compiler dependency.
@@ -66,7 +66,7 @@ are omitted and labelled in coverage. It is a size option for those languages,
 not a replacement for Mundus's Rust-aware generator. Static relationships are not
 runtime proof, and publication never approves cards or proves tests passed.
 
-The Gradula project overview (`?project=GRD&view=overview`) combines board activity,
+The Gradula project overview (`?project=GRAD&view=overview`) combines board activity,
 deployment observations and a bounded interactive source graph. `GET /system?wait=0`
 returns the current board and cached provider data immediately, with an explicit
 `observation.refreshing` and `observedAt`; provider checks continue in the background.

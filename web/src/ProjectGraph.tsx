@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'preact/compat';
 import type {CodeGraph} from './api';
 import {graphGroup,projectGraph} from './graph-model';
 import DocumentReader from './DocumentReader';
@@ -27,7 +27,7 @@ export default function ProjectGraph({graph,project,open}:{graph:CodeGraph;proje
   const zoom=(amount:number)=>setCamera(c=>({...c,k:Math.max(.65,Math.min(2.5,c.k+amount))}));
   return <section className="project-knowledge" aria-label={t('workspace.knowledge')}>
     <header className="workspace-section-head"><div><span className="workspace-eyebrow">{t('workspace.knowledge')}</span><h2>{t('workspace.connected')}</h2></div><span className="workspace-meta">{graph.nodes.length.toLocaleString()} {t('workspace.nodes')} · {graph.edges.length.toLocaleString()} {t('workspace.relations')}</span></header>
-    <div className="knowledge-controls"><input type="search" aria-label={t('workspace.find')} placeholder={t('workspace.find')} value={query} onChange={e=>{setQuery(e.target.value);setSelected(null)}}/>
+    <div className="knowledge-controls"><input type="search" aria-label={t('workspace.find')} placeholder={t('workspace.find')} value={query} onChange={e=>{setQuery(e.currentTarget.value);setSelected(null)}}/>
       <div className="knowledge-tabs" role="group" aria-label={t('workspace.scope')}>{['all',...groups].map(group=><button key={group} aria-pressed={kind===group} onClick={()=>{setKind(group);setSelected(null)}}>{t(`workspace.${group}`)}</button>)}</div>
     </div>
     <div className="knowledge-layout"><div className="knowledge-canvas">

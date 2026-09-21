@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'preact/compat';
 import { chosenLanguage, words } from './words';
 import Icon from './Icon';
 const t = words(chosenLanguage());

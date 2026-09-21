@@ -34,7 +34,7 @@ src/api.mjs          the doors (node:http, no framework)
 src/hand.mjs         the ONE reader of .gradula.env for the CLI and the MCP server
 bin/gradula.mjs      the CLI (speaks only through the API)
 mcp/server.mjs       the same tools over MCP, for Codex and Claude
-web/                 the board (Vite + React); web/src/vocabulary.ts imports src/spec.mjs
+web/                 the board (Vite + Preact); web/src/vocabulary.ts imports src/spec.mjs
 ```
 
 ## The laws in one sentence each

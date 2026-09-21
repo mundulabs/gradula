@@ -9,6 +9,12 @@ import {config, handOf} from '../src/hand.mjs';
 import {createIndexer, buildGraph} from './codegraph-index.mjs';
 import {normalizeGraph} from '../src/codegraph.mjs';
 export {buildGraph};
+// Inventory every tracked regular file except credentials, vendored/build output
+// and dependency locks. Unknown languages carry paths only, never invented symbols.
+export const scanPath = path => !/(^|\/)(?:node_modules|vendor|dist|build|target|\.git|\.worktrees)(?:\/|$)/.test(path)
+  && !/(^|\/)(?:\.env(?:[.-].*)?|\.gradula.*|credentials(?:\..*)?|id_rsa|id_ed25519)$|\.(?:pem|key|p12|pfx)$|(?:^|\/)(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|Cargo\.lock)$/.test(path);
+const readable = path => /\.(?:mjs|cjs|[jt]sx?|md)$/.test(path);
+const MAX_SOURCE_BYTES=32_000_000, MAX_FILE_BYTES=1_000_000, MAX_FILES=20000;
 
 export function scanRepository(root, indexer = createIndexer(), {revision: requestedRevision=null}={}) {
   const git = (...args) => execFileSync('git',args,{cwd:root,encoding:'utf8',maxBuffer:32_000_000}).trim();
@@ -20,15 +26,21 @@ export function scanRepository(root, indexer = createIndexer(), {revision: reque
     // Read immutable Git objects in one batch, never a mixture of working-tree edits.
     const entries=git('ls-tree','-rz','--full-tree',revision).split('\0').filter(Boolean)
       .map(row=>{const tab=row.indexOf('\t');const [mode,,sha]=row.slice(0,tab).split(' ');return {mode,sha,path:row.slice(tab+1)};})
-      .filter(e=>e.mode.startsWith('100') && /\.(?:mjs|cjs|[jt]sx?|md)$/.test(e.path));
-    const output=execFileSync('git',['cat-file','--batch'],{cwd:root,input:entries.map(e=>e.sha).join('\n')+'\n',maxBuffer:128_000_000});
+      .filter(e=>e.mode.startsWith('100') && scanPath(e.path));
+    if(entries.length>MAX_FILES)throw Error('Scan exceeds 20000 files; use a bounded custom publisher.');
+    for(const e of entries)files.set(e.path,'');
+    const selected=entries.filter(e=>readable(e.path));
+    const output=execFileSync('git',['cat-file','--batch'],{cwd:root,input:selected.map(e=>e.sha).join('\n')+'\n',maxBuffer:128_000_000});
     let offset=0;
-    for(const entry of entries){const end=output.indexOf(10,offset),header=output.subarray(offset,end).toString().split(' '),size=Number(header[2]);if(header[1]!=='blob'||!Number.isSafeInteger(size))throw new Error('Invalid Git blob');offset=end+1;files.set(entry.path,output.subarray(offset,offset+size).toString('utf8'));offset+=size+1;}
+    let sourceBytes=0;
+    for(const entry of selected){const end=output.indexOf(10,offset),header=output.subarray(offset,end).toString().split(' '),size=Number(header[2]);if(header[1]!=='blob'||!Number.isSafeInteger(size))throw new Error('Invalid Git blob');offset=end+1;sourceBytes+=size;if(size>MAX_FILE_BYTES||sourceBytes>MAX_SOURCE_BYTES)throw Error('Source scan budget exceeded; use a bounded custom publisher.');files.set(entry.path,output.subarray(offset,offset+size).toString('utf8'));offset+=size+1;}
   } else {
-    const tracked = git('ls-files','-z').split('\0').filter(path=>/\.(?:mjs|cjs|[jt]sx?|md)$/.test(path));
+    const tracked = git('ls-files','-z').split('\0').filter(path=>path&&scanPath(path));
+    if(tracked.length>MAX_FILES)throw Error('Scan exceeds 20000 files');
+    let sourceBytes=0;
     for (const path of tracked) {
       const file = join(root,path), stat = lstatSync(file);
-      if (stat.isFile()) files.set(path,readFileSync(file,'utf8'));
+      if (stat.isFile()) {if(readable(path)){sourceBytes+=stat.size;if(stat.size>MAX_FILE_BYTES||sourceBytes>MAX_SOURCE_BYTES)throw Error('Source scan budget exceeded');files.set(path,readFileSync(file,'utf8'));}else files.set(path,'');}
     }
   }
   const remote = git('remote','get-url','origin');

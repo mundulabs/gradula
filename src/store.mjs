@@ -102,9 +102,9 @@ export function createMemoryStore() {
     kind: 'memory',
 
     projects: {
-      async create({ key, name, repo = null }) {
+      async create({ key, name, repo = null, accessRole = null }) {
         if (projects.has(key) || aliases.has(key)) throw Object.assign(new Error(`Project ${key} already exists`), { code: 'taken' });
-        const row = { id: mintId(), key, name, repo, people: {}, language: null, publish: null, ladder: null, manualAcceptance: false, integration: 'pr', created: now() };
+        const row = { id: mintId(), key, name, repo, people: {}, language: null, publish: null, ladder: null, manualAcceptance: false, integration: 'pr', archived:false, accessRole, created: now() };
         projects.set(key, row);
         counters.set(key, 0);
         return clone(row);
@@ -171,6 +171,8 @@ export function createMemoryStore() {
         if (changes.language !== undefined) row.language = changes.language;
         if (changes.manualAcceptance !== undefined) row.manualAcceptance = changes.manualAcceptance;
         if (changes.integration !== undefined) row.integration = changes.integration;
+        if (changes.archived !== undefined) row.archived = changes.archived;
+        if (changes.accessRole !== undefined) row.accessRole = changes.accessRole;
         if (changes.publish !== undefined) row.publish = changes.publish;
         if (changes.ladder !== undefined) row.ladder = changes.ladder;
         return clone(row);

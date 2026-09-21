@@ -22,7 +22,7 @@
  * looked alike; the rings said nothing; and a sector with one card looked as
  * important as one with twenty.
  */
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'preact/compat';
 import { chosenLanguage, words } from './words';
 import { ageOf, shortAge } from './age';
 
@@ -167,7 +167,7 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
       </svg></div>
 
       <div className="map-foot">
-        <select aria-label={t('ui.area')} value={only ?? ''} onChange={(e) => setOnly(e.target.value || null)}>
+        <select aria-label={t('ui.area')} value={only ?? ''} onChange={(e) => setOnly(e.currentTarget.value || null)}>
           <option value="">{t('nav.allAreas')}</option>
           {areas.map((area) => <option key={area} value={area}>{area}</option>)}
         </select>
@@ -213,7 +213,7 @@ export default function AreaMap({ cards, open, areaOfModule = {} }: { cards: Car
             </li>
           ))}
         </ul>
-        <select aria-label={t('nav.search')} value="" onChange={(e) => { if (e.target.value) open(e.target.value); }}>
+        <select aria-label={t('nav.search')} value="" onChange={(e) => { if (e.currentTarget.value) open(e.currentTarget.value); }}>
           <option value="">{t('nav.search')}</option>
           {shown.map(({ card }) => <option key={card.key} value={card.key}>{card.key} · {card.title}</option>)}
         </select>

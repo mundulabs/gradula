@@ -2,6 +2,10 @@
 
 A planning board for projects built by people and AI coders together.
 
+Lightweight Preact interface, TypeScript and Vite; a Node.js API with PostgreSQL.
+No Mundula runtime, account, UI kit or private-package dependency.
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Apache-2.0 license](LICENSE)
+
 Wishes become cards. A card carries labels that come from the project's own
 repository (its modules and stack) and gates that prove it is done (a file, a
 URL, a test, a command). Every move is written to a chronicle that names who
@@ -9,6 +13,25 @@ did it — a person, a machine acting for a person, or a rule.
 
 One service holds several projects. People sign in through OIDC; machines come
 in with a project key. Live board: <https://grad.mundula.app>.
+
+## Start your own installation
+
+**[Complete setup guide](docs/setup.md)** — your domain, GitHub sign-in through
+OIDC, administrators and project members, project prefixes, initial repository
+scan, GitHub connection, hosted refresh and backups.
+
+```sh
+git clone https://github.com/mundulabs/gradula.git
+cd gradula
+npm ci
+npm run setup -- instance --origin https://board.example.org
+# Configure your identity provider in .env.instance, then:
+docker compose --env-file .env.instance --profile public up --build -d
+```
+
+No Mundus account or TypeSafe key is required. The portable Compose setup is
+separate from the hosted installation's infrastructure. TypeSafe is an optional
+pilot; complete-task token savings have not been established.
 
 ## Run it locally
 
@@ -35,7 +58,8 @@ Environment variables read by `src/server.mjs`:
 | `GRADULA_DB_URL` | Postgres connection string. Tables are created and migrated on start. |
 | `GRADULA_ADMIN_TOKEN` | Secret for the admin door (`/api/admin/…`). Without it the admin door answers 503. |
 | `PUBLIC_ORIGIN` | The public URL of this instance, e.g. `https://grad.mundula.app`. |
-| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_AUDIENCE`, `GRADULA_SESSION_SECRET` | Sign-in for people. All four are optional; without them only machines can use the board. |
+| `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `GRADULA_SESSION_SECRET` | Sign-in for people through OIDC discovery; without them only machines can use the board. |
+| `OIDC_SCOPE`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE` | Provider scopes, optional client secret (client_secret_post), optional Zitadel project audience. |
 | `OIDC_ROLLEN_CLAIM`, `GRADULA_ROLE` | Where the roles sit in the token, and which role is required (default `dev`). |
 | `GRADULA_WEB` | Path to the built board (default `web/dist`). |
 | `SENTRY_DSN`, `GRADULA_ENV` | Crash reporting for the service itself. |
@@ -47,7 +71,7 @@ GRADULA_DB_URL=postgres://… npm test
 ```
 
 The production deployment is `infra/gradula.compose.yml` (web + Postgres +
-daily dumps, optional S3 mirror) built from `Dockerfile`. It needs
+daily dumps, optional S3 mirror) built from `Dockerfile.hosted`. It needs
 `GRADULA_DB_PASSWORD` and `GRADULA_ADMIN_TOKEN`.
 
 ## Attaching a project

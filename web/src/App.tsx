@@ -1,3 +1,4 @@
+import type { JSX, ComponentChildren } from 'preact';
 import ProjectOverview from './ProjectOverview';
 import CodeContext from './CodeContext';
 import { acceptancePolicy, saveAcceptancePolicy, integrationPolicy, saveIntegrationPolicy, type Integration } from './api';
@@ -11,11 +12,9 @@ import { acceptancePolicy, saveAcceptancePolicy, integrationPolicy, saveIntegrat
  *
  * Settings hold keys, heralds and reports. Progress shapes have fixed meanings.
  */
-import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
-import { BorderBeam } from 'border-beam';
-import { ThinkingOrb } from 'thinking-orbs';
-import { signalOf, beamFor, changedBetween, isRunning, IMPULSE_MS, BEAM_STATIC, LEVEL_CLASS, type Signal } from './motion';
-import { Liquid } from 'liquid-gooey';
+import { useCallback, useEffect, useRef, useState, useMemo } from 'preact/compat';
+import SignalFrame from './SignalFrame';
+import { signalOf, changedBetween, isRunning, IMPULSE_MS, LEVEL_CLASS, type Signal } from './motion';
 import { group, parentsFrom, type Group } from './bonds';
 import { chosenLanguage, keepLanguage, words, LANGUAGES, type Language } from './words';
 import { KINDS, GATE_KINDS, AGENT_KEY_KIND, templateOf } from './vocabulary';
@@ -50,8 +49,7 @@ const STAND_CLASS: Record<string, string> = {
 /*
  * A CARD HAS AN ADDRESS, EVEN INSIDE THE APP.
  *
- * The board is served under two mounts (grad.mundula.app and
- * mundula.app/dev/plan), so "where a card lives" is whatever the path was
+ * The board supports a reverse-proxy mount, so "where a card lives" is whatever the path was
  * BEFORE the card — never a hard-coded slash. Both `open()` and every card's
  * own `href` read it the same way, so a right-click "open in new tab" or
  * "copy link" on a card lands exactly where clicking it would take you —
@@ -145,7 +143,6 @@ function LaneChips({ card, picture }: { card: Card; picture?: SystemCard | null 
 }
 
 function CardButton({ card, open, signal, picture }: { card: Card; open: () => void; signal: Signal | null; picture?: SystemCard | null }) {
-  const beam = beamFor(signal);
   const age = ageOf(card);
   /*
    * A LEFT CLICK STAYS INSIDE THE APP; EVERY OTHER CLICK IS THE BROWSER'S.
@@ -153,7 +150,7 @@ function CardButton({ card, open, signal, picture }: { card: Card; open: () => v
    * cmd/ctrl/middle-click, and "open in new tab" from the context menu, only
    * exist for an element with a real href — a button has nothing to open.
    */
-  const click = (e: React.MouseEvent<HTMLAnchorElement>) => {
+  const click = (e: JSX.TargetedMouseEvent<HTMLAnchorElement>) => {
     if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
     open();
@@ -190,7 +187,7 @@ function CardButton({ card, open, signal, picture }: { card: Card; open: () => v
           // A machine is at work on this card AT THIS MOMENT — not a state
           // somebody left it in, a lease that is being renewed right now.
           <span className="orb" title="a runner is working on this right now">
-            <ThinkingOrb state="working" size={20} />
+            <span className="activity-dot" aria-hidden="true" />
             <span className="readerOnly">{t('card.running')}</span>
           </span>
         ) : null}
@@ -215,9 +212,7 @@ function CardButton({ card, open, signal, picture }: { card: Card; open: () => v
       </span>
     </a>
   );
-  return beam
-    ? <BorderBeam size={beam.size} duration={beam.duration} colorVariant={beam.color} staticColors={BEAM_STATIC} theme="dark">{buttonNode}</BorderBeam>
-    : buttonNode;
+  return <SignalFrame signal={signal}>{buttonNode}</SignalFrame>;
 }
 
 /**
@@ -243,14 +238,14 @@ function PersonField({ value, people, onChange }: { value: string; people: strin
   return (
     <div className="person-field">
       <select aria-label={t('card.person')} value={typing ? NEW_PERSON : (known ? value : '')} onChange={(e) => {
-        if (e.target.value === NEW_PERSON) { setTyping(true); onChange(''); return; }
-        setTyping(false); onChange(e.target.value);
+        if (e.currentTarget.value === NEW_PERSON) { setTyping(true); onChange(''); return; }
+        setTyping(false); onChange(e.currentTarget.value);
       }}>
         <option value="">{t('card.nobody')}</option>
         {people.map((who) => <option key={who} value={who}>{who}</option>)}
         <option value={NEW_PERSON}>{t('card.newPerson')}</option>
       </select>
-      {typing ? <input autoFocus placeholder={t('card.personName')} value={value} onChange={(e) => onChange(e.target.value)} /> : null}
+      {typing ? <input autoFocus placeholder={t('card.personName')} value={value} onChange={(e) => onChange(e.currentTarget.value)} /> : null}
     </div>
   );
 }
@@ -269,7 +264,7 @@ function GateField({ gate, setGate, known = [] }: { gate: Card['gate']; setGate:
   const sources = known.filter((path) => SOURCE_PATH.test(path));
   return (
     <div className="gate-field">
-      <select aria-label={t('card.gate')} value={gate ? kind : ''} onChange={(e) => setGate(e.target.value ? { kind: e.target.value, call: gate?.call ?? '', expect: gate?.expect ?? null } : null)}>
+      <select aria-label={t('card.gate')} value={gate ? kind : ''} onChange={(e) => setGate(e.currentTarget.value ? { kind: e.currentTarget.value, call: gate?.call ?? '', expect: gate?.expect ?? null } : null)}>
         {/* The kinds come from the service (GATE_KINDS). They stood here as a
             second list, and after the move to English it still offered
             `befehl`, `datei` and `adresse` — three of four choices the service
@@ -286,21 +281,21 @@ function GateField({ gate, setGate, known = [] }: { gate: Card['gate']; setGate:
           {kind === 'file' && sources.length ? (
             <>
               <select value={sources.includes(gate.call) ? gate.call : (gate.call ? OTHER_PATH : '')}
-                      onChange={(e) => setGate({ ...gate, call: e.target.value === OTHER_PATH ? ' ' : e.target.value })}>
+                      onChange={(e) => setGate({ ...gate, call: e.currentTarget.value === OTHER_PATH ? ' ' : e.currentTarget.value })}>
                 <option value="">{t('card.pickFile')}</option>
                 {sources.map((path) => <option key={path} value={path}>{path}</option>)}
                 <option value={OTHER_PATH}>{t('card.otherFile')}</option>
               </select>
               {gate.call && !sources.includes(gate.call) ? (
-                <input autoFocus placeholder={t('card.pathExample')} value={gate.call.trim()} onChange={(e) => setGate({ ...gate, call: e.target.value })} />
+                <input autoFocus placeholder={t('card.pathExample')} value={gate.call.trim()} onChange={(e) => setGate({ ...gate, call: e.currentTarget.value })} />
               ) : null}
             </>
           ) : (
             <input placeholder={kind === 'url' ? 'https://…/api/health' : kind === 'file' ? 'packages/…/x.ts' : 'npm test -- x'}
-                   value={gate.call} onChange={(e) => setGate({ ...gate, call: e.target.value })} />
+                   value={gate.call} onChange={(e) => setGate({ ...gate, call: e.currentTarget.value })} />
           )}
           <input aria-label={t('card.gateExpect')} placeholder={t('card.gateExpect')}
-                 value={gate.expect ?? ''} onChange={(e) => setGate({ ...gate, expect: e.target.value || null })} />
+                 value={gate.expect ?? ''} onChange={(e) => setGate({ ...gate, expect: e.currentTarget.value || null })} />
         </>
       ) : null}
     </div>
@@ -387,8 +382,8 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
             <section className="work-reservation">
               <strong>{t('work.title')}</strong>
               <p>{card.reservation ? `${card.reservation.actor} · ${t(Date.parse(card.reservation.until) > Date.now() ? 'work.active' : 'work.unknown')} · ${t('work.session')} ${card.reservation.session.slice(0, 8)}` : t('work.free')}</p>
-              {['ready','making'].includes(card.state) ? <label>{t('work.files')}<textarea value={planned ?? (card.reservation?.files ?? card.files).join('\n')} onChange={e => setPlanned(e.target.value)} placeholder={t('work.pathExample')} /></label> : null}
-              {(card.blockedBy.length > 0 || (card.reservation && card.reservation.session !== workSession && Date.parse(card.reservation.until) > Date.now())) ? <label>{t('work.takeoverWhy')}<input value={workReason} onChange={e => setWorkReason(e.target.value)} /></label> : null}
+              {['ready','making'].includes(card.state) ? <label>{t('work.files')}<textarea value={planned ?? (card.reservation?.files ?? card.files).join('\n')} onChange={e => setPlanned(e.currentTarget.value)} placeholder={t('work.pathExample')} /></label> : null}
+              {(card.blockedBy.length > 0 || (card.reservation && card.reservation.session !== workSession && Date.parse(card.reservation.until) > Date.now())) ? <label>{t('work.takeoverWhy')}<input value={workReason} onChange={e => setWorkReason(e.currentTarget.value)} /></label> : null}
               {(card.warnings ?? []).map(w => <p key={w.card}><a href={`/${w.card}`}>{w.card}</a> · {w.actor ?? t('work.unknown')} · {t(w.level === 'files' ? 'work.fileOverlap' : 'work.moduleOverlap')}: {(w.files.length ? w.files : w.modules).join(', ')} · {t(w.activity === 'active' ? 'work.active' : 'work.unknown')}</p>)}
             </section>
             <div className="line">
@@ -442,8 +437,8 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
 
             {editing && draft ? (
               <div className="change">
-                <input aria-label={t('card.title')} maxLength={200} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
-                <textarea aria-label={t('card.text')} rows={7} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.target.value })} />
+                <input aria-label={t('card.title')} maxLength={200} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.currentTarget.value })} />
+                <textarea aria-label={t('card.text').replace('{card}', `${project}-1`)} rows={7} value={draft.text} onChange={(e) => setDraft({ ...draft, text: e.currentTarget.value })} />
                 {/*
                   The people this board already knows, by the name the chronicle
                   uses. A free field is right — somebody who has not touched a
@@ -546,7 +541,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
                     const text = short ? sha.slice(0, 12) : sha;
                     return href ? <a className="sha" href={href} target="_blank" rel="noreferrer">{text}</a> : text;
                   };
-                  const inside: React.ReactNode = e.verb === 'said' ? d.line
+                  const inside: ComponentChildren = e.verb === 'said' ? d.line
                     : e.verb === 'decided' ? `${d.result} — ${d.reason}`
                     : e.verb === 'evidenced' ? <>{d.kind === 'commit' && d.ref ? commit(d.ref) : d.ref}{d.comment ? ` · ${d.comment}` : ''}</>
                     : e.verb === 'deployed' ? <>{d.environment}{d.sha ? <> · {commit(String(d.sha), true)}</> : null}</>
@@ -563,7 +558,7 @@ function Sheet({ project, cardKey, close, changed, people = [], knownPaths = [],
             ) : null}
 
             <div className="talk">
-              <textarea aria-label={t('card.say')} rows={2} placeholder={t('card.say')} value={word} onChange={(e) => setWord(e.target.value)} />
+              <textarea aria-label={t('card.say')} rows={2} placeholder={t('card.say')} value={word} onChange={(e) => setWord(e.currentTarget.value)} />
               <div className="move">
                 <button disabled={busy || !word.trim()} onClick={async () => { const text = word.trim(); if (await run(() => say(project, card.key, text))) setWord(''); }}>{t('card.say2')}</button>
                 {card.kind === 'decision' ? (
@@ -595,7 +590,7 @@ function NewCard({ project, done, cancel }: { project: string; done: () => void;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: JSX.TargetedEvent) => {
     e.preventDefault();
     if (!title.trim() || busy) return;
     setBusy(true);
@@ -607,14 +602,14 @@ function NewCard({ project, done, cancel }: { project: string; done: () => void;
     <Dialog title={t('card.new')} close={cancel} dirty={!!title.trim() || !!text.trim()} busy={busy}>
       <form className="new-card-form" onSubmit={submit}>
         {error ? <p className="error">{error}</p> : null}
-        <label>{t('card.title')}<input required maxLength={200} autoFocus placeholder={t('card.title')} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+        <label>{t('card.title')}<input required maxLength={200} autoFocus placeholder={t('card.title')} value={title} onChange={(e) => setTitle(e.currentTarget.value)} /></label>
         {/* The kinds come from the service's vocabulary — a second list here
             would be a second truth, and one of them would be in one language. */}
-        <label>{t('ui.kind')}<select value={kind} onChange={(e) => setKind(e.target.value)}>
+        <label>{t('ui.kind')}<select value={kind} onChange={(e) => setKind(e.currentTarget.value)}>
           {KINDS.map((one) => <option key={one} value={one}>{t(one)}</option>)}
         </select></label>
         <p className="hint">{t('ui.newCardHint')}</p>
-        <label>{t('card.text')}<textarea rows={6} placeholder={t('card.text')} value={text} onChange={(e) => setText(e.target.value)} /></label>
+        <label>{t('card.text').replace('{card}', `${project}-1`)}<textarea rows={6} placeholder={t('card.text').replace('{card}', `${project}-1`)} value={text} onChange={(e) => setText(e.currentTarget.value)} /></label>
         <div className="move">
           <button className="primary" type="submit" disabled={!title.trim() || busy}>{t('card.create')}</button>
           <button type="button" disabled={busy} onClick={(e) => e.currentTarget.closest('dialog')?.dispatchEvent(new Event('cancel', { cancelable: true }))}>{t('card.cancel')}</button>
@@ -630,8 +625,7 @@ function NewCard({ project, done, cancel }: { project: string; done: () => void;
  */
 /**
  * A PERSON'S OWN KEYS. Minted here, shown ONCE, revoked here — never handed
- * over. Felix's key lay in a file on David's disk for a day, waiting to be
- * carried across; a key that has to be carried is a key that gets emailed.
+ * over. Each person approves their own device; keys are never shared.
  * The lines below the token are the whole set-up: the key speaks as the
  * person who minted it, so no actor line is needed.
  */
@@ -702,7 +696,7 @@ function KeySection({ project }: { project: string }) {
         </div>
       ))}
       <div className="row">
-        <input value={machine} onChange={(e) => setMachine(e.target.value)} placeholder={t('keys.machine')} onKeyDown={(e) => { if (e.key === 'Enter') mint(); }} />
+        <input value={machine} onChange={(e) => setMachine(e.currentTarget.value)} placeholder={t('keys.machine')} onKeyDown={(e) => { if (e.key === 'Enter') mint(); }} />
         <button onClick={mint} disabled={!machine.trim()}>{t('keys.mint')}</button>
       </div>
       {fresh ? (
@@ -802,10 +796,10 @@ function Settings({ project, close }: { project: string; close: () => void }) {
   return (
     <Dialog title={t('nav.settings')} close={close} wide busy={busy} dirty={!!draft && JSON.stringify(draft) !== draftBase.current}>
       <section className="work-reservation">
-        <label className="acceptance-toggle"><input type="checkbox" checked={manualAcceptance === true} disabled={busy || manualAcceptance === null} onChange={e => { const value = e.target.checked; perform(async () => { const saved = await saveAcceptancePolicy(project, value); setManualAcceptance(saved.manualAcceptance); }); }} /> {t('settings.manualAcceptance')}</label>
+        <label className="acceptance-toggle"><input type="checkbox" checked={manualAcceptance === true} disabled={busy || manualAcceptance === null} onChange={e => { const value = e.currentTarget.checked; perform(async () => { const saved = await saveAcceptancePolicy(project, value); setManualAcceptance(saved.manualAcceptance); }); }} /> {t('settings.manualAcceptance')}</label>
         <p className="hint">{t('settings.manualAcceptanceWhy')}</p>
         <label className="integration-choice">{t('settings.integration')}
-          <select value={integration ?? 'pr'} disabled={busy || integration === null} onChange={e => { const value = e.target.value as Integration; perform(async () => { const saved = await saveIntegrationPolicy(project, value); setIntegration(saved.integration); }); }}>
+          <select value={integration ?? 'pr'} disabled={busy || integration === null} onChange={e => { const value = e.currentTarget.value as Integration; perform(async () => { const saved = await saveIntegrationPolicy(project, value); setIntegration(saved.integration); }); }}>
             <option value="pr">{t('settings.integrationPr')}</option>
             <option value="direct">{t('settings.integrationDirect')}</option>
           </select>
@@ -870,7 +864,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             a place the board never mentioned.
           */}
           <label>{t('herald.name')}
-            <input autoFocus maxLength={80} value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+            <input autoFocus maxLength={80} value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.currentTarget.value })}
               placeholder={t('herald.namePlaceholder')} />
           </label>
           <p className="hint">{t('herald.nameWhy')}</p>
@@ -883,7 +877,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
           {house ? (
             <label className="check">
               <input type="checkbox" checked={usingHouse}
-                onChange={(e) => { setDraftChats([]); setDraft({ ...draft, token: e.target.checked ? HOUSE_KEY : '' }); }} />
+                onChange={(e) => { setDraftChats([]); setDraft({ ...draft, token: e.currentTarget.checked ? HOUSE_KEY : '' }); }} />
               {' '}{t('herald.houseKey')}
             </label>
           ) : null}
@@ -893,7 +887,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
                 {t('herald.key')}
                 <input type="password" value={draft.token ?? ''}
                   placeholder={draft.id ? t('herald.keyKept') : t('herald.keyPlaceholder')}
-                  onChange={(e) => setDraft({ ...draft, token: e.target.value })} />
+                  onChange={(e) => setDraft({ ...draft, token: e.currentTarget.value })} />
               </label>
               <p className="hint">{t('herald.keyWhy')}</p>
             </>
@@ -907,12 +901,12 @@ function Settings({ project, close }: { project: string; close: () => void }) {
           */}
           <label>{t('chat.head')}
             {draftChats.length ? (
-              <select value={draft.chat ?? ''} onChange={(e) => setDraft({ ...draft, chat: e.target.value })}>
+              <select value={draft.chat ?? ''} onChange={(e) => setDraft({ ...draft, chat: e.currentTarget.value })}>
                 <option value="">— {t('herald.pickChat')} —</option>
                 {draftChats.map((c) => <option key={c.id} value={c.id}>{c.name || c.id} · {c.kind}</option>)}
               </select>
             ) : (
-              <input value={draft.chat ?? ''} onChange={(e) => setDraft({ ...draft, chat: e.target.value })} placeholder={t('herald.chatId')} />
+              <input value={draft.chat ?? ''} onChange={(e) => setDraft({ ...draft, chat: e.currentTarget.value })} placeholder={t('herald.chatId')} />
             )}
           </label>
           <div className="row">
@@ -926,7 +920,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
 
           <label>
             {t('herald.template')}
-            <select value={draft.template ?? templateOf(draft.filter, templates) ?? ''} onChange={(e) => { const template = e.target.value || undefined; setDraft({ ...draft, template, ...(template && templates[template]?.filter.visibility === 'public' ? { schedule: { ...draft.schedule, cadence: 'off' } } : {}) }); }}>
+            <select value={draft.template ?? templateOf(draft.filter, templates) ?? ''} onChange={(e) => { const template = e.currentTarget.value || undefined; setDraft({ ...draft, template, ...(template && templates[template]?.filter.visibility === 'public' ? { schedule: { ...draft.schedule, cadence: 'off' } } : {}) }); }}>
               <option value="">— {t('herald.keepFilter')} —</option>
               {Object.entries(templates).map(([id, t2]) => <option key={id} value={id}>{t2.name} — {t2.line}</option>)}
             </select>
@@ -936,7 +930,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             <input type="checkbox"
               checked={!!(draft.template ? templates[draft.template]?.filter.pipeline : draft.filter?.pipeline)}
               disabled={(draft.template ? templates[draft.template]?.filter.visibility : draft.filter?.visibility) === 'public'}
-              onChange={(e) => setDraft({ ...draft, template: undefined, filter: { ...(draft.template ? templates[draft.template]?.filter : draft.filter), pipeline: e.target.checked } })} />
+              onChange={(e) => setDraft({ ...draft, template: undefined, filter: { ...(draft.template ? templates[draft.template]?.filter : draft.filter), pipeline: e.currentTarget.checked } })} />
             {' '}{t('herald.pipeline')}
           </label>
           <p className="hint">{t('herald.pipelineWhy')}</p>
@@ -950,7 +944,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             <div className="row">
               <select disabled={publicDraft}
                 value={draft.schedule?.cadence ?? 'off'}
-                onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, cadence: e.target.value as 'daily' | 'weekly' | 'off' } })}
+                onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, cadence: e.currentTarget.value as 'daily' | 'weekly' | 'off' } })}
               >
                 <option value="off">{t('herald.cadenceOff')}</option>
                 <option value="daily">{t('herald.daily')}</option>
@@ -961,7 +955,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
                   <input
                     type="number" min={0} max={23} style={{ width: '3.5rem', marginLeft: '.4rem' }}
                     value={draft.schedule?.hour ?? 8}
-                    onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, hour: Math.max(0, Math.min(23, Number(e.target.value) || 0)) } })}
+                    onChange={(e) => setDraft({ ...draft, schedule: { ...draft.schedule, hour: Math.max(0, Math.min(23, Number(e.currentTarget.value) || 0)) } })}
                   /> UTC
                 </span>
               ) : null}
@@ -978,8 +972,8 @@ function Settings({ project, close }: { project: string; close: () => void }) {
         <h3>{t('report.head')}</h3>
         <p className="hint">{t('settings.reportAudience')}</p>
         <div className="row">
-          <input value={period} onChange={(e) => setPeriod(e.target.value)} placeholder={t('report.period')} />
-          <select value={voice} onChange={(e) => setVoice(e.target.value as 'plain' | 'human')}>
+          <input value={period} onChange={(e) => setPeriod(e.currentTarget.value)} placeholder={t('report.period')} />
+          <select value={voice} onChange={(e) => setVoice(e.currentTarget.value as 'plain' | 'human')}>
             <option value="human">{t('herald.voiceHuman')}</option>
             <option value="plain">{t('herald.voicePlain')}</option>
           </select>
@@ -1046,6 +1040,8 @@ function LanguageSwitch() {
 
 function Door() {
   const [walking, setWalking] = useState(false);
+  const [signInConfigured,setSignInConfigured]=useState<boolean|null>(null);
+  useEffect(()=>{fetch('api/setup').then(r=>r.ok?r.json():Promise.reject()).then(data=>setSignInConfigured(data.signInConfigured)).catch(()=>setSignInConfigured(null));},[]);
   const rungs = COLUMN_NAMES.filter((c) => c.state !== 'ice').map((c) => c.name);
   return (
     <main className="door">
@@ -1055,15 +1051,16 @@ function Door() {
           {rungs.map((name) => <li key={name}>{name}</li>)}
         </ol>
         <p className="claim">{t('sign.claim')}</p>
-        <a
+        {signInConfigured !== false ? <a
           className={`button${walking ? ' walking' : ''}`}
           href={signInPath()}
           onClick={() => setWalking(true)}
           aria-busy={walking}
         >
           {t(walking ? 'sign.walking' : 'sign.in')}
-        </a>
+        </a> : <p role="status">{t('setup.identity')}</p>}
         <p className="small">{t('sign.note')}</p>
+        <a className="setup-link" href="https://github.com/mundulabs/gradula/blob/main/docs/setup.md" target="_blank" rel="noreferrer">{t('setup.guide')}</a>
         <LanguageSwitch />
       </div>
     </main>
@@ -1130,13 +1127,11 @@ function Bond({ group, open, justChanged, picture }: {
         THE BOND SAYS WHY, ON THE BOARD.
         It stood in a `title` — a tooltip nobody hovers. What one saw was a
         darker block of cards packed together, and the only honest reading of
-        that is "something is wrong with these". David asked what it meant,
+        that is "something is wrong with these". The explicit grouping label
         which is the answer: a shape alone does not say a reason.
       */}
       <span className="bond">{why}</span>
-      <Liquid blur={7} contrast={20} fill="var(--surface)" waviness={0}>
-        {cards.map((card, i) => <Liquid.Item key={group.cards[i].key} effect="melt">{card}</Liquid.Item>)}
-      </Liquid>
+      <div className="bonded-cards">{cards}</div>
     </div>
   );
 }
@@ -1427,10 +1422,10 @@ export default function App() {
   return (
     <>
       <header className="head">
-        {projects.length > 1 ? <select className="project-switch" aria-label={t('ui.project')} value={project} onChange={(e) => { open(null); setProject(e.target.value); resetFilters(); }}>
+        {projects.length > 1 ? <select className="project-switch" aria-label={t('ui.project')} value={project} onChange={(e) => { open(null); setProject(e.currentTarget.value); resetFilters(); }}>
           {projects.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
         </select> : <strong className="project-name">{projects[0]?.name ?? t('ui.app')}</strong>}
-        {view !== 'overview' ? <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.target.value)} /> : null}
+        {view !== 'overview' ? <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.currentTarget.value)} /> : null}
         <nav className="views" aria-label={t('ui.views')}>
           {(['overview', 'board', 'map', 'pulse'] as const).map((one) => <button key={one} aria-pressed={view === one} className={view === one ? 'view here' : 'view'} onClick={() => { setView(one); if (one === 'overview') resetFilters(); }}>{t(`nav.${one}`)}</button>)}
         </nav>
@@ -1452,12 +1447,12 @@ export default function App() {
         {filterCount && view !== 'pulse' ? <button className="ghost" onClick={resetFilters}>{t('ui.clearFilters')}</button> : null}
       </div> : null}
       {filtersOpen && view !== 'overview' && view !== 'pulse' ? <div className="filter-bar">
-        <label>{t('ui.area')}<select value={areaFilter} onChange={(e) => { setAreaFilter(e.target.value); setModuleFilter(''); }}><option value="">{t('nav.allAreas')}</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
-        <label>{t('ui.module')}<select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}><option value="">{t('nav.allModules')}</option>{shownModules.map((module) => <option key={module} value={module}>{module}</option>)}</select></label>
-        <label>{t('ui.craft')}<select value={craftFilter} onChange={(e) => setCraftFilter(e.target.value)}><option value="">{t('nav.allCrafts')}</option>{crafts.map((craft) => <option key={craft} value={craft}>{craft}</option>)}</select></label>
+        <label>{t('ui.area')}<select value={areaFilter} onChange={(e) => { setAreaFilter(e.currentTarget.value); setModuleFilter(''); }}><option value="">{t('nav.allAreas')}</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
+        <label>{t('ui.module')}<select value={moduleFilter} onChange={(e) => setModuleFilter(e.currentTarget.value)}><option value="">{t('nav.allModules')}</option>{shownModules.map((module) => <option key={module} value={module}>{module}</option>)}</select></label>
+        <label>{t('ui.craft')}<select value={craftFilter} onChange={(e) => setCraftFilter(e.currentTarget.value)}><option value="">{t('nav.allCrafts')}</option>{crafts.map((craft) => <option key={craft} value={craft}>{craft}</option>)}</select></label>
       </div> : null}
       {error ? <div className="error" role="alert">{error}<button onClick={load}>{t('ui.retry')}</button></div> : null}
-      {!project ? <div className="empty-state"><h2>{t('ui.noProjects')}</h2><p>{t('ui.noProjectsWhy')}</p></div> : null}
+      {!project ? <div className="empty-state"><h2>{t('ui.noProjects')}</h2><p>{t('ui.noProjectsWhy')}</p><ol className="setup-steps"><li>{t('setup.project')}</li><li>{t('setup.members')}</li><li>{t('setup.scan')}</li></ol><a className="setup-link" href="https://github.com/mundulabs/gradula/blob/main/docs/setup.md" target="_blank" rel="noreferrer">{t('setup.guide')}</a></div> : null}
       {!loading && !cards.length && project && view !== 'overview' && view !== 'pulse' ? <div className="board-notice"><strong>{t(filterCount ? 'ui.noResults' : 'ui.emptyBoard')}</strong><span>{t(filterCount ? 'ui.noResultsWhy' : 'ui.emptyBoardWhy')}</span>{filterCount ? <button onClick={resetFilters}>{t('ui.clearFilters')}</button> : <button onClick={() => setCreating(true)}>{t('ui.newCard')}</button>}</div> : null}
       {view === 'board' ? <nav className="column-tabs" aria-label={t('ui.stages')}>
         {COLUMN_NAMES.map((column) => <button key={column.state} aria-pressed={mobileColumn === column.state} onClick={() => setMobileColumn(column.state)}>{column.name}<span>{cards.filter((card) => card.state === column.state).length}</span></button>)}

@@ -1,4 +1,4 @@
-import {useEffect,useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'preact/compat';
 import {codegraph,decisionReport,type Card,type CodeGraph,type DecisionReport,type Project,type System} from './api';
 import ProjectGraph from './ProjectGraph';
 import {chosenLanguage,words} from './words';
