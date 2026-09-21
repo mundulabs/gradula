@@ -34,3 +34,10 @@ export function radialGraph(nodes:GraphNode[],width:number,height:number,selecte
   });
   return {center,radius,positions,rings};
 }
+
+/** Readable search result ordering, independent of drawing limits and edge degree. */
+export function knowledgeSearch(graph:CodeGraph,query:string,group:string){
+  const terms=query.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean);
+  return graph.nodes.filter(node=>(group==='all'||graphGroup(node)===group)&&terms.every(term=>`${node.name} ${node.path??''} ${node.about??''}`.toLocaleLowerCase().includes(term)))
+    .sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})||(a.path??'').localeCompare(b.path??'')||a.id.localeCompare(b.id));
+}

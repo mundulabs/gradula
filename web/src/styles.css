@@ -465,59 +465,6 @@ a.sha:hover { color: var(--ink); border-bottom-color: var(--ink); }
 .stand-deploying { color: var(--running); border-color: var(--running); }
 .stand-failed { color: var(--waiting); border-color: var(--waiting); }
 
-/* --- The map: where the work went --------------------------------------- */
-/*
- * Angle is the area, radius is time — the centre is the beginning, the rim is
- * now. SVG, so it stays sharp, stays keyboard-reachable and every dot can
- * carry a real label. There is no third dimension because we measure nothing
- * that would honestly be one (see Map.tsx).
- */
-.map-face { padding: 18px 22px 28px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
-.map-face svg { width: min(92vw, 760px); height: auto; overflow: visible; }
-.map-ring { fill: none; stroke: var(--line); stroke-width: 1; }
-.map-spoke { stroke: var(--line); stroke-width: 1; opacity: 0.5; }
-.map-sector { fill: var(--muted); font: 10.5px var(--mono); letter-spacing: 0.04em; }
-.dot { cursor: pointer; stroke: var(--ground); stroke-width: 1.5; transition: r 120ms ease; }
-.dot:hover, .dot:focus-visible { r: 8; outline: none; }
-/*
- * `var(--done)` does not exist — the token is `--done-color`. An unknown
- * custom property makes the whole declaration invalid, and SVG's default fill
- * is black, so twenty-six of forty-three dots were drawn in the one colour
- * this palette does not contain. Nothing was red; the map just looked wrong
- * in a way that is easy to blame on the data.
- */
-.dot-ideas { fill: var(--muted); }
-.dot-ready { fill: var(--faint); }
-.dot-making { fill: var(--running); filter: drop-shadow(0 0 4px var(--running)); }
-.dot-review { fill: var(--waiting); }
-.dot-done { fill: var(--done-color); opacity: 0.5; }
-.dot-ice { fill: var(--line-light); opacity: 0.4; }
-/* Dimmed rather than hidden: a filter that removes the rest also removes the
- * only thing that made the picture a picture — its proportions. */
-.map-pale { opacity: 0.12; }
-.map-hint {
-  display: flex; flex-direction: column; gap: 2px; text-align: center;
-  font-size: 13px; min-height: 34px;
-}
-
-/* The map, second pass: readable at a glance (see Map.tsx). */
-.map-foot { display: flex; flex-direction: column; gap: 10px; align-items: center; }
-.map-time { fill: var(--muted); font: 9.5px var(--mono); opacity: 0.7; }
-.map-sector { cursor: pointer; }
-.map-sector:hover { fill: var(--ink); }
-.map-sector-number { fill: var(--muted); font: 9.5px var(--mono); }
-.map-sector-pale { opacity: 0.28; }
-.map-legend {
-  list-style: none; margin: 0; padding: 0;
-  display: flex; flex-wrap: wrap; gap: 12px;
-  font: 10.5px var(--mono); color: var(--muted);
-}
-.map-legend li { display: flex; align-items: center; gap: 5px; }
-.map-legend span {
-  width: 9px; height: 9px; border-radius: 50%; display: inline-block;
-  border: 1px solid var(--ground);
-}
-
 /* The language switch. Two letters, and the chosen one is not a colour but a
    weight — colour means state in this house, and a language is not a state. */
 .languages { display: inline-flex; gap: 2px; margin-left: 4px; }
@@ -664,16 +611,6 @@ a.sha:hover { color: var(--ink); border-bottom-color: var(--ink); }
 .legend .orb-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--running); display: inline-block; }
 /* The group sample shows the SHAPE, so it carries no text of its own. */
 .legend .group-sample { min-height: 30px; border-style: dashed; border-color: var(--group, var(--line-light)); }
-
-/* The map's legend is also its filter, so it has to look pressable. */
-.map-key {
-  display: inline-flex; align-items: center; gap: 6px;
-  background: none; border: 1px solid transparent; border-radius: 6px;
-  padding: 2px 6px; font: inherit; color: var(--faint); cursor: pointer;
-}
-.map-key:hover { color: var(--ink); }
-.map-key.here { border-color: var(--line-light); color: var(--ink); background: var(--surface-high); }
-.map-key-number { font-family: var(--mono); font-size: 10px; color: var(--muted); }
 
 /*
  * Review has two answers, and they are a decision, not a filing cabinet.
@@ -831,8 +768,6 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 .discard-prompt { padding: 14px 24px; background: var(--surface-high); border-bottom: 1px solid var(--line-light); }
 .discard-prompt p { margin: 0 0 8px; font-size: 14px; }
 .confirm-action { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--waiting); font-size: 13px; }
-.map-face { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
-.map-face svg { flex: 0 0 auto; }
 .pulse { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
 .pulse .flows { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
 @media (prefers-reduced-motion: reduce) {
@@ -843,9 +778,9 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
   .head .project-name, .head .project-switch { grid-column: 1; grid-row: 1; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .new-action { grid-column: 2; grid-row: 1; }
   .menu-anchor { grid-column: 3; grid-row: 1; }
-  .head .search { grid-column: 1; grid-row: 2; min-width: 0; max-width: none; width: 100%; }
-  .head .views { grid-column: 2 / 4; grid-row: 2; margin: 0; }
-  .head .views .view { padding: 0 8px; font-size: 13px; }
+  .head .search { grid-column: 1 / -1; grid-row: 3; min-width: 0; max-width: none; width: 100%; }
+  .head .views { grid-column: 1 / -1; grid-row: 2; margin: 0; width:100%; }
+  .head .views .view { flex:1; padding: 0 8px; font-size: 13px; }
   .workspace-toolbar { padding: 10px 12px; gap: 8px; flex-wrap: wrap; }
   .workspace-context { gap: 8px; font-size: 14px; }
   .workspace-toolbar .standing { display: none; }
@@ -873,33 +808,9 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
   .error { margin: 0 12px 12px; }
 }
 
-.map-foot > select { max-width: 100%; margin-bottom: 12px; }
-@media (max-width: 720px) {
-  .map-time { font-size: 23px; }
-  .map-sector { font-size: 26px; }
-  .map-sector-number { display: none; }
-}
-
-/* Reserve the controls first; the plot scales into the remaining viewport. */
-.map-face { display: grid; grid-template-rows: minmax(0, 1fr) auto; align-items: stretch; overflow: hidden; padding: 8px 16px 12px; gap: 6px; }
-.map-plot { min-height: 0; min-width: 0; position: relative; }
-.map-plot svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.map-foot { width: 100%; gap: 6px; }
-.map-foot > select { margin: 0; max-width: min(100%, 420px); }
-.map-hint { min-height: 0; }
-.map-legend { margin: 0; }
-.map-tooltip { position: fixed; z-index: 20; width: max-content; max-width: min(320px, calc(100vw - 16px)); padding: 12px 14px; border: 1px solid var(--line-light); border-radius: 10px; background: var(--surface-high); color: var(--ink); box-shadow: 0 8px 30px #0005; font-size: 14px; line-height: 1.5; pointer-events: none; overflow-wrap: anywhere; }
-.map-tooltip[hidden] { display: none; }
-.map-tooltip .small { display: block; margin-top: 6px; }
-@media (max-height: 600px) { .map-hint { display: none; } .map-foot { flex-direction: row; flex-wrap: wrap; justify-content: center; } .map-foot > select { max-width: 180px; } }
-
 /* A column scrolls its cards; it must never shrink plain cards to fit. */
 .column-inside > * { flex-shrink: 0; }
 .card .title { flex-shrink: 0; overflow-wrap: anywhere; }
-.map-face { grid-template-columns: minmax(0, 1fr); }
-.map-foot { min-width: 0; }
-.map-legend { justify-content: center; max-width: 100%; gap: 6px; }
-.map-legend .map-key-number { width: auto; height: auto; border: 0; border-radius: 0; }
 
 .work-reservation { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 12px 0; }
 .work-reservation label { display: grid; gap: 8px; }
@@ -932,7 +843,6 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 .code-context svg text { fill:#c4cdd8; font-size:9px; pointer-events:none; }
 
 /* A project workspace: current observations above, published knowledge below. */
-.project-workspace { flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; padding:0; }
 .project-hero,.workspace-section-head { display:flex; align-items:center; justify-content:space-between; gap:24px; }
 .project-hero { display:flex; flex-shrink:0; margin:0; padding:8px 20px; gap:12px; flex-wrap:wrap; }
 .project-hero h1 { font-size:16px; line-height:1.2; margin:0; font-weight:500; }
@@ -1008,11 +918,6 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 .knowledge-provenance { display:grid; gap:12px; margin-top:24px; color:var(--muted); font-size:10px; }
 .knowledge-provenance details { max-width:440px; }
 .knowledge-provenance summary { cursor:pointer; }
-.graph-placeholder { max-width:1600px; margin:0 auto 24px; padding:50px 26px; }
-.efficiency-verdict { font-size:17px; line-height:1.4; }
-.efficiency-values { display:flex; gap:30px; margin:20px 0; }
-.efficiency-values span { display:flex; flex-direction:column; gap:6px; font-size:11px; color:var(--muted); }
-.efficiency-values strong { font-size:24px; color:var(--ink); font-weight:500; }
 .project-bottom-grid .project-panel>small { color:var(--muted); font-size:11px; line-height:1.7; display:block; }
 .document-reader { max-width:850px; margin:auto; line-height:1.75; overflow-wrap:anywhere; }
 .document-reader h2 { font-size:26px; margin-top:28px; }
@@ -1092,3 +997,46 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
 @keyframes signal-notice { from { box-shadow:0 0 0 2px var(--ink); } to { box-shadow:0 0 0 0 transparent; } }
 @keyframes signal-activity { 50% { opacity:.35; } }
 @media (prefers-reduced-motion:reduce) { .signal-changed, .activity-dot { animation:none; } }
+
+/* Work first. Knowledge and diagrams are explicit, separately loaded views. */
+.project-summary { flex:1; min-height:0; overflow:auto; padding:16px 20px 32px; }
+.project-summary .project-hero { padding:0 0 20px; }
+.project-summary .project-metrics>div { display:flex; }
+.project-summary .project-panel { border:0; border-radius:8px; }
+.project-summary .project-bottom-grid { grid-template-columns:1fr; }
+.knowledge-loading { padding:28px 20px; color:var(--muted); font-size:13px; }
+.knowledge-browser { flex:1; min-height:0; display:flex; flex-direction:column; }
+.knowledge-browser-head { display:flex; justify-content:space-between; align-items:center; gap:20px; padding:18px 20px 6px; flex-shrink:0; }
+.knowledge-browser-head h1 { font-size:18px; margin:0; font-weight:500; }
+.knowledge-browser-head p { font-size:12px; color:var(--muted); margin:4px 0 0; }
+.knowledge-browser-head .workspace-meta { font-size:10px; }
+.knowledge-browser-layout { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); position:relative; }
+.knowledge-browser-layout[data-inspector="true"] { grid-template-columns:minmax(0,1fr) 340px; }
+.knowledge-browser-results { display:flex; flex-direction:column; min-height:0; min-width:0; }
+.knowledge-list-head,.knowledge-list>button { display:grid; grid-template-columns:minmax(180px,1fr) 100px minmax(160px,1.5fr); gap:20px; text-align:left; align-items:center; padding:12px 20px; }
+.knowledge-list-head { color:var(--muted); font-size:10px; border-bottom:1px solid var(--line); }
+.knowledge-list { flex:1; min-height:0; overflow:auto; }
+.knowledge-list>button { width:100%; border:0; border-radius:0; border-bottom:1px solid color-mix(in srgb,var(--line) 35%,transparent); font-size:12px; }
+.knowledge-list>button:hover,.knowledge-list>button[aria-pressed="true"] { background:var(--surface-high); }
+.knowledge-list strong { font-weight:500; overflow-wrap:anywhere; }
+.knowledge-list span,.knowledge-list small { color:var(--muted); overflow-wrap:anywhere; font-size:11px; }
+.knowledge-list small { font-family:var(--mono); }
+.knowledge-pagination { display:flex; justify-content:space-between; gap:16px; align-items:center; padding:10px 20px; color:var(--muted); font-size:11px; }
+.knowledge-pagination>div { display:flex; gap:6px; }
+.knowledge-pagination button { font-size:11px; }
+.knowledge-browser-back { display:flex; gap:16px; align-items:center; padding:8px 20px; font-size:12px; }
+.knowledge-browser-back button { font-size:12px; }
+.knowledge-browser .knowledge-inspector h2 { font-size:18px; overflow-wrap:anywhere; font-weight:500; }
+@media(max-width:1000px) {
+  .knowledge-browser-layout[data-inspector="true"] { grid-template-columns:minmax(0,1fr); }
+  .knowledge-browser-layout>.knowledge-inspector { position:absolute; top:0; bottom:0; right:0; z-index:2; width:min(340px,95%); box-sizing:border-box; }
+}
+@media(max-width:600px) {
+  .project-summary { padding:12px; }
+  .knowledge-browser-head { padding:14px 12px 6px; align-items:flex-start; }
+  .knowledge-browser-head .workspace-meta { max-width:95px; text-align:right; }
+  .knowledge-list-head { display:none; }
+  .knowledge-list>button { grid-template-columns:minmax(0,1fr) 70px; gap:4px 12px; padding:12px; }
+  .knowledge-list small { grid-column:1/-1; }
+  .knowledge-pagination { padding:10px 12px; }
+}

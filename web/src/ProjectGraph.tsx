@@ -4,8 +4,8 @@ import {graphGroup,projectGraph,radialGraph} from './graph-model';
 import DocumentReader from './DocumentReader';
 import {chosenLanguage,words} from './words';
 const t=words(chosenLanguage());
-export default function ProjectGraph({graph,project,open}:{graph:CodeGraph;project:string;open:(key:string)=>void}){
-  const [query,setQuery]=useState(''),[kind,setKind]=useState('all'),[selected,setSelected]=useState<string|null>(null),[documentPath,setDocumentPath]=useState<string|null>(null);
+export default function ProjectGraph({graph,project,open,initialSelected=null}:{graph:CodeGraph;project:string;open:(key:string)=>void;initialSelected?:string|null}){
+  const [query,setQuery]=useState(''),[kind,setKind]=useState('all'),[selected,setSelected]=useState<string|null>(initialSelected),[documentPath,setDocumentPath]=useState<string|null>(null);
   const [expanded,setExpanded]=useState(false),[inspector,setInspector]=useState(false),[hover,setHover]=useState<string|null>(null);
   const [camera,setCamera]=useState({x:0,y:0,k:1}),[viewport,setViewport]=useState({width:1100,height:650});
   const sectionRef=useRef<HTMLElement>(null),svgRef=useRef<SVGSVGElement>(null),expandRef=useRef<HTMLButtonElement>(null),inspectRef=useRef<HTMLButtonElement>(null);

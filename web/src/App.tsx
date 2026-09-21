@@ -12,13 +12,14 @@ import { acceptancePolicy, saveAcceptancePolicy, integrationPolicy, saveIntegrat
  *
  * Settings hold keys, heralds and reports. Progress shapes have fixed meanings.
  */
-import { useCallback, useEffect, useRef, useState, useMemo } from 'preact/compat';
+import { useCallback, useEffect, useRef, useState, useMemo, lazy, Suspense } from 'preact/compat';
 import SignalFrame from './SignalFrame';
 import { signalOf, changedBetween, isRunning, IMPULSE_MS, LEVEL_CLASS, type Signal } from './motion';
 import { group, parentsFrom, type Group } from './bonds';
 import { chosenLanguage, keepLanguage, words, LANGUAGES, type Language } from './words';
 import { KINDS, GATE_KINDS, AGENT_KEY_KIND, templateOf } from './vocabulary';
-import AreaMap from './Map';
+import {WORKSPACE_VIEWS,workspaceView,type WorkspaceView} from './workspace-navigation';
+const Knowledge = lazy(()=>import('./Knowledge'));
 import PulseView from './Pulse';
 import Legend from './Legend';
 import { ageOf, shortAge } from './age';
@@ -823,7 +824,7 @@ function Settings({ project, close }: { project: string; close: () => void }) {
             <header>
               <b>{h.name}</b><span className="audience">{t(h.filter.visibility === 'public' ? 'settings.public' : 'settings.internal')}</span>
               <span className="small">{h.active === false ? t('settings.paused') : t('settings.active')}</span>
-              {h.token ? null : <span className="error"> no key</span>}
+              {h.token ? null : <span className="error">{t('ui.noKey')}</span>}
             </header>
             <p className="small">
               {templates[templateOf(h.filter, templates) ?? '']?.line ?? t('settings.custom')}
@@ -982,12 +983,12 @@ function Settings({ project, close }: { project: string; close: () => void }) {
         {preview ? (
           <>
             <p className="small">
-              {preview.counts.done} done · {preview.counts.decided} decided · {preview.counts.incidents} incidents
+              {preview.counts.done} {t('done')} · {preview.counts.decided} {t('pulse.decided')} · {preview.counts.incidents} {t('pulse.incidents')}
             </p>
             <pre className="report">{voice === 'plain' ? preview.plain : preview.human}</pre>
             <div className="row">
               {heralds.filter((h) => h.chat && h.active !== false && h.filter.visibility !== 'public').map((h) => (
-                <button key={h.id} onClick={() => perform(() => deliver(h.id))}>Send to {h.name}</button>
+                <button key={h.id} onClick={() => perform(() => deliver(h.id))}>{t('ui.sendTo')} {h.name}</button>
               ))}
             </div>
           </>
@@ -1175,10 +1176,7 @@ export default function App() {
    * asked /api/v1/system on every move would gather for nothing.
    */
   const [picture, setPicture] = useState<Map<string, SystemCard>>(new Map());
-  // Three views of the same facts: the board answers "what is to be done",
-  // the map "where has the work gone", the pulse "how are we doing". Same
-  // cards, three questions — which is why it is a switch and not three tools.
-  const [view, setView] = useState<'overview' | 'board' | 'map' | 'pulse'>(() => { const v = new URLSearchParams(location.search).get('view'); return v === 'board' || v === 'map' || v === 'pulse' ? v : 'overview'; });
+  const [view, setView] = useState<WorkspaceView>(() => workspaceView(new URLSearchParams(location.search).get('view')));
   const [systemDoc, setSystemDoc] = useState<System | null>(null);
   const [systemError, setSystemError] = useState(false);
   useEffect(() => { const url = new URL(location.href); url.searchParams.set('view', view); if (project) url.searchParams.set('project', project); history.replaceState(history.state, '', url); }, [project, view]);
@@ -1220,7 +1218,7 @@ export default function App() {
   const [settings, setSettings] = useState(false);
   const [legend, setLegend] = useState(false);
   // The header does not fit a phone screen: project, search, three filters,
-  // three views, five more buttons. Board/Map/Pulse and "+ Card" are how you
+  // three views, five more buttons. Workspace views and "+ Card" are how you
   // GET somewhere and stay reachable always; the rest (filters, legend,
   // settings, language, standing) folds behind one button on a narrow screen.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -1425,9 +1423,9 @@ export default function App() {
         {projects.length > 1 ? <select className="project-switch" aria-label={t('ui.project')} value={project} onChange={(e) => { open(null); setProject(e.currentTarget.value); resetFilters(); }}>
           {projects.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
         </select> : <strong className="project-name">{projects[0]?.name ?? t('ui.app')}</strong>}
-        {view !== 'overview' ? <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.currentTarget.value)} /> : null}
+        {view === 'board' ? <input className="search" type="search" aria-label={t('nav.search')} placeholder={t('nav.search')} value={search} onChange={(e) => setSearch(e.currentTarget.value)} /> : null}
         <nav className="views" aria-label={t('ui.views')}>
-          {(['overview', 'board', 'map', 'pulse'] as const).map((one) => <button key={one} aria-pressed={view === one} className={view === one ? 'view here' : 'view'} onClick={() => { setView(one); if (one === 'overview') resetFilters(); }}>{t(`nav.${one}`)}</button>)}
+          {WORKSPACE_VIEWS.map((one) => <button key={one} aria-pressed={view === one} className={view === one ? 'view here' : 'view'} onClick={() => { setView(one); if (one !== 'board') resetFilters(); }}>{t(`nav.${one}`)}</button>)}
         </nav>
         <button className="primary new-action" disabled={!project} onClick={() => setCreating(true)}><Icon name="plus" />{t('ui.newCard')}</button>
         <div className="menu-anchor" ref={menuRef}>
@@ -1440,25 +1438,25 @@ export default function App() {
           </div> : null}
         </div>
       </header>
-      {view !== 'overview' ? <div className="workspace-toolbar">
+      {view === 'board' ? <div className="workspace-toolbar">
         <div className="workspace-context"><span>{t(`nav.${view}`)}</span><span className="small" role="status">{loading ? t('ui.loading') : `${cards.length} ${t('map.cards')}`}</span></div>
         {standing && standing.standing !== 'unknown' ? <span className={STAND_CLASS[standing.standing] ?? 'standing'} title={standing.line}>{standing.standing}</span> : null}
-        {view !== 'pulse' ? <button aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" />{t('ui.filters')}{filterCount ? ` · ${filterCount}` : ''}</button> : null}
-        {filterCount && view !== 'pulse' ? <button className="ghost" onClick={resetFilters}>{t('ui.clearFilters')}</button> : null}
+        <button aria-expanded={filtersOpen} onClick={() => setFiltersOpen(!filtersOpen)}><Icon name="filter" />{t('ui.filters')}{filterCount ? ` · ${filterCount}` : ''}</button>
+        {filterCount ? <button className="ghost" onClick={resetFilters}>{t('ui.clearFilters')}</button> : null}
       </div> : null}
-      {filtersOpen && view !== 'overview' && view !== 'pulse' ? <div className="filter-bar">
+      {filtersOpen && view === 'board' ? <div className="filter-bar">
         <label>{t('ui.area')}<select value={areaFilter} onChange={(e) => { setAreaFilter(e.currentTarget.value); setModuleFilter(''); }}><option value="">{t('nav.allAreas')}</option>{areas.map((area) => <option key={area} value={area}>{area}</option>)}</select></label>
         <label>{t('ui.module')}<select value={moduleFilter} onChange={(e) => setModuleFilter(e.currentTarget.value)}><option value="">{t('nav.allModules')}</option>{shownModules.map((module) => <option key={module} value={module}>{module}</option>)}</select></label>
         <label>{t('ui.craft')}<select value={craftFilter} onChange={(e) => setCraftFilter(e.currentTarget.value)}><option value="">{t('nav.allCrafts')}</option>{crafts.map((craft) => <option key={craft} value={craft}>{craft}</option>)}</select></label>
       </div> : null}
       {error ? <div className="error" role="alert">{error}<button onClick={load}>{t('ui.retry')}</button></div> : null}
       {!project ? <div className="empty-state"><h2>{t('ui.noProjects')}</h2><p>{t('ui.noProjectsWhy')}</p><ol className="setup-steps"><li>{t('setup.project')}</li><li>{t('setup.members')}</li><li>{t('setup.scan')}</li></ol><a className="setup-link" href="https://github.com/mundulabs/gradula/blob/main/docs/setup.md" target="_blank" rel="noreferrer">{t('setup.guide')}</a></div> : null}
-      {!loading && !cards.length && project && view !== 'overview' && view !== 'pulse' ? <div className="board-notice"><strong>{t(filterCount ? 'ui.noResults' : 'ui.emptyBoard')}</strong><span>{t(filterCount ? 'ui.noResultsWhy' : 'ui.emptyBoardWhy')}</span>{filterCount ? <button onClick={resetFilters}>{t('ui.clearFilters')}</button> : <button onClick={() => setCreating(true)}>{t('ui.newCard')}</button>}</div> : null}
+      {!loading && !cards.length && project && view === 'board' ? <div className="board-notice"><strong>{t(filterCount ? 'ui.noResults' : 'ui.emptyBoard')}</strong><span>{t(filterCount ? 'ui.noResultsWhy' : 'ui.emptyBoardWhy')}</span>{filterCount ? <button onClick={resetFilters}>{t('ui.clearFilters')}</button> : <button onClick={() => setCreating(true)}>{t('ui.newCard')}</button>}</div> : null}
       {view === 'board' ? <nav className="column-tabs" aria-label={t('ui.stages')}>
         {COLUMN_NAMES.map((column) => <button key={column.state} aria-pressed={mobileColumn === column.state} onClick={() => setMobileColumn(column.state)}>{column.name}<span>{cards.filter((card) => card.state === column.state).length}</span></button>)}
       </nav> : null}
 
-      {view === 'overview' ? (projects.find(p => p.key === project) ? <ProjectOverview key={project} project={projects.find(p => p.key === project)!} cards={cards} system={systemDoc} systemError={systemError} loading={loading} open={open} board={() => setView('board')} retry={loadPicture} /> : null) : view === 'pulse' ? <PulseView key={`pulse:${project}`} project={project} open={open} /> : view === 'map' ? <AreaMap key={`map:${project}`} cards={cards} open={open} areaOfModule={areaOfModule} /> : (
+      {view === 'overview' ? (projects.find(p => p.key === project) ? <ProjectOverview key={project} project={projects.find(p => p.key === project)!} cards={cards} system={systemDoc} systemError={systemError} loading={loading} open={open} board={() => setView('board')} retry={loadPicture} /> : null) : view === 'pulse' ? <PulseView key={`pulse:${project}`} project={project} open={open} /> : view === 'knowledge' ? <Suspense fallback={<main className="knowledge-loading" role="status">{t('ui.loading')}</main>}><Knowledge key={project} project={project} open={open}/></Suspense> : (
       <div className="board" aria-busy={loading}>
         {COLUMN_NAMES.map((column) => {
           const inside = cards.filter((k) => k.state === column.state);

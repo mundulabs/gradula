@@ -191,10 +191,13 @@ Install the Gradula tooling with `npm ci` (including TypeScript); do not run it 
 an untrusted pull request with secrets. Pin your tooling revision and keep one
 publisher per project. See [publisher operations](publisher-operations.md).
 
-The project overview opens a radial knowledge graph. Search covers the full published
-index; the drawing shows a bounded selection. Use **Fullscreen** for an edge-to-edge
-workspace, select a node for sources and documents, and open **Activity & delivery**
-for live observations. The source snapshot remains separate from runtime evidence.
+The board opens **Tickets** by default. **Overview** shows current work and delivery
+without fetching a knowledge graph. **Knowledge** loads the published index only
+when opened and starts with searchable names, types and full paths. Select an
+entry to read its document or source, then choose **Show relationships** when a
+diagram helps; fullscreen remains available there. **Insights** contains work
+trends. Ticket details also load code context only when explicitly requested.
+The source snapshot remains separate from runtime evidence.
 
 ## 6. Connect GitHub observations
 
@@ -221,7 +224,7 @@ GitHub login does not grant this repository credential implicitly.
 ## Domains and project subdomains
 
 One instance has one canonical `PUBLIC_ORIGIN` and can hold many projects:
-`https://board.example.org/?project=APP&view=overview`. Each independently hosted
+`https://board.example.org/?project=APP&view=board`. Each independently hosted
 instance can choose any hostname. DNS and TLS remain your hosting responsibility.
 
 For a friendly project subdomain, point `app-board.example.org` to your proxy and
@@ -229,7 +232,7 @@ add a redirect (for example to the included Caddyfile):
 
 ```caddyfile
 app-board.example.org {
-  redir https://board.example.org/?project=APP&view=overview 302
+  redir https://board.example.org/?project=APP&view=board 302
 }
 ```
 
