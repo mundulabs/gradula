@@ -1,5 +1,6 @@
 import {validProviderKey} from './provider-key.mjs';
 import {PILOT, digest, pilotInput, pilotPayload, evaluatePilot, pilotFeedback, pilotReport} from './decision-pilot.mjs';
+import {TASK_CAMPAIGN,TASK_LIMITS,taskInput,taskObservation,taskReport} from './task-measurement.mjs';
 /**
  * What Gradula DOES — the verbs, once, over a store.
  *
@@ -334,7 +335,39 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
     },
     async decisionReport(projectKey) {
       const project=await this.getProject(projectKey);
-      return {enabled:Boolean(decisionPilot.projects?.includes(project.key)),acceptsProjectKey:true,providerKeyRequired:!decisionPilot.apiKey,...pilotReport(await store.decisions.list(project.key,PILOT.campaign))};
+      return {enabled:Boolean(decisionPilot.projects?.includes(project.key)),acceptsProjectKey:true,providerKeyRequired:!decisionPilot.apiKey,...pilotReport(await store.decisions.list(project.key,PILOT.campaign)),tasks:taskReport(await store.decisions.list(project.key,TASK_CAMPAIGN))};
+    },
+    async beginTaskRun(projectKey,input,actor) {
+      const project=await this.getProject(projectKey);
+      if(!decisionPilot.projects?.includes(project.key))return {status:'disabled'};
+      let prepared;try{prepared=taskInput(input);}catch(error){throw bad('task-run',error.message);}
+      const card=await findItem(prepared.card);
+      if(!card||card.project!==project.key)throw missing('That card does not exist in this project.');
+      const fingerprint=digest(prepared);
+      const reserved=await store.decisions.reserve(project.key,{...prepared,id:mintId(),campaign:TASK_CAMPAIGN,fingerprint,actor,created:new Date().toISOString()},TASK_LIMITS);
+      if(!reserved)return {status:'limit'};
+      if(reserved.trial.fingerprint!==fingerprint)throw new Refusal(409,'request-id','Task run id already belongs to a different task.');
+      return {status:'enrolled',run:reserved.trial};
+    },
+    async observeTaskRun(projectKey,id,input,actor) {
+      const project=await this.getProject(projectKey),run=await store.decisions.get(project.key,id);
+      if(!run||run.campaign!==TASK_CAMPAIGN)throw missing('That task run does not exist.');
+      let observation;try{observation=taskObservation(input);}catch(error){throw bad('task-run',error.message);}
+      if(run.arm==='baseline'&&(observation.decision!=='baseline'||observation.trialId||observation.adoption!==null))throw bad('task-run','A baseline run cannot include a TypeSafe recommendation.');
+      if(observation.decision==='suggested'&&!observation.trialId)throw bad('task-run','A recommendation requires its classifier record.');
+      const unknown=run.arm==='typesafe'&&observation.decision==='unavailable';
+      let classifierInputTokens=unknown?null:0,classifierEstimatedCostUsd=unknown?null:0;
+      if(observation.trialId){
+        const trial=await store.decisions.get(project.key,observation.trialId);
+        if(!trial||trial.campaign!==PILOT.campaign||trial.requestId!==`task-${run.requestId.slice(0,64)}`)throw bad('task-run','Classifier must belong to this project and task run.');
+        if(observation.decision==='suggested'&&(trial.result?.status!=='answered'||trial.result.abstained))throw bad('task-run','An unavailable or abstained classifier cannot supply a recommendation.');
+        classifierInputTokens=trial.result?.inputTokens??null;classifierEstimatedCostUsd=trial.result?.estimatedCostUsd??null;
+      }
+      const card=await findItem(run.card);
+      const status=['review','done','ice'].includes(card?.state)?card.state:'active';
+      // Completion follows board evidence, never a caller's claimed success.
+      const result={...observation,status,success:status==='done'?true:status==='ice'?false:null,classifierInputTokens,classifierEstimatedCostUsd,actor,at:new Date().toISOString()};
+      return store.decisions.finish(project.key,id,result);
     },
 
     /** The vocabulary comes from the project — Gradula reads no foreign repository. */

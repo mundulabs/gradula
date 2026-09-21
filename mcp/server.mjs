@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {providerHeaders} from '../src/provider-key.mjs';
+import {beginMeasurement,collectMeasurements,adoptMeasurement} from '../src/decision-workflow.mjs';
 /**
  * Gradula over MCP — so that Codex, Claude Desktop and Claude Code walk the
  * same road as the CLI. No access of its own to the database: every tool here
@@ -38,6 +39,7 @@ async function api(path, { method = 'GET', body } = {}) {
   const provider=providerHeaders(base,path,method);
   const res = await fetch(`${base}${path}`, {
     method,
+    signal:AbortSignal.timeout(15000),
     ...(Object.keys(provider).length ? {redirect:'error'} : {}),
     headers: { ...provider, 'X-Gradula-Session': session,
       Authorization: `Bearer ${token}`,
@@ -68,7 +70,10 @@ export const TOOLS = [
     run:({id,...args})=>api(`/api/v1/decision-trials/${encodeURIComponent(id)}/feedback`,{method:'POST',body:args}),
   },
   {
-    name:'plan_decision_report',description:'Read this project’s shadow pilot usage, attributed labels and measured paired-run comparisons. Missing comparisons mean token savings are unproven.',inputSchema:{type:'object',properties:{}},run:()=>api('/api/v1/decision-trials'),
+    name:'plan_decision_report',description:'Collect enrolled task usage, then read classifier and whole-task observations. Different task totals do not prove token savings.',inputSchema:{type:'object',properties:{}},run:async()=>{await collectMeasurements({call:api,base});return api('/api/v1/decision-trials');},
+  },
+  {
+    name:'plan_decision_adopt',description:'Record whether this session used the optional TypeSafe approach offered at task start. This is agent-reported adoption, not human review.',inputSchema:{type:'object',required:['card','adopted'],properties:{card:{type:'string'},adopted:{type:'boolean'}}},run:async args=>{const card=await api(`/api/v1/cards/${key(args.card)}`);const result=await adoptMeasurement(key(args.card),args.adopted,{base,session});await collectMeasurements({call:api,base,card});return result;},
   },
 
   {
@@ -136,13 +141,13 @@ export const TOOLS = [
       properties: { card: { type: 'string' }, state: { type: 'string', enum: ['ideas', 'ready', 'making', 'review', 'done', 'ice'] }, reason: { type: 'string' } },
       required: ['card', 'state'],
     },
-    run: (args) => api(`/api/v1/cards/${key(args.card)}/move`, { method: 'POST', body: { state: args.state, reason: args.reason ?? null } }),
+    run: async (args) => {const card=await api(`/api/v1/cards/${key(args.card)}/move`, { method: 'POST', body: { state: args.state, reason: args.reason ?? null } });await collectMeasurements({call:api,base,card});return card;},
   },
   {
     name: 'plan_start',
     description: 'Reserve and begin a card for this MCP session. Supply planned repository-relative files or folders; the answer includes owner and overlap warnings. Another active session requires an explicit takeover reason. Use plan_beat every 25 seconds while working and plan_release_work when finished. Use an isolated task branch/worktree for code edits. Refused for a card in ideas or ice (a person moves it to ready first — that move is the yes) and for a card that waits on another; the way through a block is `anyway`, a sentence saying why, which stands in the chronicle beside the start.',
     inputSchema: { type: 'object', properties: { card: { type: 'string' }, files: { type: 'array', items: { type: 'string' } }, takeover: { type: 'string' }, anyway: { type: 'string', description: 'Why start although the card waits on another. Only with a real reason.' } }, required: ['card'] },
-    run: (args) => api(`/api/v1/cards/${key(args.card)}/start`, { method: 'POST', body: { anyway: args.anyway, files: args.files, takeover: args.takeover } }),
+    run: async (args) => {const card=await api(`/api/v1/cards/${key(args.card)}/start`, { method: 'POST', body: { anyway: args.anyway, files: args.files, takeover: args.takeover } });const measurement=await beginMeasurement(card,{call:api,base,session});return measurement?{...card,measurement}:card;},
   },
   {
     name: 'plan_beat', description: 'Renew this session reservation while working; returns current overlap warnings. Call every 25 seconds. Expired or transferred reservations must be started again.',

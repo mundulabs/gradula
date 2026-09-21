@@ -1,6 +1,22 @@
 # Jev decision pilot
 
-Gradula hosts an opt-in, project-scoped **shadow experiment**. It recommends one item from a supplied catalog; it does not select tools automatically, change context retrieval, approve reviews, execute commands, or change task state. The caller continues its normal decision. TypeSafe receives only the submitted summary and candidate descriptions, never an automatically collected repository or skill body.
+Gradula hosts an opt-in, project-scoped decision experiment. Manual `decision-trial` calls remain shadow classifications. Repositories that explicitly enable task measurement also enroll upcoming board tasks in a normal-workflow or TypeSafe-advice arm. Advice can change an optional next step; it never overrides required skills, context retrieval, tests or review, and never executes commands. TypeSafe receives a bounded title and the approach catalog, never an automatically collected repository or skill body.
+
+## Automatic task collection
+
+Run `gradula decision-setup on` once in each consenting repository, using the updated Gradula CLI. The setting is local Git configuration, shared with that repository's worktrees; no daemon, background publisher or key is installed. A newly connected project must explicitly opt in and supply its own private provider key. Use `decision-setup off` to stop automatic enrollment and collection.
+
+`gradula start` and MCP `plan_start` now enroll tasks automatically when a matching local Codex usage trace is available. A stable hash assigns each run to the baseline or TypeSafe arm before seeing a recommendation. Roughly half receive no classifier call. The other half receive at most one title-based route decision under the **existing** 20-attempt project campaign cap. The initial catalog chooses an optional starting approach: reproduce a regression, establish a behavior contract, follow an existing implementation, or verify documentation facts. This does not duplicate the deterministic file index. It is not automatic selection from a developer's installed skill library; supplied-catalog skill trials remain available separately.
+
+The start response names the assigned arm, recommendation and collection status. If advice is offered, record whether you used it with `gradula decision-adopt CARD yes|no`, or MCP `plan_decision_adopt`. Unacknowledged advice stays **adoption unknown**; an offered recommendation is not evidence that it changed behavior. Missing traces, unsupported coders, disabled projects and exhausted limits preserve normal task work. Repeating start does not make another paid call. Updating a running MCP server requires restarting it; the CLI loads the updated integration on its next invocation.
+
+`gradula move`, `decision-collect`, and `decision-report` collect enrolled usage. The existing report monitor can therefore collect later completion tokens without running another model trial. Moving to review is not the end of the model turn: collection waits for the corresponding completion event and includes its final response, then freezes that usage window. Board acceptance is reported separately from awaiting review. Reopening a task or overlapping cards in a thread is flagged as a collection gap rather than presented as a clean experiment.
+
+Local private cursors live in the repository's common Git metadata, under `gradula-measure/`. They contain a trace path, session/turn identity, task/revision hashes and collection status, not task prose or keys. The adapter parses only usage, model and lifecycle metadata from the enrolled Codex JSONL trace. It discovers matching trace filenames, not other conversations' text. No transcript content is uploaded. This trace format is a locally verified adapter, not a promised stable public API; unknown/missing counters fail visibly. Remote workers and other coding tools need their own observed-usage adapter.
+
+The reported **task-session window** starts at the beginning of the turn containing task start and ends after the completion turn. It includes observed coding-model inputs/outputs and retries across that window, plus separately reported classifier tokens. Cached input is already part of input, and reasoning output is already part of output: neither is added twice. Codex subscription billing is not inferred from token counts; coding-model dollar cost remains unknown. Delegated agents, overlapping tasks, missing traces, counter resets and unfinished turns are flagged. External model/tool usage remains explicitly unverified; a primary-session trace is not a guarantee that every other service was metered.
+
+These are whole-task observations, **not automatically matched replays**. Different tasks in the two arms do not establish savings, even if one aggregate is lower. The report keeps `provenTokenSavings: null`; a claim requires comparable frozen-task runs, complete accounting of additional models/tools, and accepted outcomes as described below. No coding task is silently rerun and no paid trial is created by the monitor merely to fill a report.
 
 ## Where to try it
 
@@ -41,7 +57,7 @@ Example decision file (illustrative candidates, not an installed skill registry)
 }
 ```
 
-`kind` is `skill`, `route`, `review` or `intent`. `fallback` is always offered by the service. A probability-derived confidence of at least 0.9 is an experimental threshold, not a calibrated correctness guarantee. Low confidence, invalid responses, timeouts and provider failures preserve the normal route. A high-confidence suggestion is still shadow-only.
+`kind` is `skill`, `route`, `review` or `intent`. `fallback` is always offered by the service. A probability-derived confidence of at least 0.9 is an experimental threshold, not a calibrated correctness guarantee. Low confidence, invalid responses, timeouts and provider failures preserve the normal route. Manual high-confidence suggestions stay shadow-only; the separately opted-in task workflow offers them as optional advice.
 
 After the task, a reviewer can submit `{"expected":"presentations"}`. Labels are attributed as agent or human according to authentication; neither implies independent ground truth. At most ten feedback entries are retained per trial, with the latest used in reports. Original feedback remains in the audit record. No thresholds, prompts or model weights update themselves.
 
