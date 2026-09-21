@@ -191,6 +191,11 @@ Install the Gradula tooling with `npm ci` (including TypeScript); do not run it 
 an untrusted pull request with secrets. Pin your tooling revision and keep one
 publisher per project. See [publisher operations](publisher-operations.md).
 
+The project overview opens a radial knowledge graph. Search covers the full published
+index; the drawing shows a bounded selection. Use **Fullscreen** for an edge-to-edge
+workspace, select a node for sources and documents, and open **Activity & delivery**
+for live observations. The source snapshot remains separate from runtime evidence.
+
 ## 6. Connect GitHub observations
 
 Create a fine-grained token restricted to the connected repository and the read
