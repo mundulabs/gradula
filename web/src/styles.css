@@ -1049,7 +1049,7 @@ button.primary:hover:not(:disabled) { background: #dbe2eb; }
   .project-status-grid,.project-bottom-grid { grid-template-columns:1fr; }
   .project-knowledge { padding:16px; } .knowledge-layout { grid-template-columns:1fr; }
   .knowledge-inspector { border-left:0; border-top:1px solid var(--line); max-height:360px; }
-  .knowledge-svg { min-height:280px; } .knowledge-provenance { flex-direction:column; gap:12px; }
+  .knowledge-svg { min-height:420px; height:420px; } .knowledge-provenance { flex-direction:column; gap:12px; }
   .workspace-section-head { gap:12px; flex-wrap:wrap; } .knowledge-footer>span { max-width:60%; }
 }
 @media(prefers-reduced-motion:reduce) { .project-workspace { scroll-behavior:auto; } .knowledge-node rect { transition:none; } }

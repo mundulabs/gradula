@@ -1,4 +1,4 @@
-import {useMemo,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import type {CodeGraph} from './api';
 import {graphGroup,projectGraph} from './graph-model';
 import DocumentReader from './DocumentReader';
@@ -7,6 +7,9 @@ const t=words(chosenLanguage());
 export default function ProjectGraph({graph,project,open}:{graph:CodeGraph;project:string;open:(key:string)=>void}){
   const [query,setQuery]=useState(''),[kind,setKind]=useState('all'),[selected,setSelected]=useState<string|null>(null),[document,setDocument]=useState<string|null>(null);
   const [camera,setCamera]=useState({x:0,y:0,k:1});
+  const svgRef=useRef<SVGSVGElement>(null);
+  const [viewport,setViewport]=useState({width:990,height:610});
+  useEffect(()=>{const svg=svgRef.current;if(!svg)return;const observer=new ResizeObserver(([entry])=>{const width=entry.contentRect.width;setViewport(width<600?{width:Math.max(280,width),height:420}:{width:990,height:610});});observer.observe(svg);return()=>observer.disconnect();},[]);
   const drag=useRef<{x:number;y:number;cx:number;cy:number;moved:boolean}|null>(null);
   const view=useMemo(()=>projectGraph(graph,query,kind,selected),[graph,query,kind,selected]);
   const byId=useMemo(()=>new Map(graph.nodes.map(n=>[n.id,n])),[graph]);
@@ -17,7 +20,9 @@ export default function ProjectGraph({graph,project,open}:{graph:CodeGraph;proje
     const nodes=view.shown.filter(n=>graphGroup(n)===group);
     nodes.forEach((n,row)=>positions.set(n.id,{x:125+column*245,y:90+(row+0.5)*460/Math.max(1,nodes.length)}));
   }
-  const select=(id:string)=>{setSelected(id);setCamera({x:0,y:0,k:1})};
+  const resetCamera=(id:string|null=selected)=>{const p=id?positions.get(id):null;setCamera({x:viewport.width<600?viewport.width/2-(p?.x??125):0,y:viewport.width<600?viewport.height/2-(p?.y??305):0,k:1});};
+  useEffect(()=>{resetCamera();},[viewport.width,selected]);
+  const select=(id:string)=>{setSelected(id);resetCamera(id)};
   const source=(path:string)=>`https://github.com/${graph.repository}/blob/${graph.dirty===false&&graph.revision?graph.revision:'HEAD'}/${path.split('/').map(encodeURIComponent).join('/')}`;
   const zoom=(amount:number)=>setCamera(c=>({...c,k:Math.max(.65,Math.min(2.5,c.k+amount))}));
   return <section className="project-knowledge" aria-label={t('workspace.knowledge')}>
@@ -26,14 +31,14 @@ export default function ProjectGraph({graph,project,open}:{graph:CodeGraph;proje
       <div className="knowledge-tabs" role="group" aria-label={t('workspace.scope')}>{['all',...groups].map(group=><button key={group} aria-pressed={kind===group} onClick={()=>{setKind(group);setSelected(null)}}>{t(`workspace.${group}`)}</button>)}</div>
     </div>
     <div className="knowledge-layout"><div className="knowledge-canvas">
-      <div className="knowledge-caption"><span>{focus?focus.name:t('workspace.overviewGraph')}</span>{selected?<button className="ghost" onClick={()=>{setSelected(null);setCamera({x:0,y:0,k:1})}}>{t('workspace.resetFocus')}</button>:null}</div>
-      <svg className="knowledge-svg" viewBox="0 0 990 610" role="group" aria-label={t('workspace.graphLabel')}
+      <div className="knowledge-caption"><span>{focus?focus.name:t('workspace.overviewGraph')}</span>{selected?<button className="ghost" onClick={()=>{setSelected(null);resetCamera(null)}}>{t('workspace.resetFocus')}</button>:null}</div>
+      <svg ref={svgRef} className="knowledge-svg" viewBox={`0 0 ${viewport.width} ${viewport.height}`} role="group" aria-label={t('workspace.graphLabel')}
         onPointerDown={e=>{if((e.target as Element).closest('[data-node]'))return;drag.current={x:e.clientX,y:e.clientY,cx:camera.x,cy:camera.y,moved:false};e.currentTarget.setPointerCapture(e.pointerId)}}
-        onPointerMove={e=>{const d=drag.current;if(!d)return;const scale=990/e.currentTarget.getBoundingClientRect().width;d.moved=true;setCamera(c=>({...c,x:d.cx+(e.clientX-d.x)*scale,y:d.cy+(e.clientY-d.y)*scale}))}}
+        onPointerMove={e=>{const d=drag.current;if(!d)return;const scale=viewport.width/e.currentTarget.getBoundingClientRect().width;d.moved=true;setCamera(c=>({...c,x:d.cx+(e.clientX-d.x)*scale,y:d.cy+(e.clientY-d.y)*scale}))}}
         onPointerUp={()=>{drag.current=null}} onPointerCancel={()=>{drag.current=null}}>
         <defs><pattern id={`grid-${project}`} width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".8" className="knowledge-grid-dot"/></pattern></defs>
-        <rect width="990" height="610" fill={`url(#grid-${project})`}/>
-        <g transform={`translate(${camera.x} ${camera.y}) translate(495 305) scale(${camera.k}) translate(-495 -305)`}>
+        <rect width={viewport.width} height={viewport.height} fill={`url(#grid-${project})`}/>
+        <g transform={`translate(${camera.x} ${camera.y}) translate(${viewport.width/2} ${viewport.height/2}) scale(${camera.k}) translate(${-viewport.width/2} ${-viewport.height/2})`}>
           {groups.map((group,i)=><g key={group}><text className="knowledge-column-name" x={35+i*245} y={40}>{t(`workspace.${group}`).toUpperCase()}</text><line className="knowledge-column-line" x1={35+i*245} y1={55} x2={210+i*245} y2={55}/></g>)}
           {view.edges.map((edge,i)=>{const a=positions.get(edge.from)!,b=positions.get(edge.to)!;const bend=(a.x+b.x)/2;return <path className="knowledge-edge" key={i} data-inferred={edge.confidence==='INFERRED'} d={`M ${a.x} ${a.y} C ${bend} ${a.y}, ${bend} ${b.y}, ${b.x} ${b.y}`}><title>{edge.kind}: {edge.reason}</title></path>})}
           {view.shown.map(node=>{const p=positions.get(node.id)!;return <g className="knowledge-node" data-node={node.id} data-selected={selected===node.id} key={node.id} transform={`translate(${p.x} ${p.y})`} role="button" tabIndex={0} aria-label={`${node.name} · ${node.kind}`} aria-pressed={selected===node.id} onClick={()=>select(node.id)} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select(node.id)}}}>
@@ -41,7 +46,7 @@ export default function ProjectGraph({graph,project,open}:{graph:CodeGraph;proje
           </g>})}
         </g>
       </svg>
-      <footer className="knowledge-footer"><span>{view.shown.length} / {view.total.toLocaleString()} · {t('workspace.graphHint')}</span><div><button onClick={()=>zoom(-.2)} aria-label={t('workspace.zoomOut')}>−</button><button onClick={()=>setCamera({x:0,y:0,k:1})}>{t('workspace.fit')}</button><button onClick={()=>zoom(.2)} aria-label={t('workspace.zoomIn')}>+</button></div></footer>
+      <footer className="knowledge-footer"><span>{view.shown.length} / {view.total.toLocaleString()} · {t('workspace.graphHint')}</span><div><button onClick={()=>zoom(-.2)} aria-label={t('workspace.zoomOut')}>−</button><button onClick={()=>resetCamera()}>{t('workspace.fit')}</button><button onClick={()=>zoom(.2)} aria-label={t('workspace.zoomIn')}>+</button></div></footer>
     </div><aside className="knowledge-inspector" aria-label={t('workspace.inspector')}>
       {focus?<><span className="workspace-eyebrow">{focus.kind}</span><h3>{focus.name}</h3><p>{focus.about||t('workspace.noDescription')}</p>{focus.path?<code className="knowledge-path">{focus.path}</code>:null}
         <div className="knowledge-actions">{focus.kind==='card'?<button onClick={()=>open(focus.name)}>{t('workspace.openCard')}</button>:null}{focus.path&&graph.documents?.some(d=>d.path===focus.path)?<button onClick={()=>setDocument(focus.path)}>{t('workspace.readDocument')}</button>:null}{focus.path?<a href={source(focus.path)} target="_blank" rel="noreferrer">{t('graph.source')}</a>:null}</div>
