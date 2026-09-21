@@ -1275,3 +1275,16 @@ test('codegraph door requires authentication and accepts only the project reposi
   assert.equal((await call('/api/v1/codegraph',{token,method:'PUT',body})).status,200);
   const result=await call('/api/v1/codegraph',{token});assert.equal(result.body.repository,'team/repo');assert.ok(result.body.importedAt);
 });
+
+test('document door authenticates, scopes projects and keeps bodies out of graph manifests',async t=>{
+ const {call,close,gradula,token}=await start2();t.after(close);
+ await gradula.patchProject('PRB',{repo:'team/repo'});
+ const body={schema:'gradula.codegraph.v1',repository:'team/repo',revision:'a'.repeat(40),dirty:false,nodes:[{id:'doc',name:'Guide',kind:'doc',path:'docs/guide.md'}],edges:[],documents:[{path:'docs/guide.md',markdown:'# Published body'}]};
+ assert.equal((await call('/api/v1/codegraph',{token,method:'PUT',body})).status,200);
+ assert.equal((await call('/api/v1/documents?path=docs/guide.md')).status,401);
+ const manifest=await call('/api/v1/codegraph',{token});assert.equal(manifest.body.documents[0].path,'docs/guide.md');assert.ok(!JSON.stringify(manifest.body).includes('Published body'));
+ const doc=await call('/api/v1/documents?path=docs/guide.md&revision='+body.revision,{token});assert.equal(doc.status,200);assert.equal(doc.body.markdown,'# Published body');assert.equal(doc.body.revision,body.revision);
+ assert.equal((await call('/api/v1/documents?path=../secret.md',{token})).status,404);
+ assert.equal((await call('/api/v1/documents?path=docs/guide.md&revision='+'b'.repeat(40),{token})).status,404,'an unavailable revision must not silently serve the newest document');
+ const scoped=await call('/api/v1/documents?project=OTHER&path=docs/guide.md',{token});assert.equal(scoped.body.markdown,'# Published body','a project key remains scoped to its own project even when another is requested');
+});

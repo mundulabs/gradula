@@ -162,7 +162,7 @@ test('the board hears a wipe and empties its columns at once', () => {
   const start = app.indexOf("event.verb === 'wipe'");
   assert.ok(start > 0, 'the live handler tells a wipe apart from a move');
   const branch = app.slice(start, app.indexOf('return;', start));
-  for (const line of ['setCards([])', 'setBonds([])', 'setPicture(new Map())', 'previous.current = []', 'load()']) {
+  for (const line of ['setCards([])', 'setBonds([])', 'setPicture(new Map())', 'previous.current = []', 'latestLoad.current()']) {
     assert.ok(branch.includes(line), `on a wipe the board runs ${line}`);
   }
   assert.ok(!branch.includes('setTimeout'), 'a wipe is not bundled behind the 400 ms clock');

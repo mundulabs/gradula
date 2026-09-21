@@ -25,9 +25,13 @@ for(const [name,build] of builds) test(`${name}: graph snapshots are isolated, i
  const store=await build();t.after(()=>store.close?.());const g=createGradula(store);
  await g.createProject({key:'ONE',name:'One',repo:'team/repo'});await g.createProject({key:'TWO',name:'Two',repo:'team/repo'});
  const card=await g.addItem('ONE',{kind:'task',title:'A task',files:['src/a.rs']},'Person');
- const saved=await g.putCodegraph('ONE',graph(),'Person');assert.equal(saved.actor,'Person');
+ const documentGraph={...graph(),documents:[{path:'docs/b.md',markdown:'# Project One'}]};
+ const saved=await g.putCodegraph('ONE',documentGraph,'Person');
+ assert.equal((await g.publishedDocument('ONE','docs/b.md')).markdown,'# Project One');
+ await assert.rejects(g.publishedDocument('TWO','docs/b.md'));
+ await assert.rejects(g.publishedDocument('ONE','../secret.md'));assert.equal(saved.actor,'Person');
  assert.equal(await g.getCodegraph('TWO'),null);
- assert.deepEqual(await g.putCodegraph('ONE',graph(),'Another'),saved);
+ assert.deepEqual(await g.putCodegraph('ONE',documentGraph,'Another'),saved);
  assert.equal((await store.codegraphs.history('ONE')).length,1);
  assert.deepEqual((await g.getItem(card.key)).files,['src/a.rs']);
  const revisions=Array.from({length:10},(_,i)=>(i+1).toString(16).padStart(40,'0'));
@@ -53,4 +57,11 @@ for(const [name,build] of builds) test(`${name}: graph snapshots are isolated, i
  assert.equal((await store.codegraphs.history('ONE')).length,historyBefore+1,'concurrent identical publications are one import');
  await g.patchProject('ONE',{repo:'changed/repo'});assert.equal(await g.getCodegraph('ONE'),null);
  await assert.rejects(g.putCodegraph('ONE',graph(),'Person'));
+});
+
+test('documents are bounded indexed Markdown and are covered by the snapshot digest',()=>{
+ const input={...graph(),documents:[{path:'docs/b.md',markdown:'# Original'}]};
+ const saved=normalizeGraph(input,'team/repo');assert.match(saved.documents[0].contentHash,/^[a-f0-9]{64}$/);
+ assert.notEqual(normalizeGraph({...input,documents:[{path:'docs/b.md',markdown:'# Changed'}]},'team/repo').digest,saved.digest);
+ for(const documents of [[{path:'../secret.md',markdown:'x'}],[{path:'missing.md',markdown:'x'}],[{path:'src/a.rs',markdown:'x'}],[{path:'docs/b.md',markdown:'x'.repeat(128001)}],[...input.documents,...input.documents]])assert.throws(()=>normalizeGraph({...input,documents},'team/repo'));
 });

@@ -314,3 +314,20 @@ test('the live line announces a changed picture — and polls only while somebod
   for (let i = 0; i < 50 && poll.current.polling().length; i += 1) await new Promise((r) => setTimeout(r, 10));
   assert.deepEqual(poll.current.polling(), [], 'the last listener stops the beat');
 });
+
+test('background system returns board data while a slow provider refresh coalesces',async t=>{
+ const {gradula,call,token,close}=await start();t.after(close);
+ await gradula.setDokploy('PRB',{base:'https://dok.test/api',token:'fixture',composes:{production:'prod'}});
+ let release,asked=0;const stalled=new Promise(resolve=>{release=resolve});
+ const fetchImpl=async()=>{asked++;await stalled;return {status:200,ok:true,json:async()=>[]}};
+ t.after(()=>release());
+ const original=gradula.system.bind(gradula);gradula.system=(key,opts={})=>original(key,{...opts,fetchImpl});
+ const card=await gradula.addItem('PRB',{title:'Available immediately',kind:'task'},'person');
+ await gradula.moveItem(card.key,'ready','person');await gradula.startItem(card.key,'person');
+ const fast=await Promise.race([call('/api/v1/system?wait=0',{token}),new Promise((_,reject)=>{const timer=setTimeout(()=>reject(Error('Blocked behind provider')),1000);timer.unref()})]);
+ assert.equal(fast.status,200);assert.equal(fast.body.observation.refreshing,true);assert.equal(fast.body.observation.observedAt,null);
+ assert.ok(fast.body.cards.some(c=>c.key===card.key));
+ await call('/api/v1/system?wait=0',{token});assert.equal(asked,1);
+ release();await gradula.system('PRB');
+ const warm=await call('/api/v1/system?wait=0',{token});assert.equal(warm.body.observation.refreshing,false);assert.ok(warm.body.observation.observedAt);assert.equal(asked,1);
+});

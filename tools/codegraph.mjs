@@ -7,6 +7,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import {parseEnv} from 'node:util';
 import {config, handOf} from '../src/hand.mjs';
 import {createIndexer, buildGraph} from './codegraph-index.mjs';
+import {normalizeGraph} from '../src/codegraph.mjs';
 export {buildGraph};
 
 export function scanRepository(root, indexer = createIndexer(), {revision: requestedRevision=null}={}) {
@@ -34,6 +35,14 @@ export function scanRepository(root, indexer = createIndexer(), {revision: reque
   const repository = remote.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/)?.[1];
   if (!repository) throw new Error('Expected a GitHub origin in owner/repository form');
   const result = indexer.build(files,{repository,revision,dirty});
+  // The publisher, not the hosted service, reads its own tracked documentation.
+  const documents=[];let documentBytes=0;
+  for(const [path,markdown] of files){
+    if(!path.endsWith('.md')||markdown.length>128000||!result.graph.nodes.some(n=>n.path===path))continue;
+    const bytes=Buffer.byteLength(markdown);if(documentBytes+bytes>4_000_000||documents.length>=1000)continue;
+    documents.push({path,markdown});documentBytes+=bytes;
+  }
+  result.graph=normalizeGraph({...result.graph,documents},repository);
   if (requestedRevision===null && git('rev-parse','HEAD') !== revision) throw new Error('HEAD changed during indexing; retry the scan');
   // Detect edits made while reading. Never label a mixed scan as a clean revision.
   if (requestedRevision===null && !dirty && git('status','--porcelain')) throw new Error('Checkout changed during indexing; retry the scan');

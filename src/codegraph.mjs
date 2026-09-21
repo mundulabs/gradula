@@ -38,6 +38,16 @@ export function normalizeGraph(input, repo) {
     for(const field of ['files','unresolvedCalls'])if(!Number.isSafeInteger(input.coverage[field])||input.coverage[field]<0)fail('Invalid graph coverage');
     coverage={files:input.coverage.files,unresolvedCalls:input.coverage.unresolvedCalls,scope:word(input.coverage.scope,100)};
   }
-  const graph = {schema:input.schema,repository:repo,revision,dirty:input.dirty ?? null,generator,coverage,nodes,edges};
+  const documents=[];const docPaths=new Set();let documentBytes=0;
+  if(input.documents!=null){
+    if(!Array.isArray(input.documents)||input.documents.length>1000)fail('Too many published documents');
+    for(const doc of input.documents){
+      const p=path(doc.path),markdown=word(doc.markdown,128000);
+      if(!p.endsWith('.md')||docPaths.has(p)||!nodes.some(n=>n.path===p))fail('Documents must be unique Markdown paths in this graph');
+      docPaths.add(p);documentBytes+=Buffer.byteLength(markdown);if(documentBytes>4_000_000)fail('Published documents exceed 4 MB');
+      documents.push({path:p,markdown,contentHash:createHash('sha256').update(markdown).digest('hex')});
+    }
+  }
+  const graph = {schema:input.schema,repository:repo,revision,dirty:input.dirty ?? null,generator,coverage,nodes,edges,...(documents.length?{documents}:{})};
   return {...graph,digest:createHash('sha256').update(JSON.stringify(graph)).digest('hex')};
 }

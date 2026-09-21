@@ -65,3 +65,16 @@ cross-file relationships. Symbol nodes, intra-file edges and full call-site deta
 are omitted and labelled in coverage. It is a size option for those languages,
 not a replacement for Mundus's Rust-aware generator. Static relationships are not
 runtime proof, and publication never approves cards or proves tests passed.
+
+The Gradula project overview (`?project=GRD&view=overview`) combines board activity,
+deployment observations and a bounded interactive source graph. `GET /system?wait=0`
+returns the current board and cached provider data immediately, with an explicit
+`observation.refreshing` and `observedAt`; provider checks continue in the background.
+The original blocking system endpoint remains available for CLI callers.
+
+Publishers may attach `documents` containing indexed Markdown paths and their bodies
+(up to 1,000 documents, 128,000 characters each, 4 MB combined, within the existing
+8 MB graph limit). Bodies contribute to the snapshot digest. The graph GET returns
+only document metadata; the authenticated project-scoped `/documents?path=…&revision=…`
+door returns one published document. Gradula never reads another project's checkout.
+Upgrade Gradula before deploying document-aware publishers.
