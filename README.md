@@ -185,7 +185,7 @@ gradula sentry [--org <org> --project <slug>] [--base eu|us] [--token <t>] [--ho
                                  the Sentry connection — and which environments become cards
 gradula system                   one picture of the whole system (see below)
 gradula history [--after N]      what happened while you were away
-gradula report [--plain] [--period "…"] [--milestone GRD-43] [--send]
+gradula report [--plain] [--period "…"] [--milestone GRAD-43] [--send]
 gradula chats                    which channels the heralds can see
 gradula vocabulary [push]        read this repo's modules (and send them)
 gradula hook [off]               evidence lands on every commit, by itself
@@ -454,7 +454,7 @@ gradula context "normalizeGraph" --detail evidence
 gradula context --mode explain --from src/codegraph.mjs
 gradula context --mode impact --from src/auth.mjs --depth 3
 gradula context --mode path --from src/api.mjs --to src/store.mjs --depth 4
-gradula context --card GRD-69
+gradula context --card GRAD-69
 ```
 
 MCP `plan_context` accepts the same fields through `GET /api/v1/context`. Search
