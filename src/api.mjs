@@ -275,6 +275,8 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['POST', /^\/api\/v1\/decision-trials$/, async (req,_m,ctx) => ({status:200,body:await gradula.decisionTrial(ctx.project,await readJson(req,16000),ctx.actor,req.headers['x-gradula-typesafe-key']??null)})],
     ['POST', /^\/api\/v1\/decision-trials\/([0-9A-Z]{26})\/feedback$/, async (req,m,ctx) => ({status:200,body:await gradula.decisionFeedback(ctx.project,m[1],await readJson(req,4000),ctx.actor,ctx.person?'human':'agent')})],
     ['GET', /^\/api\/v1\/decision-trials$/, async (_req,_m,ctx) => ({status:200,body:await gradula.decisionReport(ctx.project)})],
+    ['POST', /^\/api\/v1\/task-runs$/, async (req,_m,ctx) => ({status:200,body:await gradula.beginTaskRun(ctx.project,await readJson(req,4000),ctx.actor)})],
+    ['POST', /^\/api\/v1\/task-runs\/([0-9A-Z]{26})\/observation$/, async (req,m,ctx) => ({status:200,body:await gradula.observeTaskRun(ctx.project,m[1],await readJson(req,4000),ctx.actor)})],
     ['GET', /^\/api\/v1\/context$/, async (_req, _m, ctx) => {
       const q = ctx.url.searchParams;
       return {status:200, body:await gradula.getContext(ctx.project, {

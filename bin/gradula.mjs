@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {providerHeaders} from '../src/provider-key.mjs';
+import {beginMeasurement,collectMeasurements,setMeasurement,adoptMeasurement} from '../src/decision-workflow.mjs';
 /**
  * The hand: the same doors as the board, only from the keyboard.
  *
@@ -42,6 +43,9 @@ const HELP = `gradula — wish, board, standing
   gradula decision-trial <input.json>   optional shadow classification; sends only supplied brief/catalog
   gradula decision-feedback <ID> <feedback.json>   record outcomes and measured paired runs
   gradula decision-report             measured pilot usage and outcomes, no guessed savings
+  gradula decision-setup on|off       opt this repository/worktrees into task usage collection and optional route trials
+  gradula decision-adopt <CARD> yes|no record whether the offered optional approach was used
+  gradula decision-collect            collect enrolled task windows; no new paid trials
   gradula resume <CARD>            brief plus local workspace risk and recent evidence
   gradula files <CARD> show|add|from-evidence [path…]   structured paths for map, wave and handoff
   gradula approve <CARD>           the review says yes — done, with a reason
@@ -533,7 +537,19 @@ switch (command) {
     console.log(JSON.stringify(await call(`/api/v1/decision-trials/${words[0]}/feedback`,{method:'POST',body:JSON.parse(readFileSync(words[1],'utf8'))})));break;
   }
   case 'decision-report': {
+    await collectMeasurements({call:(path,options)=>call(path,{...options,soft:true}),base});
     console.log(JSON.stringify(await call('/api/v1/decision-trials')));break;
+  }
+  case 'decision-setup': {
+    if(!['on','off'].includes(words[0]))stop('decision-setup on|off');
+    console.log(JSON.stringify(setMeasurement(words[0]==='on')));break;
+  }
+  case 'decision-adopt': {
+    if(!['yes','no'].includes(words[1]))stop('decision-adopt CARD yes|no');
+    console.log(JSON.stringify(await adoptMeasurement(String(words[0]).toUpperCase(),words[1]==='yes',{base,session})));break;
+  }
+  case 'decision-collect': {
+    console.log(JSON.stringify(await collectMeasurements({call:(path,options)=>call(path,{...options,soft:true}),base})));break;
   }
   case 'context': {
     const query = new URLSearchParams();
@@ -667,6 +683,7 @@ switch (command) {
       method: 'POST', body: { state: words[1], reason: flags.reason ?? null },
     });
     console.log(`${card.key} → ${card.state}`);
+    await collectMeasurements({call:(path,options)=>call(path,{...options,soft:true}),base,card});
     break;
   }
 
@@ -694,6 +711,7 @@ switch (command) {
      * single checkout with --here, and that reason stands in the chronicle.
      */
     if (flags.here && (typeof flags.here !== 'string' || !flags.here.trim())) stop('--here needs a reason; otherwise start creates an isolated worktree.');
+    let measurementCwd=process.cwd();
     if (!flags.here) {
       const branch = `codex/${key}`;
       let place = join('.worktrees', 'plan', key);
@@ -723,6 +741,7 @@ switch (command) {
           await call(`/api/v1/cards/${key}/start`, { method: 'POST', body: { anyway, files: card.reservation.files } });
         }
         console.log(`Worktree: ${place} (branch ${branch})`);
+        measurementCwd=resolve(place);
       } catch (error) {
         await call(`/api/v1/cards/${key}/release-work`, { method: 'POST' });
         stop(`No worktree: ${String(error.stderr ?? error.message).trim().split('\n').pop()}`);
@@ -742,6 +761,8 @@ switch (command) {
       : '\nGate: NONE. Without a gate this card never reaches done on its own — write one before you start.');
     console.log(`\nWhen it stands: commit with the line  Plan: ${card.key}`);
     console.log('────────────────────────────────────────────────────');
+    const measurement=await beginMeasurement(card,{call:(path,options)=>call(path,{...options,soft:true}),base,session,cwd:measurementCwd});
+    if(measurement)console.log(`Task measurement: ${JSON.stringify(measurement)}`);
     break;
   }
 
