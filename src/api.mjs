@@ -345,7 +345,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
       const body = await readJson(req);
       return { status: 201, body: await gradula.decide(m[1], body, ctx.actor) };
     }],
-    ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/evidence\/([0-9A-Z]{26})\/retract$/, async (req,m,ctx) => {const body=await readJson(req);return {status:200,body:await gradula.retractEvidence(m[1],m[2],body.reason,ctx.actor)};}],
+    ['POST', /^\/api\/admin\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/evidence\/([0-9A-Z]{26})\/retract$/, async (req,m,ctx) => {ctx.needAdmin();const body=await readJson(req);return {status:200,body:await gradula.retractEvidence(m[1],m[2],body.reason,ctx.actor)};}],
     ['POST', /^\/api\/v1\/cards\/([A-Z]{2,8}-[0-9]{1,7})\/evidence$/, async (req, m, ctx) => {
       const body = await readJson(req);
       return { status: 201, body: await gradula.addEvidence(m[1], body, ctx.actor) };

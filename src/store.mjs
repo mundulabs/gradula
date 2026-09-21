@@ -321,9 +321,9 @@ export function createMemoryStore() {
 
     events: {
       // Retraction keeps the original evidence in the chronicle, but removes its
-      // status as active proof. Only its recorded submitting actor may retract it.
+      // status as active proof. The API requires the existing administrator credential.
       async retract(item, id, actor, reason) {
-        const row=events.find(e=>e.item===item&&e.id===id&&e.actor===actor&&e.verb==='evidenced');
+        const row=events.find(e=>e.item===item&&e.id===id&&e.verb==='evidenced');
         if(!row)return null;
         const original=clone(row.data),at=now();
         row.verb='said';row.data={line:`Retracted evidence ${original.ref}: ${reason}`,retractedEvidence:original,retraction:{actor,at,reason}};

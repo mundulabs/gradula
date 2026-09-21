@@ -1359,7 +1359,7 @@ export function createGradula(store, { heraldKinds = HERALD_KINDS, origin = null
       const item=await findItem(key);
       const why=text(reason,500,'reason');
       const entry=await store.events.retract(item.id,id,actor,why);
-      if(!entry)throw missing('No active evidence from this actor on this card.');
+      if(!entry)throw missing('No active evidence on this card.');
       systemHeld.delete(item.project);
       live?.announce(item.project,{card:item.key,verb:'said',actor});
       return {ok:true,event:entry};

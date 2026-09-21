@@ -79,8 +79,8 @@ only document metadata; the authenticated project-scoped `/documents?path=…&re
 door returns one published document. Gradula never reads another project's checkout.
 Upgrade Gradula before deploying document-aware publishers.
 
-Evidence correction preserves the original submission in the chronicle. The submitting
-actor can POST a reason to `/cards/KEY/evidence/EVENT_ID/retract`; the original entry
+Evidence correction preserves the original submission in the chronicle. Only the existing
+administrator credential can POST a reason to `/api/admin/cards/KEY/evidence/EVENT_ID/retract`; the original entry
 becomes a retracted note and a new audit note records the correction atomically.
 Retracted evidence no longer counts in commit lookup or deployment comparisons.
 Unbounded CLI sync only uses explicit Plan lines; task-branch inheritance requires

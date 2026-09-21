@@ -830,7 +830,7 @@ export async function createPgStore(url, { schema = null } = {}) {
         const client=await pool.connect();
         try {
           await client.query('begin');
-          const {rows}=await client.query("select * from history where card=$1 and id=$2 and actor=$3 and verb='evidenced' for update",[item,id,actor]);
+          const {rows}=await client.query("select * from history where card=$1 and id=$2 and verb='evidenced' for update",[item,id]);
           if(!rows.length){await client.query('rollback');return null;}
           const original=rows[0].data,at=new Date().toISOString();
           const text=`Retracted evidence ${original.ref}: ${reason}`;
