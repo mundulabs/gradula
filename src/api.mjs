@@ -275,9 +275,7 @@ export function createApi(gradula, { adminToken = null, auth = null, staticFiles
     ['PUT', /^\/api\/v1\/codegraph$/, async (req, _m, ctx) => ({ status:200, body:await gradula.putCodegraph(ctx.project, await readJson(req, GRAPH_LIMITS.bytes), ctx.actor) })],
     ['GET', /^\/api\/v1\/codegraph$/, async (_req, _m, ctx) => {const graph=await gradula.getCodegraph(ctx.project,ctx.url.searchParams.get('revision'));return {status:200,body:graph?{...graph,documents:(graph.documents??[]).map(({markdown,...entry})=>entry)}:null};}],
     ['GET', /^\/api\/v1\/documents$/, async (_req,_m,ctx) => ({status:200,body:await gradula.publishedDocument(ctx.project,ctx.url.searchParams.get('path'),ctx.url.searchParams.get('revision'))})],
-    ['POST', /^\/api\/v1\/decision-trials$/, async (req,_m,ctx) => ({status:200,body:await gradula.decisionTrial(ctx.project,await readJson(req,16000),ctx.actor,req.headers['x-gradula-typesafe-key']??null)})],
-    ['POST', /^\/api\/v1\/decision-trials\/([0-9A-Z]{26})\/feedback$/, async (req,m,ctx) => ({status:200,body:await gradula.decisionFeedback(ctx.project,m[1],await readJson(req,4000),ctx.actor,ctx.person?'human':'agent')})],
-    ['GET', /^\/api\/v1\/decision-trials$/, async (_req,_m,ctx) => ({status:200,body:await gradula.decisionReport(ctx.project)})],
+    ['GET', /^\/api\/v1\/task-runs$/, async (_req,_m,ctx) => ({status:200,body:await gradula.taskReport(ctx.project)})],
     ['POST', /^\/api\/v1\/task-runs$/, async (req,_m,ctx) => ({status:200,body:await gradula.beginTaskRun(ctx.project,await readJson(req,4000),ctx.actor)})],
     ['POST', /^\/api\/v1\/task-runs\/([0-9A-Z]{26})\/observation$/, async (req,m,ctx) => ({status:200,body:await gradula.observeTaskRun(ctx.project,m[1],await readJson(req,4000),ctx.actor)})],
     ['GET', /^\/api\/v1\/context$/, async (_req, _m, ctx) => {

@@ -1,18 +1,12 @@
-/** Project-side lifecycle adapter. API owns experiment records; Git metadata
- * holds private collection cursors so reports can finish after the final turn. */
+/** Project-side measurement adapter. The API owns the task-run records; Git
+ * metadata holds private collection cursors so a report can finish after the
+ * final turn. Opt in per repository; nothing is read without it. */
 import {execFileSync} from 'node:child_process';
 import {mkdir,readFile,writeFile,rename,readdir,rm,stat} from 'node:fs/promises';
 import {join} from 'node:path';
-import {digest} from './decision-pilot.mjs';
+import {digest} from './task-measurement.mjs';
 import {findTrace,traceMetadata,usageWindow} from './task-usage.mjs';
 
-export const ROUTES=Object.freeze([
-  {id:'reproduce',description:'For a reported regression: reproduce the failure and inspect its cause before changing code.'},
-  {id:'contract',description:'For behavior or API changes: identify the contract and acceptance checks before implementation.'},
-  {id:'existing-pattern',description:'For a routine extension: inspect one existing implementation and reuse its conventions.'},
-  {id:'documentation',description:'For documentation-only work: verify source facts and update the relevant explanation.'},
-]);
-const ADVICE={reproduce:'Start with a focused reproduction of the reported failure.',contract:'Start by identifying the behavior contract and acceptance checks.','existing-pattern':'Start with one existing implementation of the same pattern.',documentation:'Start by checking the source facts for the requested documentation.'};
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',stdio:['ignore','pipe','ignore']}).trim();
 export function measurementEnabled(cwd=process.cwd()) {try{return git(cwd,'config','--get','gradula.measureTasks')==='true';}catch{return false;}}
 export function setMeasurement(enabled,cwd=process.cwd()){git(cwd,'config','--local','gradula.measureTasks',String(enabled));return {enabled,scope:'this repository and its worktrees'};}
@@ -28,23 +22,23 @@ async function acquire(path){
   if(info&&Date.now()-info.mtimeMs>300000)await rm(lock,{recursive:true,force:true});
   try{await mkdir(lock);return lock;}catch{return null;}
 }
-function reply(record){return {runId:record.run?.id??null,arm:record.run?.arm??null,decision:record.decision??'pending',selection:record.selection??null,measurement:'Task-session usage will be collected through the completion turn. Other model/tool usage must be disclosed.',guidance:record.selection&&ADVICE[record.selection]?`${ADVICE[record.selection]} Optional advice only; user instructions, required skills and checks take precedence. Record adoption with gradula decision-adopt ${record.input.card} yes|no.`:'Continue the normal workflow. No TypeSafe advice is used in the baseline arm.'};}
+function reply(record){return {runId:record.run?.id??null,status:'enrolled',measurement:'Task-session usage will be collected through the completion turn. Other model/tool usage must be disclosed.'};}
 
 export async function beginMeasurement(card,{call,cwd=process.cwd(),base,session,env=process.env}={}) {
   if(!measurementEnabled(cwd))return null;
   let lock;
   try {
     const root=await location(cwd,base),requestId=digest({card:card.key,session,base}),path=join(root,`${requestId}.json`);
-    lock=await acquire(path);if(!lock)return {status:'collection-busy',guidance:'Continue normally; do not issue a second classifier call.'};
+    lock=await acquire(path);if(!lock)return {status:'collection-busy',guidance:'Continue normally.'};
     let record=await load(path);
     if(record?.run)return reply(record);
-    const report=await call('/api/v1/decision-trials');
+    const report=await call('/api/v1/task-runs');
     if(!report.enabled)return {status:'disabled'};
     const tracePath=await findTrace(env.CODEX_THREAD_ID,env.CODEX_HOME),trace=await traceMetadata(tracePath),turn=trace?.turns.at(-1);
-    if(!turn||trace.identity!==env.CODEX_THREAD_ID)return {status:'collection-unavailable',guidance:'No matching Codex usage trace. No paid trial issued.'};
+    if(!turn||trace.identity!==env.CODEX_THREAD_ID)return {status:'collection-unavailable',guidance:'No matching Codex usage trace; only Codex sessions are metered so far.'};
     if(!record){
       const revision=git(cwd,'rev-parse','HEAD'),dirty=!!git(cwd,'status','--porcelain','--untracked-files=no');
-      record={input:{requestId,card:card.key,revision,taskDigest:digest({title:card.title,text:card.text,gate:card.gate,revision}),sessionDigest:digest(session),startedAt:turn.start},tracePath,thread:env.CODEX_THREAD_ID,turnId:turn.id,gaps:dirty?['dirty-start']:[],adoption:null};
+      record={input:{requestId,card:card.key,revision,taskDigest:digest({title:card.title,text:card.text,gate:card.gate,revision}),sessionDigest:digest(session),startedAt:turn.start},tracePath,thread:env.CODEX_THREAD_ID,turnId:turn.id,gaps:dirty?['dirty-start']:[]};
       if((card.history??[]).some(e=>e.verb==='started'&&Date.parse(e.at)<Date.parse(turn.start)))record.gaps.push('late-enrollment');
       for(const file of await rows(root)){
         const other=await load(join(root,file));
@@ -54,21 +48,11 @@ export async function beginMeasurement(card,{call,cwd=process.cwd(),base,session
     }
     const enrolled=await call('/api/v1/task-runs',{method:'POST',body:record.input});
     if(enrolled.status!=='enrolled')return enrolled;
-    record.run=enrolled.run;record.decision=record.run.arm==='baseline'?'baseline':'unavailable';await save(path,record);
-    if(record.run.arm==='typesafe'){
-      // Only a bounded title, never card bodies/source or a repository scan.
-      const title=String(card.title??'').trim();
-      if(title.length>0&&title.length<=1500&&!/(?:Bearer\s|(?:api[_-]?key|token|secret|password)\s*[=:]|sk-[a-zA-Z0-9]{12})/i.test(title)){
-        const trial=await call('/api/v1/decision-trials',{method:'POST',body:{requestId:`task-${requestId}`,kind:'route',summary:title,baseline:'fallback',candidates:ROUTES}});
-        record.trialId=trial.trial?.id??null;
-        record.decision=trial.status==='complete'?(trial.trial.result?.status==='answered'?(trial.trial.result.abstained?'fallback':'suggested'):'unavailable'):['limit','disabled','key-required'].includes(trial.status)?trial.status:'unavailable';
-        record.selection=record.decision==='suggested'?trial.trial.result.choice:null;
-      }
-    }
+    record.run=enrolled.run;
     await save(path,record);
     await collectOne(record,path,call);
     return reply(record);
-  }catch{return {status:'collection-unavailable',guidance:'Measurement failed; continue the task normally. No retry or extra paid trial is required.'};}
+  }catch{return {status:'collection-unavailable',guidance:'Measurement failed; continue the task normally.'};}
   finally{if(lock)await rm(lock,{recursive:true,force:true}).catch(()=>{});}
 }
 
@@ -90,11 +74,11 @@ async function collectOne(record,path,call,card=null,cache=new Map()){
     measured=trace?.identity===record.thread?usageWindow(trace,record):{usage:null,models:[],gaps:['trace-changed']};
     if(closed&&measured.usage&&!measured.gaps.includes('unfinished-turn'))record.finalMeasurement=measured;
   }
-  const observation={status:closed?card.state:'active',decision:record.decision,trialId:record.trialId??null,adoption:record.adoption,...measured,gaps:[...new Set([...record.gaps,...measured.gaps])]};
+  const observation={status:closed?card.state:'active',...measured,gaps:[...new Set([...record.gaps,...measured.gaps])]};
   const fingerprint=digest(observation);
   if(fingerprint!==record.uploaded){await call(`/api/v1/task-runs/${record.run.id}/observation`,{method:'POST',body:observation});record.uploaded=fingerprint;}
   record.lastStatus=observation.status;await save(path,record);
-  return {card:record.input.card,arm:record.run.arm,status:observation.status,gaps:observation.gaps};
+  return {card:record.input.card,status:observation.status,gaps:observation.gaps};
 }
 export async function collectMeasurements({call,cwd=process.cwd(),base,card=null}={}){
   if(!measurementEnabled(cwd))return {enabled:false};
@@ -110,11 +94,4 @@ export async function collectMeasurements({call,cwd=process.cwd(),base,card=null
     }
   }catch{return {enabled:true,status:'collection-unavailable'};}
   return {enabled:true,runs:results};
-}
-export async function adoptMeasurement(card,adopted,{cwd=process.cwd(),base,session}={}){
-  if(typeof adopted!=='boolean')throw Error('decision-adopt needs yes or no');
-  const root=await location(cwd,base),path=join(root,`${digest({card,session,base})}.json`),lock=await acquire(path);
-  if(!lock)throw Error('Collection is busy; retry adoption after it finishes.');
-  try{const record=await load(path);if(!record?.run||record.decision!=='suggested')throw Error('No offered TypeSafe recommendation for this task/session.');record.adoption=adopted;await save(path,record);return {card,adopted};}
-  finally{await rm(lock,{recursive:true,force:true});}
 }

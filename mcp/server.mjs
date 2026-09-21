@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import {providerHeaders} from '../src/provider-key.mjs';
-import {beginMeasurement,collectMeasurements,adoptMeasurement} from '../src/decision-workflow.mjs';
+import {beginMeasurement,collectMeasurements} from '../src/measurement.mjs';
 /**
  * Gradula over MCP — so that Codex, Claude Desktop and Claude Code walk the
  * same road as the CLI. No access of its own to the database: every tool here
@@ -36,12 +35,10 @@ const laddered = (card) => (card && typeof card === 'object' && 'state' in card 
 
 async function api(path, { method = 'GET', body } = {}) {
   if (!token) throw new Error('GRADULA_TOKEN is missing — without a project key there is nothing to do here.');
-  const provider=providerHeaders(base,path,method);
   const res = await fetch(`${base}${path}`, {
     method,
     signal:AbortSignal.timeout(15000),
-    ...(Object.keys(provider).length ? {redirect:'error'} : {}),
-    headers: { ...provider, 'X-Gradula-Session': session,
+    headers: { 'X-Gradula-Session': session,
       Authorization: `Bearer ${token}`,
       ...(actor ? { 'X-Gradula-Actor': actor } : {}),
       ...(coderOf(env) ? { 'X-Gradula-Coder': coderOf(env) } : {}),
@@ -58,22 +55,7 @@ const key = (value) => String(value ?? '').toUpperCase();
 
 export const TOOLS = [
   {
-    name:'plan_decision_trial',
-    description:'Opt-in Jev shadow pilot. Sends only the supplied compact task summary and candidate descriptions to TypeSafe. Use sanitized text, never secrets or source dumps. Records a recommendation without changing any action. Follow explicit skill requirements first. Use a stable requestId to avoid duplicate charges. Unavailable, ambiguous, disabled and limited trials leave the normal workflow in place.',
-    inputSchema:{type:'object',required:['requestId','kind','summary','baseline','candidates'],properties:{requestId:{type:'string'},kind:{type:'string',enum:['skill','route','review','intent']},summary:{type:'string',maxLength:1500},baseline:{type:'string'},candidates:{type:'array',minItems:2,maxItems:16,items:{type:'object',required:['id','description'],properties:{id:{type:'string'},description:{type:'string',maxLength:200}}}}}},
-    run:args=>api('/api/v1/decision-trials',{method:'POST',body:args}),
-  },
-  {
-    name:'plan_decision_feedback',
-    description:'Record a reviewed expected choice and optionally actual paired-run measurements for a shadow trial. Both runs must use the same frozen task. Count all downstream model calls/retries. Pilot totals exclude the classifier, which Gradula adds. Never invent missing token/cost measurements. Labels are attributed, not approval or training.',
-    inputSchema:{type:'object',required:['id'],properties:{id:{type:'string'},expected:{type:'string'},comparison:{type:'object',properties:{sameTask:{type:'boolean'},baselineRunId:{type:'string'},pilotRunId:{type:'string'},baseline:{type:'object'},pilot:{type:'object'}}}}},
-    run:({id,...args})=>api(`/api/v1/decision-trials/${encodeURIComponent(id)}/feedback`,{method:'POST',body:args}),
-  },
-  {
-    name:'plan_decision_report',description:'Collect enrolled task usage, then read classifier and whole-task observations. Different task totals do not prove token savings.',inputSchema:{type:'object',properties:{}},run:async()=>{await collectMeasurements({call:api,base});return api('/api/v1/decision-trials');},
-  },
-  {
-    name:'plan_decision_adopt',description:'Record whether this session used the optional TypeSafe approach offered at task start. This is agent-reported adoption, not human review.',inputSchema:{type:'object',required:['card','adopted'],properties:{card:{type:'string'},adopted:{type:'boolean'}}},run:async args=>{const card=await api(`/api/v1/cards/${key(args.card)}`);const result=await adoptMeasurement(key(args.card),args.adopted,{base,session});await collectMeasurements({call:api,base,card});return result;},
+    name:'plan_measure_report',description:'Collect enrolled task usage, then read what each measured task cost the coding model. Different tasks are not comparable runs and do not prove savings.',inputSchema:{type:'object',properties:{}},run:async()=>{await collectMeasurements({call:api,base});return api('/api/v1/task-runs');},
   },
 
   {

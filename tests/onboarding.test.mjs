@@ -69,10 +69,10 @@ test('all admin routes reject ordinary keys; project roles isolate humans; archi
 });
 
 
-test('rekey preserves an opted-in pilot without spending a new attempt',async()=>{
- const g=createGradula(createMemoryStore(),{decisionPilot:{projects:['OLD']}});
- await g.createProject({key:'OLD',name:'Pilot'});
+test('rekey preserves a measured project',async()=>{
+ const g=createGradula(createMemoryStore(),{taskMeasurement:{projects:['OLD']}});
+ await g.createProject({key:'OLD',name:'Measured'});
  await g.rekeyProject('OLD','NEW');
- const report=await g.decisionReport('NEW');
- assert.equal(report.enabled,true);assert.equal(report.attempts,0);
+ const report=await g.taskReport('NEW');
+ assert.equal(report.enabled,true);assert.equal(report.started,0);
 });

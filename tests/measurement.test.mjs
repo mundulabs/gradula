@@ -8,10 +8,9 @@ import {createServer} from 'node:http';
 import {createMemoryStore} from '../src/store.mjs';
 import {createGradula} from '../src/gradula.mjs';
 import {createApi} from '../src/api.mjs';
-import {PILOT,digest} from '../src/decision-pilot.mjs';
-import {taskInput,taskObservation,taskReport} from '../src/task-measurement.mjs';
+import {digest,taskInput,taskObservation,taskReport} from '../src/task-measurement.mjs';
 import {findTrace,traceMetadata,usageWindow} from '../src/task-usage.mjs';
-import {beginMeasurement,collectMeasurements,setMeasurement,adoptMeasurement,ROUTES} from '../src/decision-workflow.mjs';
+import {beginMeasurement,collectMeasurements,setMeasurement} from '../src/measurement.mjs';
 
 const thread='01a0c082-bc21-74c0-8f78-7d9c35d811fa';
 const at=n=>new Date(Date.UTC(2026,8,21,12,0,n)).toISOString();
@@ -52,10 +51,10 @@ const builds=[['memory',async()=>createMemoryStore()]];
 if(process.env.GRADULA_DB_URL)builds.push(['Postgres',async()=>{const {createPgStore}=await import('../src/store-pg.mjs');const store=await createPgStore(process.env.GRADULA_DB_URL,{schema:`task_usage_${Date.now()}_${Math.floor(Math.random()*1e6)}`});await store.migrate();return store;}]);
 else test('Postgres whole-task measurements',{skip:'GRADULA_DB_URL not set'},()=>{});
 const task=(key='PRB-1',n=0)=>({requestId:digest(`run-${n}`),card:key,revision:'a'.repeat(40),taskDigest:digest('frozen-task'),sessionDigest:digest(`session-${n}`),startedAt:at(2)});
-const observation=(extra={})=>({status:'active',decision:'baseline',trialId:null,adoption:null,usage:{inputTokens:100,outputTokens:10,cachedInputTokens:20,reasoningOutputTokens:2,modelCalls:2},models:['test-model'],gaps:['external-usage-unverified'],...extra});
+const observation=(extra={})=>({status:'active',usage:{inputTokens:100,outputTokens:10,cachedInputTokens:20,reasoningOutputTokens:2,modelCalls:2},models:['test-model'],gaps:['external-usage-unverified'],...extra});
 for(const [name,build] of builds)test(`${name}: task observations survive restart, isolate projects, preserve quotas and separate unknown outcomes`,async t=>{
  const store=await build();t.after(()=>store.close?.());
- const options={decisionPilot:{projects:['PRB','OTH']}};const g=createGradula(store,options);
+ const options={taskMeasurement:{projects:['PRB','OTH']}};const g=createGradula(store,options);
  await g.createProject({key:'PRB',name:'Probe'});await g.createProject({key:'OTH',name:'Other'});
  await g.addItem('PRB',{kind:'task',title:'A bounded change'},'test');
  const input=task(),run=(await g.beginTaskRun('PRB',input,'test')).run;
@@ -63,51 +62,47 @@ for(const [name,build] of builds)test(`${name}: task observations survive restar
  await assert.rejects(g.beginTaskRun('PRB',{...input,revision:'b'.repeat(40)},'test'),/different task/);
  await assert.rejects(g.beginTaskRun('OTH',input,'test'));
  await assert.rejects(g.observeTaskRun('OTH',run.id,observation(),'test'));
- const saved=await g.observeTaskRun('PRB',run.id,observation({status:'done',decision:run.arm==='baseline'?'baseline':'fallback'}),'test');
+ const saved=await g.observeTaskRun('PRB',run.id,observation({status:'done'}),'test');
  assert.equal(saved.result.status,'active');assert.equal(saved.result.success,null,'a caller cannot declare success');
- assert.equal((await createGradula(store,options).decisionReport('PRB')).tasks.arms[run.arm].started,1);
- assert.equal((await g.decisionReport('PRB')).attempts,0,'task observations never consume classifier quota');
- const fake=observation({trialId:'0'.repeat(26)});await assert.rejects(g.observeTaskRun('PRB',run.id,fake,'test'));
+ const report=await createGradula(store,options).taskReport('PRB');
+ assert.equal(report.started,1);assert.equal(report.runs[0].card,'PRB-1');assert.equal(report.runs[0].usage.inputTokens,100);
+ assert.equal((await createGradula(store,{}).beginTaskRun('PRB',task('PRB-1',1),'test')).status,'disabled','a project the operator did not name is never measured');
  await store.projects.rekey('PRB','NEW','test');assert.equal((await store.decisions.get('NEW',run.id)).project,'NEW');
 });
 
-test('real HTTP lifecycle: one optional route, explicit adoption, completion accounting, no paid report calls',async t=>{
- const f=await fixture(t),store=createMemoryStore();let paid=0;
- const g=createGradula(store,{decisionPilot:{projects:['PRB'],apiKey:'fake',fetchImpl:async()=>{paid++;return new Response(JSON.stringify({model:PILOT.model,answers:{selection:{choice:'contract',confidence:0.97,probabilities:{reproduce:0.01,contract:0.96,'existing-pattern':0.01,documentation:0.01,fallback:0.01}}},usage:{input_tokens:300}}));}}});
+test('real HTTP lifecycle: enrolment once, completion accounting, collection without any provider',async t=>{
+ const f=await fixture(t),store=createMemoryStore();
+ const g=createGradula(store,{taskMeasurement:{projects:['PRB']}});
  await g.createProject({key:'PRB',name:'Probe'});
  const card=await g.addItem('PRB',{kind:'task',title:'Add an API behavior contract'},'test');
  const credential=await g.mintToken('PRB','tester','test','system');
  const server=createServer(createApi(g));await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>new Promise(r=>server.close(r)));
  const base=`http://127.0.0.1:${server.address().port}`;
  const call=async(path,{method='GET',body}={})=>{const response=await fetch(base+path,{method,headers:{Authorization:`Bearer ${credential.token}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const json=await response.json();assert.equal(response.status,200,JSON.stringify(json));return json;};
- let session='test-0';for(let i=0;taskInput({...task(),requestId:digest({card:card.key,session,base})}).arm!=='typesafe';i++)session=`test-${i+1}`;
- const opts={...f,call,base,session};
+ const session='test-0',opts={...f,call,base,session};
  assert.equal(await beginMeasurement(card,opts),null,'off by default');setMeasurement(true,f.cwd);
- const begun=await beginMeasurement(card,opts);assert.equal(begun.arm,'typesafe');assert.equal(begun.selection,'contract');assert.equal(paid,1);
- assert.equal((await beginMeasurement(card,opts)).runId,begun.runId);assert.equal(paid,1,'restart never repeats paid request');
+ const begun=await beginMeasurement(card,opts);assert.equal(begun.status,'enrolled');assert.ok(begun.runId);
+ assert.equal((await beginMeasurement(card,opts)).runId,begun.runId,'restart never enrols twice');
  const cli=async(...args)=>new Promise((resolve,reject)=>{
-   const child=spawn(process.execPath,[new URL('../bin/gradula.mjs',import.meta.url).pathname,...args],{cwd:f.cwd,env:{...process.env,...f.env,GRADULA_URL:base,GRADULA_TOKEN:credential.token,GRADULA_AGENT_TOKEN:credential.token,GRADULA_SESSION:session,TYPESAFE_API_KEY:''}});
+   const child=spawn(process.execPath,[new URL('../bin/gradula.mjs',import.meta.url).pathname,...args],{cwd:f.cwd,env:{...process.env,...f.env,GRADULA_URL:base,GRADULA_TOKEN:credential.token,GRADULA_AGENT_TOKEN:credential.token,GRADULA_SESSION:session}});
    let out='',err='';child.stdout.on('data',b=>out+=b);child.stderr.on('data',b=>err+=b);child.on('error',reject);child.on('exit',code=>code===0?resolve(out):reject(Error(err||out)));
  });
- assert.match(await cli('start',card.key,'--here','Isolated integration fixture','--files','src'),/Task measurement:.*typesafe/);
- assert.equal(paid,1,'CLI start shares the idempotent enrollment');
- await adoptMeasurement(card.key,true,opts);
+ assert.match(await cli('start',card.key,'--here','Isolated integration fixture','--files','src'),/Task measurement:.*enrolled/);
  // Test controls the store state instead of pretending an agent can approve.
  await store.items.patch(card.key,{state:'review'});
  await appendFile(f.path,token(4,500,50)+event(59,'task_complete',{turn_id:'turn'}));
  const closed={...card,state:'review',history:[{verb:'moved',at:at(4),data:{to:'review'}}]};
  await collectMeasurements({...opts,card:closed});
- const report=await g.decisionReport('PRB');assert.equal(report.attempts,1);assert.equal(report.tasks.arms.typesafe.finished,1);assert.equal(report.tasks.arms.typesafe.inputTokens,400);assert.equal(report.tasks.arms.typesafe.classifierInputTokens,300);assert.equal(report.tasks.arms.typesafe.adopted,1);assert.equal(report.tasks.provenTokenSavings,null);
- assert.equal(report.tasks.arms.typesafe.awaitingOutcome,1);
- await collectMeasurements({...opts,card:closed});assert.equal(paid,1,'collection is free of provider calls');
- assert.equal(JSON.parse(await cli('decision-report')).tasks.arms.typesafe.finished,1,'real CLI reports collect usage');
+ const report=await g.taskReport('PRB');assert.equal(report.finished,1);assert.equal(report.inputTokens,400);assert.equal(report.outputTokens,40);assert.equal(report.pending,0);
+ assert.equal(report.awaitingOutcome,1);assert.equal(report.runs[0].models[0],'test-model');
+ assert.equal(JSON.parse(await cli('measure','report')).finished,1,'real CLI reports collect usage');
  const metadata=await readFile(join(f.cwd,'.git','gradula-measure',digest(base).slice(0,16),(await readdir(join(f.cwd,'.git','gradula-measure',digest(base).slice(0,16)))).find(n=>n.endsWith('.json'))),'utf8');
- assert.equal(metadata.includes(card.title),false);assert.equal(metadata.includes('fake'),false);
+ assert.equal(metadata.includes(card.title),false,'no task prose in the local cursor');
 });
-test('invalid counters/adoption are rejected and different tasks never become a claimed saving',()=>{
+test('invalid counters are rejected and no report claims a saving',()=>{
  assert.throws(()=>taskObservation(observation({usage:{inputTokens:-1}})));
- assert.throws(()=>taskObservation(observation({adoption:'human-approved'})));
+ assert.throws(()=>taskObservation(observation({gaps:['made-up']})));
  assert.throws(()=>taskInput({...task(),sessionDigest:'private text'}));
- const report=taskReport([{arm:'baseline',result:observation({status:'done'})},{arm:'typesafe',result:observation({status:'done'})}]);
- assert.equal(report.provenTokenSavings,null);assert.equal(report.taskCostUsd,null);
+ const report=taskReport([{id:'a',card:'PRB-1',result:observation({status:'done'})},{id:'b',card:'PRB-2',result:observation({status:'done'})}]);
+ assert.equal(report.metered,2);assert.equal(report.inputTokens,200);assert.equal(report.taskCostUsd,null);assert.equal('provenTokenSavings' in report,false);
 });

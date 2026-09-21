@@ -338,5 +338,3 @@ export type CodeGraph = {
 };
 export const codegraph = (project:string,signal?:AbortSignal) => call<CodeGraph|null>(`/api/v1/codegraph?project=${encodeURIComponent(project)}`,{signal});
 export const publishedDocument=(project:string,path:string,revision?:string|null)=>call<{path:string;markdown:string;revision:string|null;repository:string}>(`/api/v1/documents?${new URLSearchParams({project,path,...(revision?{revision}:{})})}`);
-export type DecisionReport={enabled:boolean;attempts:number;remainingProjectAttempts:number;knownEstimatedCostUsd:number;comparison:{pairs:number;tokenReduction:number;baselineSucceeded:number;pilotSucceeded:number}|null;tasks?:{pending:number;collectionGaps:number;arms:Record<string,{started:number;finished:number;metered:number;adopted:number;accepted:number}>}};
-export const decisionReport=(project:string)=>call<DecisionReport>(`/api/v1/decision-trials?project=${encodeURIComponent(project)}`);

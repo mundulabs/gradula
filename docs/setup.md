@@ -1,7 +1,7 @@
 # Install Gradula and connect a project
 
 Gradula is Apache-2.0 software. Run your own service, database, domain and identity
-provider. No Mundus account, Dokploy account, TypeSafe key or subscription is required.
+provider. No Mundus account, Dokploy account, model key or subscription is required.
 The hosted `grad.mundula.app` is one installation, not a dependency of yours.
 
 ## 1. Start an instance
@@ -166,7 +166,7 @@ node /path/to/gradula/bin/gradula.mjs context "topic or symbol"
 
 The preview prints counts, coverage and revision, never file contents. Publication
 uploads the frozen **HEAD commit** to your own configured Gradula, not local edits,
-untracked files or the TypeSafe provider. It inventories tracked regular files;
+untracked files or any third party. It inventories tracked regular files;
 JavaScript/TypeScript receive static symbol relationships and Markdown receives
 sections/links and readable document bodies. Other languages receive **file paths
 only**, not invented call graphs. A Rust/native project can publish its richer
@@ -240,21 +240,20 @@ This keeps authentication on one canonical origin. It does not grant access or
 create a separate tenant. Serving the same app under several origins with shared
 cookies is not supported; use separate instances for that requirement.
 
-## TypeSafe/Jev is optional
+## Task measurement is optional
 
-The board, repository graph, search, setup and task workflow work without it. New
-instances and projects do not enable it. The current pilot has **not established
-complete-task token savings**: classifier results equal the keyword baseline on
-the small labelled set, and comparable complete-task measurements are missing.
-See [pilot protocol](decision-pilot.md) and [assessment](typesafe-assessment.md).
+The board, repository graph, search, setup and task workflow work without it. To
+measure what a board task costs its coding model, add the project's key to the
+server's `GRADULA_MEASURED_PROJECTS`, restart the service and run
+`gradula measure on` in the consenting repository. `start` then enrols the task,
+and `measure report` reads the coder's own usage trace through the completion
+turn (Codex traces only, so far). Counters travel, never prose or keys. Different
+tasks are not comparable runs; no report claims a saving.
 
-To opt in deliberately, add the project's key to the server's
-`GRADULA_DECISION_PROJECTS`, restart the service, store `TYPESAFE_API_KEY` in that
-project's private environment and run `gradula decision-setup on` there. Each
-project supplies its own provider key. Never put a provider key in committed docs
-or frontend configuration. Mandatory skills still apply; classifier advice is
-optional. Use `decision-report` to see attempts, fallbacks and collection gaps.
-Different tasks or a cheap API call are not evidence of task token savings.
+The TypeSafe/Jev classifier pilot that once shared this switch was removed: it
+matched a keyword baseline on every labelled case and saved no task tokens. See
+[the assessment](typesafe-assessment.md) and [the pilot protocol](decision-pilot.md),
+both kept as the record of what was tried.
 
 ## Maintenance and recovery
 
